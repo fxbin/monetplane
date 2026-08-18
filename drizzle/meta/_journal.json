@@ -36,6 +36,13 @@
       "when": 1787070000000,
       "tag": "0004_commerce_webhook_inbox",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787072400000,
+      "tag": "0005_entitlements",
+      "breakpoints": true
     }
   ]
 }
