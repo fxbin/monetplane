@@ -57,7 +57,7 @@ Requirements:
 - PostgreSQL (local PostgreSQL or a Neon-compatible connection string)
 
 ```bash
-cp .env.example .env.local
+cp .env.example .env
 npm install
 npm run db:migrate
 npm run dev
