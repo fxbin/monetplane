@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { assertAllowedCallbackUrl } from "../applications/service";
@@ -74,7 +74,9 @@ export async function createCommerceCheckout(
     throw new CommerceCatalogError("Checkout requires at least one item");
   }
 
-  const requestedPriceIds = [...new Set(input.items.map((item) => item.priceId))];
+  const requestedPriceIds = [
+    ...new Set(input.items.map((item) => item.priceId)),
+  ];
   const catalogRows = await db
     .select({ price: prices, product: products })
     .from(prices)
@@ -99,7 +101,9 @@ export async function createCommerceCheckout(
 
   const resolvedItems = input.items.map((item) => {
     if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) {
-      throw new CommerceCatalogError("Item quantity must be a positive integer");
+      throw new CommerceCatalogError(
+        "Item quantity must be a positive integer",
+      );
     }
     const row = catalogByPrice.get(item.priceId);
     if (!row) throw new CommerceCatalogError("Price not found");
@@ -120,8 +124,7 @@ export async function createCommerceCheckout(
   }
 
   const billingType = resolvedItems[0]?.price.billingType;
-  const billingMode =
-    billingType === "recurring" ? "subscription" : "one_time";
+  const billingMode = billingType === "recurring" ? "subscription" : "one_time";
   const recurringIntervals = new Set(
     resolvedItems
       .map((item) => item.price.recurringInterval)
@@ -149,11 +152,15 @@ export async function createCommerceCheckout(
   for (const item of resolvedItems) {
     const lineAmount = item.price.amountMinor * item.quantity;
     if (!Number.isSafeInteger(lineAmount)) {
-      throw new CommerceCatalogError("Checkout amount exceeds safe integer range");
+      throw new CommerceCatalogError(
+        "Checkout amount exceeds safe integer range",
+      );
     }
     totalAmountMinor += lineAmount;
     if (!Number.isSafeInteger(totalAmountMinor)) {
-      throw new CommerceCatalogError("Checkout total exceeds safe integer range");
+      throw new CommerceCatalogError(
+        "Checkout total exceeds safe integer range",
+      );
     }
   }
 
