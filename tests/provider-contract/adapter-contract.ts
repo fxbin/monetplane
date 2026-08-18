@@ -33,8 +33,11 @@ export function defineProviderAdapterContractTests(input: {
           "subscription_update",
         ].sort(),
       );
-      expect(Object.values(capabilities).every((value) => typeof value === "boolean"))
-        .toBe(true);
+      expect(
+        Object.values(capabilities).every(
+          (value) => typeof value === "boolean",
+        ),
+      ).toBe(true);
     });
 
     it("creates a normalized checkout with MonetPlane correlation metadata", async () => {
