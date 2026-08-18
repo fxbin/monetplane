@@ -71,12 +71,7 @@ export type UpdateSubscriptionInput = {
 };
 export type NormalizedSubscription = {
   providerSubscriptionId: string;
-  status:
-    | "pending"
-    | "active"
-    | "past_due"
-    | "cancelled"
-    | "expired";
+  status: "pending" | "active" | "past_due" | "cancelled" | "expired";
   providerCustomerId?: string;
   currentPeriodStart?: string;
   currentPeriodEnd?: string;
