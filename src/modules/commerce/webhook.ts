@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
+import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
 import { applicationCustomers } from "../customers/schema";
 import {
   expireEntitlementsBySource,
@@ -299,7 +300,10 @@ export async function processProviderWebhook(
 
             if (order.billingMode === "one_time") {
               const items = await tx
-                .select({ productId: orderItems.productId })
+                .select({
+                  productId: orderItems.productId,
+                  quantity: orderItems.quantity,
+                })
                 .from(orderItems)
                 .where(eq(orderItems.orderId, order.id));
               await grantConfiguredEntitlements(
@@ -312,6 +316,19 @@ export async function processProviderWebhook(
                   sourceEventId: event.providerEventId,
                   validFrom: occurredAt,
                   validUntil: null,
+                  periodKey: "durable",
+                },
+                tx,
+              );
+              await grantConfiguredCreditsInTransaction(
+                {
+                  applicationId,
+                  applicationCustomerId: order.applicationCustomerId,
+                  productItems: items,
+                  transactionType: "grant.purchase",
+                  sourceType: "order",
+                  sourceId: order.id,
+                  sourceEventId: event.providerEventId,
                   periodKey: "durable",
                 },
                 tx,
@@ -491,7 +508,10 @@ export async function processProviderWebhook(
             );
           }
           const items = await tx
-            .select({ productId: subscriptionItems.productId })
+            .select({
+              productId: subscriptionItems.productId,
+              quantity: subscriptionItems.quantity,
+            })
             .from(subscriptionItems)
             .where(eq(subscriptionItems.subscriptionId, subscription.id));
           await grantConfiguredEntitlements(
@@ -508,6 +528,25 @@ export async function processProviderWebhook(
             },
             tx,
           );
+
+          const grantsCredits =
+            event.type === "subscription.activated" ||
+            event.type === "subscription.renewed";
+          if (grantsCredits) {
+            await grantConfiguredCreditsInTransaction(
+              {
+                applicationId,
+                applicationCustomerId,
+                productItems: items,
+                transactionType: "grant.subscription",
+                sourceType: "subscription",
+                sourceId: subscription.id,
+                sourceEventId: event.providerEventId,
+                periodKey: periodStart.toISOString(),
+              },
+              tx,
+            );
+          }
         }
 
         if (event.type === "subscription.cancelled" && !cancelAtPeriodEnd) {
