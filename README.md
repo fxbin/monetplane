@@ -69,10 +69,11 @@ Verification:
 npm run lint
 npm run typecheck
 npm test
+npm run db:migrate
 npm run build
 ```
 
-The service health endpoint is available at `GET /api/health` and verifies PostgreSQL connectivity.
+CI provisions a fresh PostgreSQL database, applies migrations twice to verify repeatability, then starts the production build and verifies `GET /api/health` against that database.
 
 ## Architecture
 
