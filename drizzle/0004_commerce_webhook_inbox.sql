@@ -15,7 +15,7 @@ CREATE TABLE "orders" (
 --> statement-breakpoint
 ALTER TABLE "orders" ADD CONSTRAINT "orders_application_id_applications_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "orders" ADD CONSTRAINT "orders_application_customer_id_application_customers_id_fk" FOREIGN KEY ("application_customer_id") REFERENCES "public"."application_customers"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "orders" ADD CONSTRAINT "orders_application_customer_id_application_customers_id_fk" FOREIGN KEY ("application_customer_id") REFERENCES "public"."application_customers"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE INDEX "orders_application_idx" ON "orders" USING btree ("application_id");
 --> statement-breakpoint
@@ -35,9 +35,9 @@ CREATE TABLE "order_items" (
 --> statement-breakpoint
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "order_items" ADD CONSTRAINT "order_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "order_items" ADD CONSTRAINT "order_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "order_items" ADD CONSTRAINT "order_items_price_id_prices_id_fk" FOREIGN KEY ("price_id") REFERENCES "public"."prices"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "order_items" ADD CONSTRAINT "order_items_price_id_prices_id_fk" FOREIGN KEY ("price_id") REFERENCES "public"."prices"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE INDEX "order_items_order_idx" ON "order_items" USING btree ("order_id");
 --> statement-breakpoint
@@ -60,7 +60,7 @@ ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_application_id
 --> statement-breakpoint
 ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "checkout_sessions" ADD CONSTRAINT "checkout_sessions_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE INDEX "checkout_sessions_application_idx" ON "checkout_sessions" USING btree ("application_id");
 --> statement-breakpoint
@@ -90,7 +90,7 @@ ALTER TABLE "payments" ADD CONSTRAINT "payments_order_id_orders_id_fk" FOREIGN K
 --> statement-breakpoint
 ALTER TABLE "payments" ADD CONSTRAINT "payments_customer_id_customers_id_fk" FOREIGN KEY ("customer_id") REFERENCES "public"."customers"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "payments" ADD CONSTRAINT "payments_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "payments" ADD CONSTRAINT "payments_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "payments_provider_payment_unique" ON "payments" USING btree ("provider_connection_id", "provider_payment_id");
 --> statement-breakpoint
@@ -117,9 +117,9 @@ ALTER TABLE "refunds" ADD CONSTRAINT "refunds_application_id_applications_id_fk"
 --> statement-breakpoint
 ALTER TABLE "refunds" ADD CONSTRAINT "refunds_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE set null ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "refunds" ADD CONSTRAINT "refunds_payment_id_payments_id_fk" FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "refunds" ADD CONSTRAINT "refunds_payment_id_payments_id_fk" FOREIGN KEY ("payment_id") REFERENCES "public"."payments"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "refunds" ADD CONSTRAINT "refunds_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "refunds" ADD CONSTRAINT "refunds_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "refunds_provider_refund_unique" ON "refunds" USING btree ("provider_connection_id", "provider_refund_id");
 --> statement-breakpoint
@@ -144,9 +144,9 @@ CREATE TABLE "subscriptions" (
 --> statement-breakpoint
 ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_application_id_applications_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_application_customer_id_application_customers_id_fk" FOREIGN KEY ("application_customer_id") REFERENCES "public"."application_customers"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_application_customer_id_application_customers_id_fk" FOREIGN KEY ("application_customer_id") REFERENCES "public"."application_customers"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "subscriptions" ADD CONSTRAINT "subscriptions_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "subscriptions_provider_subscription_unique" ON "subscriptions" USING btree ("provider_connection_id", "provider_subscription_id");
 --> statement-breakpoint
@@ -166,9 +166,9 @@ CREATE TABLE "subscription_items" (
 --> statement-breakpoint
 ALTER TABLE "subscription_items" ADD CONSTRAINT "subscription_items_subscription_id_subscriptions_id_fk" FOREIGN KEY ("subscription_id") REFERENCES "public"."subscriptions"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "subscription_items" ADD CONSTRAINT "subscription_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "subscription_items" ADD CONSTRAINT "subscription_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "subscription_items" ADD CONSTRAINT "subscription_items_price_id_prices_id_fk" FOREIGN KEY ("price_id") REFERENCES "public"."prices"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "subscription_items" ADD CONSTRAINT "subscription_items_price_id_prices_id_fk" FOREIGN KEY ("price_id") REFERENCES "public"."prices"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "subscription_items_subscription_price_unique" ON "subscription_items" USING btree ("subscription_id", "price_id");
 --> statement-breakpoint
@@ -193,7 +193,7 @@ CREATE TABLE "webhook_events" (
 --> statement-breakpoint
 ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_application_id_applications_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE cascade ON UPDATE no action;
 --> statement-breakpoint
-ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE restrict ON UPDATE no action;
+ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_provider_connection_id_provider_connections_id_fk" FOREIGN KEY ("provider_connection_id") REFERENCES "public"."provider_connections"("id") ON DELETE no action ON UPDATE no action;
 --> statement-breakpoint
 CREATE UNIQUE INDEX "webhook_events_provider_event_unique" ON "webhook_events" USING btree ("provider_connection_id", "provider_event_id");
 --> statement-breakpoint
