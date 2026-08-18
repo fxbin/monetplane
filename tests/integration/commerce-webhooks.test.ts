@@ -39,8 +39,11 @@ const encryptionKey = Buffer.from(
 
 type Fixture = Awaited<ReturnType<typeof createFixture>>;
 
-async function createFixture(mode: "one_time" | "subscription" = "one_time") {
-  const slug = `commerce-${mode}-${Math.random().toString(36).slice(2, 8)}`;
+async function createFixture(
+  mode: "one_time" | "subscription" = "one_time",
+) {
+  const slug =
+    `commerce-${mode}-${Math.random().toString(36).slice(2, 8)}`;
   const app = await createApplication({ slug, name: slug }, db);
   await registerCallbackOrigin(app.id, "https://product.test/success", db);
   await registerCallbackOrigin(app.id, "https://product.test/cancel", db);
@@ -118,7 +121,10 @@ async function createFixture(mode: "one_time" | "subscription" = "one_time") {
   };
 }
 
-function webhookInput(payload: Record<string, unknown>, secret = "commerce-secret") {
+function webhookInput(
+  payload: Record<string, unknown>,
+  secret = "commerce-secret",
+) {
   const rawBody = JSON.stringify(payload);
   return {
     rawBody,
