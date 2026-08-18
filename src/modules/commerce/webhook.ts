@@ -3,6 +3,11 @@ import { and, eq } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { applicationCustomers } from "../customers/schema";
+import {
+  expireEntitlementsBySource,
+  grantConfiguredEntitlements,
+  revokeEntitlementsBySource,
+} from "../entitlements/service";
 import type { NormalizedProviderEvent } from "../providers/contract";
 import { verifyAndNormalizeProviderWebhook } from "../providers/runtime";
 import {
@@ -161,6 +166,7 @@ export async function processProviderWebhook(
         | {
             id: string;
             applicationCustomerId: string;
+            billingMode: string;
             status: string;
             currency: string;
             totalAmountMinor: number;
@@ -172,6 +178,7 @@ export async function processProviderWebhook(
           .select({
             id: orders.id,
             applicationCustomerId: orders.applicationCustomerId,
+            billingMode: orders.billingMode,
             status: orders.status,
             currency: orders.currency,
             totalAmountMinor: orders.totalAmountMinor,
@@ -289,6 +296,27 @@ export async function processProviderWebhook(
                   eq(checkoutSessions.applicationId, applicationId),
                 ),
               );
+
+            if (order.billingMode === "one_time") {
+              const items = await tx
+                .select({ productId: orderItems.productId })
+                .from(orderItems)
+                .where(eq(orderItems.orderId, order.id));
+              await grantConfiguredEntitlements(
+                {
+                  applicationId,
+                  applicationCustomerId: order.applicationCustomerId,
+                  productIds: items.map((item) => item.productId),
+                  sourceType: "order",
+                  sourceId: order.id,
+                  sourceEventId: event.providerEventId,
+                  validFrom: occurredAt,
+                  validUntil: null,
+                  periodKey: "durable",
+                },
+                tx,
+              );
+            }
           }
         }
 
@@ -315,6 +343,15 @@ export async function processProviderWebhook(
                 updatedAt: new Date(),
               },
             });
+
+          if (order) {
+            await revokeEntitlementsBySource(
+              applicationId,
+              "order",
+              order.id,
+              tx,
+            );
+          }
         }
       }
 
@@ -438,6 +475,56 @@ export async function processProviderWebhook(
               )
               .onConflictDoNothing();
           }
+        }
+
+        const grantsAccess =
+          inferredStatus === "active" &&
+          (event.type === "subscription.created" ||
+            event.type === "subscription.activated" ||
+            event.type === "subscription.renewed" ||
+            event.type === "subscription.updated");
+
+        if (grantsAccess) {
+          if (!periodStart || !periodEnd) {
+            throw new InvalidNormalizedCommerceEventError(
+              "Active subscription entitlement requires period boundaries",
+            );
+          }
+          const items = await tx
+            .select({ productId: subscriptionItems.productId })
+            .from(subscriptionItems)
+            .where(eq(subscriptionItems.subscriptionId, subscription.id));
+          await grantConfiguredEntitlements(
+            {
+              applicationId,
+              applicationCustomerId,
+              productIds: items.map((item) => item.productId),
+              sourceType: "subscription",
+              sourceId: subscription.id,
+              sourceEventId: event.providerEventId,
+              validFrom: periodStart,
+              validUntil: periodEnd,
+              periodKey: periodStart.toISOString(),
+            },
+            tx,
+          );
+        }
+
+        if (event.type === "subscription.cancelled" && !cancelAtPeriodEnd) {
+          await revokeEntitlementsBySource(
+            applicationId,
+            "subscription",
+            subscription.id,
+            tx,
+          );
+        }
+        if (event.type === "subscription.expired") {
+          await expireEntitlementsBySource(
+            applicationId,
+            "subscription",
+            subscription.id,
+            tx,
+          );
         }
       }
 
