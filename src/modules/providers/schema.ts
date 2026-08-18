@@ -38,7 +38,10 @@ export const providerConnections = pgTable(
       table.name,
     ),
     index("provider_connections_application_idx").on(table.applicationId),
-    check("provider_connections_mode_check", sql`${table.mode} IN ('test', 'live')`),
+    check(
+      "provider_connections_mode_check",
+      sql`${table.mode} IN ('test', 'live')`,
+    ),
     check(
       "provider_connections_status_check",
       sql`${table.status} IN ('active', 'revoked')`,
