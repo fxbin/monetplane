@@ -20,11 +20,7 @@ export type CreditTransactionType =
   | "refund.usage"
   | "adjustment.admin";
 
-type CreditStore = Pick<
-  Database,
-  "select" | "insert" | "update" | "execute"
->;
-
+type CreditStore = Pick<Database, "select" | "insert" | "update" | "execute">;
 type CreditAccountRow = typeof creditAccounts.$inferSelect;
 type CreditTransactionRow = typeof creditTransactions.$inferSelect;
 type CreditReservationRow = typeof creditReservations.$inferSelect;
@@ -33,13 +29,6 @@ export class CreditCustomerNotFoundError extends Error {
   constructor(message = "Application customer not found for credits") {
     super(message);
     this.name = "CreditCustomerNotFoundError";
-  }
-}
-
-export class CreditAccountNotFoundError extends Error {
-  constructor(message = "Credit account not found") {
-    super(message);
-    this.name = "CreditAccountNotFoundError";
   }
 }
 
@@ -83,7 +72,7 @@ function normalizeCreditType(value: string): string {
   return creditType;
 }
 
-function normalizeRequired(value: string, label: string): string {
+function requireText(value: string, label: string): string {
   const normalized = value.trim();
   if (!normalized) throw new Error(`${label} is required`);
   return normalized;
@@ -106,7 +95,7 @@ async function lockIdempotency(
   );
 }
 
-async function findTransactionByIdempotency(
+async function findTransaction(
   applicationId: string,
   idempotencyKey: string,
   db: CreditStore,
@@ -124,7 +113,7 @@ async function findTransactionByIdempotency(
   return transaction;
 }
 
-function assertExistingTransaction(
+function assertMatchingTransaction(
   transaction: CreditTransactionRow,
   expected: {
     type: CreditTransactionType;
@@ -150,7 +139,7 @@ async function resolveApplicationCustomerId(
   externalCustomerId: string,
   db: CreditStore,
 ): Promise<string> {
-  const normalizedExternalId = normalizeRequired(
+  const normalizedExternalId = requireText(
     externalCustomerId,
     "External customer ID",
   );
@@ -306,6 +295,7 @@ export async function grantCreditsInTransaction(
       | "grant.purchase"
       | "grant.subscription"
       | "grant.promotion"
+      | "refund.usage"
       | "adjustment.admin";
     sourceType: string;
     sourceId: string;
@@ -316,21 +306,21 @@ export async function grantCreditsInTransaction(
 ) {
   const creditType = normalizeCreditType(input.creditType);
   assertPositiveAmount(input.amount);
-  const sourceType = normalizeRequired(input.sourceType, "Credit source type");
-  const sourceId = normalizeRequired(input.sourceId, "Credit source ID");
-  const idempotencyKey = normalizeRequired(
+  const sourceType = requireText(input.sourceType, "Credit source type");
+  const sourceId = requireText(input.sourceId, "Credit source ID");
+  const idempotencyKey = requireText(
     input.idempotencyKey,
     "Credit idempotency key",
   );
 
   await lockIdempotency(input.applicationId, idempotencyKey, db);
-  const existing = await findTransactionByIdempotency(
+  const existing = await findTransaction(
     input.applicationId,
     idempotencyKey,
     db,
   );
   if (existing) {
-    assertExistingTransaction(existing, {
+    assertMatchingTransaction(existing, {
       type: input.transactionType,
       amount: input.amount,
       applicationCustomerId: input.applicationCustomerId,
@@ -398,21 +388,21 @@ async function debitCreditsForApplicationCustomerInTransaction(
 ) {
   const creditType = normalizeCreditType(input.creditType);
   assertPositiveAmount(input.amount);
-  const sourceType = normalizeRequired(input.sourceType, "Credit source type");
-  const sourceId = normalizeRequired(input.sourceId, "Credit source ID");
-  const idempotencyKey = normalizeRequired(
+  const sourceType = requireText(input.sourceType, "Credit source type");
+  const sourceId = requireText(input.sourceId, "Credit source ID");
+  const idempotencyKey = requireText(
     input.idempotencyKey,
     "Credit idempotency key",
   );
-  await lockIdempotency(input.applicationId, idempotencyKey, db);
 
-  const existing = await findTransactionByIdempotency(
+  await lockIdempotency(input.applicationId, idempotencyKey, db);
+  const existing = await findTransaction(
     input.applicationId,
     idempotencyKey,
     db,
   );
   if (existing) {
-    assertExistingTransaction(existing, {
+    assertMatchingTransaction(existing, {
       type: "debit.usage",
       amount: -input.amount,
       applicationCustomerId: input.applicationCustomerId,
@@ -516,11 +506,11 @@ export async function refundCredits(
         applicationCustomerId,
         creditType: input.creditType,
         amount: input.amount,
-        transactionType: "adjustment.admin",
+        transactionType: "refund.usage",
         sourceType: input.sourceType,
         sourceId: input.sourceId,
         idempotencyKey: input.idempotencyKey,
-        metadata: { reason: "refund.usage", ...(input.metadata ?? {}) },
+        metadata: input.metadata,
       },
       tx,
     );
@@ -544,15 +534,15 @@ export async function reserveCredits(
   return db.transaction(async (tx) => {
     const creditType = normalizeCreditType(input.creditType);
     assertPositiveAmount(input.amount, "Reservation amount");
-    const referenceType = normalizeRequired(
+    const referenceType = requireText(
       input.referenceType,
       "Reservation reference type",
     );
-    const referenceId = normalizeRequired(
+    const referenceId = requireText(
       input.referenceId,
       "Reservation reference ID",
     );
-    const idempotencyKey = normalizeRequired(
+    const idempotencyKey = requireText(
       input.idempotencyKey,
       "Credit idempotency key",
     );
@@ -683,13 +673,13 @@ export async function captureReservation(
 ) {
   return db.transaction(async (tx) => {
     assertPositiveAmount(input.amount, "Capture amount");
-    const idempotencyKey = normalizeRequired(
+    const idempotencyKey = requireText(
       input.idempotencyKey,
       "Credit idempotency key",
     );
     await lockIdempotency(input.applicationId, idempotencyKey, tx);
 
-    const existing = await findTransactionByIdempotency(
+    const existing = await findTransaction(
       input.applicationId,
       idempotencyKey,
       tx,
@@ -790,13 +780,13 @@ export async function releaseReservation(
   db: Database = getDb(),
 ) {
   return db.transaction(async (tx) => {
-    const idempotencyKey = normalizeRequired(
+    const idempotencyKey = requireText(
       input.idempotencyKey,
       "Credit idempotency key",
     );
     await lockIdempotency(input.applicationId, idempotencyKey, tx);
 
-    const existing = await findTransactionByIdempotency(
+    const existing = await findTransaction(
       input.applicationId,
       idempotencyKey,
       tx,
