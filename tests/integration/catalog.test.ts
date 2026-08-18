@@ -24,7 +24,10 @@ afterAll(async () => {
 
 describe("product and price catalog", () => {
   it("supports monthly and annual prices for one product", async () => {
-    const app = await createApplication({ slug: "pricing", name: "Pricing" }, db);
+    const app = await createApplication(
+      { slug: "pricing", name: "Pricing" },
+      db,
+    );
     const product = await createProduct(
       { applicationId: app.id, key: "pro", name: "Pro" },
       db,
@@ -127,7 +130,10 @@ describe("product and price catalog", () => {
   });
 
   it("also enforces money constraints in PostgreSQL", async () => {
-    const app = await createApplication({ slug: "db-guard", name: "DB Guard" }, db);
+    const app = await createApplication(
+      { slug: "db-guard", name: "DB Guard" },
+      db,
+    );
     const product = await createProduct(
       { applicationId: app.id, key: "guarded", name: "Guarded" },
       db,
@@ -177,7 +183,10 @@ describe("product and price catalog", () => {
   });
 
   it("stores entitlement and credit grant references", async () => {
-    const app = await createApplication({ slug: "benefits", name: "Benefits" }, db);
+    const app = await createApplication(
+      { slug: "benefits", name: "Benefits" },
+      db,
+    );
     const product = await createProduct(
       { applicationId: app.id, key: "pro", name: "Pro" },
       db,
