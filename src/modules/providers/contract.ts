@@ -11,7 +11,9 @@ export const PROVIDER_CAPABILITIES = [
 ] as const;
 
 export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
-export type ProviderCapabilities = Readonly<Record<ProviderCapability, boolean>>;
+export type ProviderCapabilities = Readonly<
+  Record<ProviderCapability, boolean>
+>;
 
 export type ProviderMode = "test" | "live";
 export type CheckoutBillingMode = "one_time" | "subscription";
