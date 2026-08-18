@@ -51,6 +51,14 @@ export async function grantConfiguredCreditsInTransaction(
 
   const amountByCreditType = new Map<string, number>();
   for (const config of configs) {
+    if (
+      config.grantQuantity === null ||
+      !Number.isSafeInteger(config.grantQuantity) ||
+      config.grantQuantity <= 0
+    ) {
+      throw new Error("Credit grant configuration requires a positive quantity");
+    }
+
     const itemQuantity = quantityByProduct.get(config.productId) ?? 0;
     const grantAmount = config.grantQuantity * itemQuantity;
     const next = (amountByCreditType.get(config.creditType) ?? 0) + grantAmount;
