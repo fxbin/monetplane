@@ -56,7 +56,9 @@ export async function grantConfiguredCreditsInTransaction(
       !Number.isSafeInteger(config.grantQuantity) ||
       config.grantQuantity <= 0
     ) {
-      throw new Error("Credit grant configuration requires a positive quantity");
+      throw new Error(
+        "Credit grant configuration requires a positive quantity",
+      );
     }
 
     const itemQuantity = quantityByProduct.get(config.productId) ?? 0;
