@@ -12,14 +12,18 @@ export type EntitlementStatus = "active" | "revoked" | "expired";
 type EntitlementDb = Pick<Database, "select" | "insert" | "update">;
 
 export class EntitlementIdempotencyConflictError extends Error {
-  constructor(message = "Entitlement idempotency key already represents another grant") {
+  constructor(
+    message = "Entitlement idempotency key already represents another grant",
+  ) {
     super(message);
     this.name = "EntitlementIdempotencyConflictError";
   }
 }
 
 export class EntitlementCustomerNotFoundError extends Error {
-  constructor(message = "Application customer not found for entitlement check") {
+  constructor(
+    message = "Application customer not found for entitlement check",
+  ) {
     super(message);
     this.name = "EntitlementCustomerNotFoundError";
   }
@@ -73,7 +77,8 @@ export async function grantEntitlement(
   const validUntil = input.validUntil ?? null;
 
   if (!sourceId) throw new Error("Entitlement sourceId is required");
-  if (!idempotencyKey) throw new Error("Entitlement idempotencyKey is required");
+  if (!idempotencyKey)
+    throw new Error("Entitlement idempotencyKey is required");
   assertValidWindow(input.validFrom, validUntil);
 
   const [inserted] = await db
@@ -113,7 +118,9 @@ export async function grantEntitlement(
     .limit(1);
 
   if (!existing) {
-    throw new Error("Entitlement grant conflict occurred without a stored grant");
+    throw new Error(
+      "Entitlement grant conflict occurred without a stored grant",
+    );
   }
 
   if (
@@ -230,7 +237,8 @@ export async function hasEntitlementForApplicationCustomer(
   db: EntitlementDb = getDb(),
 ): Promise<boolean> {
   const normalizedFeatureKey = normalizeFeatureKey(featureKey);
-  if (Number.isNaN(at.getTime())) throw new Error("Entitlement check date is invalid");
+  if (Number.isNaN(at.getTime()))
+    throw new Error("Entitlement check date is invalid");
 
   const [grant] = await db
     .select({ id: entitlementGrants.id })
