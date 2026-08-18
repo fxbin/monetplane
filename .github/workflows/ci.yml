@@ -56,6 +56,9 @@ jobs:
       - name: Verify migration repeatability
         run: npm run db:migrate
 
+      - name: Integration tests
+        run: npm run test:integration
+
       - name: Build
         run: npm run build
 
