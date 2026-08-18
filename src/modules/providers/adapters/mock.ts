@@ -18,6 +18,7 @@ import type {
   ProviderCapabilities,
   ProviderConnectionContext,
   RefundPaymentInput,
+  UpdateSubscriptionInput,
   VerifiedWebhook,
   VerifyWebhookInput,
 } from "../contract";
@@ -138,6 +139,17 @@ export const mockProviderAdapter: PaymentProviderAdapter = {
     return {
       providerSubscriptionId: input.providerSubscriptionId,
       status: "cancelled",
+      cancelAtPeriodEnd: false,
+    };
+  },
+
+  async updateSubscription(
+    _connection: ProviderConnectionContext,
+    input: UpdateSubscriptionInput,
+  ): Promise<NormalizedSubscription> {
+    return {
+      providerSubscriptionId: input.providerSubscriptionId,
+      status: "active",
       cancelAtPeriodEnd: false,
     };
   },
