@@ -1,5 +1,5 @@
-import type { Database } from "@/db/client";
-import { getDb } from "@/db/client";
+import type { Database } from "../../db/client";
+import { getDb } from "../../db/client";
 import { extractApplicationBearerToken } from "./security";
 import {
   type ApplicationRecord,
