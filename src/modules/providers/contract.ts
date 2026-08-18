@@ -120,11 +120,16 @@ export type NormalizedProviderEvent = {
   occurredAt: string;
   providerCustomerId?: string;
   providerPaymentId?: string;
+  providerRefundId?: string;
   providerSubscriptionId?: string;
   monetplaneOrderId?: string;
   monetplaneCustomerId?: string;
   amountMinor?: number;
   currency?: string;
+  subscriptionStatus?: NormalizedSubscription["status"];
+  subscriptionPeriodStart?: string;
+  subscriptionPeriodEnd?: string;
+  cancelAtPeriodEnd?: boolean;
   rawEventReference: string;
 };
 

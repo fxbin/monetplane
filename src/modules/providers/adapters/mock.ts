@@ -42,11 +42,16 @@ type MockWebhookPayload = {
   data?: {
     provider_customer_id?: string;
     provider_payment_id?: string;
+    provider_refund_id?: string;
     provider_subscription_id?: string;
     monetplane_order_id?: string;
     monetplane_customer_id?: string;
     amount_minor?: number;
     currency?: string;
+    subscription_status?: NormalizedSubscription["status"];
+    subscription_period_start?: string;
+    subscription_period_end?: string;
+    cancel_at_period_end?: boolean;
   };
 };
 
@@ -207,11 +212,16 @@ export const mockProviderAdapter: PaymentProviderAdapter = {
       occurredAt: payload.occurred_at,
       providerCustomerId: data.provider_customer_id,
       providerPaymentId: data.provider_payment_id,
+      providerRefundId: data.provider_refund_id,
       providerSubscriptionId: data.provider_subscription_id,
       monetplaneOrderId: data.monetplane_order_id,
       monetplaneCustomerId: data.monetplane_customer_id,
       amountMinor: data.amount_minor,
       currency: data.currency,
+      subscriptionStatus: data.subscription_status,
+      subscriptionPeriodStart: data.subscription_period_start,
+      subscriptionPeriodEnd: data.subscription_period_end,
+      cancelAtPeriodEnd: data.cancel_at_period_end,
       rawEventReference: payload.id,
     };
   },
