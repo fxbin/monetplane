@@ -36,7 +36,10 @@ type Fixture = Awaited<ReturnType<typeof createFixture>>;
 async function createFixture(mode: "one_time" | "subscription") {
   const suffix = Math.random().toString(36).slice(2, 8);
   const app = await createApplication(
-    { slug: `credit-pay-${mode.replace("_", "-")}-${suffix}`, name: "Credit Pay" },
+    {
+      slug: `credit-pay-${mode.replace("_", "-")}-${suffix}`,
+      name: "Credit Pay",
+    },
     db,
   );
   await registerCallbackOrigin(app.id, "https://credits.test/success", db);
@@ -181,12 +184,13 @@ describe("commerce credit grants", () => {
       .select()
       .from(creditTransactions)
       .where(eq(creditTransactions.applicationId, fixture.app.id));
-    expect(grants.filter((transaction) => transaction.type === "grant.purchase")).toHaveLength(
-      1,
-    );
-    expect(grants.find((transaction) => transaction.type === "grant.purchase")?.amount).toBe(
-      100,
-    );
+    expect(
+      grants.filter((transaction) => transaction.type === "grant.purchase"),
+    ).toHaveLength(1);
+    expect(
+      grants.find((transaction) => transaction.type === "grant.purchase")
+        ?.amount,
+    ).toBe(100);
   });
 
   it("grants each paid subscription period once and never grants a failed renewal", async () => {
