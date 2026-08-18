@@ -18,20 +18,41 @@ async function collectTypeScriptFiles(directory: string): Promise<string[]> {
 }
 
 describe("module boundaries", () => {
-  it("keeps provider adapters from mutating credits or entitlements directly", async () => {
-    const providersDirectory = path.join(
+  it("keeps provider adapters from mutating commerce, credits, or entitlements directly", async () => {
+    const adaptersDirectory = path.join(
       process.cwd(),
-      "src/modules/providers",
+      "src/modules/providers/adapters",
     );
-    const files = await collectTypeScriptFiles(providersDirectory);
+    const files = await collectTypeScriptFiles(adaptersDirectory);
 
     for (const file of files) {
       const source = await readFile(file, "utf8");
-      expect(source, `${file} imports credits directly`).not.toContain(
-        "@/modules/credits",
+      expect(source, `${file} imports commerce directly`).not.toMatch(
+        /modules[\\/]commerce/,
       );
-      expect(source, `${file} imports entitlements directly`).not.toContain(
-        "@/modules/entitlements",
+      expect(source, `${file} imports credits directly`).not.toMatch(
+        /modules[\\/]credits/,
+      );
+      expect(source, `${file} imports entitlements directly`).not.toMatch(
+        /modules[\\/]entitlements/,
+      );
+    }
+  });
+
+  it("keeps commerce free of concrete provider adapters", async () => {
+    const commerceDirectory = path.join(process.cwd(), "src/modules/commerce");
+    const files = await collectTypeScriptFiles(commerceDirectory);
+
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      expect(source, `${file} imports a concrete provider adapter`).not.toMatch(
+        /providers[\\/]adapters/,
+      );
+      expect(source, `${file} contains Creem-specific logic`).not.toMatch(
+        /\bcreem\b/i,
+      );
+      expect(source, `${file} contains Waffo-specific logic`).not.toMatch(
+        /\bwaffo\b/i,
       );
     }
   });
