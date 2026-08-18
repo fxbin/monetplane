@@ -1,7 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
-import { applications } from "../../src/modules/applications/schema";
 import {
   createApplication,
   registerCallbackOrigin,
@@ -13,7 +12,6 @@ import {
 } from "../../src/modules/catalog/service";
 import { createCommerceCheckout } from "../../src/modules/commerce/checkout";
 import { processProviderWebhook } from "../../src/modules/commerce/webhook";
-import { customers } from "../../src/modules/customers/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 import { entitlementGrants } from "../../src/modules/entitlements/schema";
 import { hasEntitlement } from "../../src/modules/entitlements/service";
@@ -108,7 +106,14 @@ async function createFixture(mode: "one_time" | "subscription") {
     db,
   );
 
-  return { app, applicationCustomer, product, price, providerConnection, checkout };
+  return {
+    app,
+    applicationCustomer,
+    product,
+    price,
+    providerConnection,
+    checkout,
+  };
 }
 
 function webhookInput(payload: Record<string, unknown>) {
@@ -124,7 +129,10 @@ function webhookInput(payload: Record<string, unknown>) {
   };
 }
 
-async function processWebhook(fixture: Fixture, payload: Record<string, unknown>) {
+async function processWebhook(
+  fixture: Fixture,
+  payload: Record<string, unknown>,
+) {
   return processProviderWebhook(
     fixture.app.id,
     fixture.providerConnection.id,
@@ -137,8 +145,6 @@ beforeEach(async () => {
   process.env.MONETPLANE_ENCRYPTION_KEY = encryptionKey;
   clearProviderAdaptersForTests();
   registerProviderAdapter(mockProviderAdapter);
-  await db.delete(applications);
-  await db.delete(customers);
 });
 
 afterAll(async () => {
