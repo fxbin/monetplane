@@ -25,7 +25,7 @@ export const orders = pgTable(
       .references(() => applications.id, { onDelete: "cascade" }),
     applicationCustomerId: text("application_customer_id")
       .notNull()
-      .references(() => applicationCustomers.id, { onDelete: "restrict" }),
+      .references(() => applicationCustomers.id, { onDelete: "no action" }),
     billingMode: text("billing_mode").notNull(),
     status: text("status").default("pending").notNull(),
     currency: text("currency").notNull(),
@@ -66,10 +66,10 @@ export const orderItems = pgTable(
       .references(() => orders.id, { onDelete: "cascade" }),
     productId: text("product_id")
       .notNull()
-      .references(() => products.id, { onDelete: "restrict" }),
+      .references(() => products.id, { onDelete: "no action" }),
     priceId: text("price_id")
       .notNull()
-      .references(() => prices.id, { onDelete: "restrict" }),
+      .references(() => prices.id, { onDelete: "no action" }),
     quantity: integer("quantity").notNull(),
     unitAmountMinor: bigint("unit_amount_minor", { mode: "number" }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -95,7 +95,7 @@ export const checkoutSessions = pgTable(
       .references(() => orders.id, { onDelete: "cascade" }),
     providerConnectionId: text("provider_connection_id")
       .notNull()
-      .references(() => providerConnections.id, { onDelete: "restrict" }),
+      .references(() => providerConnections.id, { onDelete: "no action" }),
     status: text("status").default("creating").notNull(),
     providerCheckoutId: text("provider_checkout_id"),
     checkoutUrl: text("checkout_url"),
@@ -137,7 +137,7 @@ export const payments = pgTable(
     }),
     providerConnectionId: text("provider_connection_id")
       .notNull()
-      .references(() => providerConnections.id, { onDelete: "restrict" }),
+      .references(() => providerConnections.id, { onDelete: "no action" }),
     providerPaymentId: text("provider_payment_id").notNull(),
     status: text("status").notNull(),
     amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
@@ -176,10 +176,10 @@ export const refunds = pgTable(
     }),
     paymentId: text("payment_id")
       .notNull()
-      .references(() => payments.id, { onDelete: "restrict" }),
+      .references(() => payments.id, { onDelete: "no action" }),
     providerConnectionId: text("provider_connection_id")
       .notNull()
-      .references(() => providerConnections.id, { onDelete: "restrict" }),
+      .references(() => providerConnections.id, { onDelete: "no action" }),
     providerRefundId: text("provider_refund_id").notNull(),
     status: text("status").notNull(),
     amountMinor: bigint("amount_minor", { mode: "number" }),
@@ -217,10 +217,10 @@ export const subscriptions = pgTable(
       .references(() => applications.id, { onDelete: "cascade" }),
     applicationCustomerId: text("application_customer_id")
       .notNull()
-      .references(() => applicationCustomers.id, { onDelete: "restrict" }),
+      .references(() => applicationCustomers.id, { onDelete: "no action" }),
     providerConnectionId: text("provider_connection_id")
       .notNull()
-      .references(() => providerConnections.id, { onDelete: "restrict" }),
+      .references(() => providerConnections.id, { onDelete: "no action" }),
     providerSubscriptionId: text("provider_subscription_id").notNull(),
     status: text("status").notNull(),
     currentPeriodStart: timestamp("current_period_start", {
@@ -258,10 +258,10 @@ export const subscriptionItems = pgTable(
       .references(() => subscriptions.id, { onDelete: "cascade" }),
     productId: text("product_id")
       .notNull()
-      .references(() => products.id, { onDelete: "restrict" }),
+      .references(() => products.id, { onDelete: "no action" }),
     priceId: text("price_id")
       .notNull()
-      .references(() => prices.id, { onDelete: "restrict" }),
+      .references(() => prices.id, { onDelete: "no action" }),
     quantity: integer("quantity").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -286,7 +286,7 @@ export const webhookEvents = pgTable(
       .references(() => applications.id, { onDelete: "cascade" }),
     providerConnectionId: text("provider_connection_id")
       .notNull()
-      .references(() => providerConnections.id, { onDelete: "restrict" }),
+      .references(() => providerConnections.id, { onDelete: "no action" }),
     providerEventId: text("provider_event_id").notNull(),
     providerEventName: text("provider_event_name").notNull(),
     normalizedType: text("normalized_type").notNull(),
