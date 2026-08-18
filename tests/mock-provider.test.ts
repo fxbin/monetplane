@@ -1,8 +1,8 @@
-import type { ProviderConnectionContext } from "../src/modules/providers/contract";
 import {
   mockProviderAdapter,
   signMockWebhookPayload,
 } from "../src/modules/providers/adapters/mock";
+import type { ProviderConnectionContext } from "../src/modules/providers/contract";
 import { defineProviderAdapterContractTests } from "./provider-contract/adapter-contract";
 
 const connection: ProviderConnectionContext = {
