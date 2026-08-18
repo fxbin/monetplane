@@ -55,7 +55,9 @@ export function normalizeCallbackOrigin(value: string): string {
   }
 
   if (url.username || url.password) {
-    throw new InvalidCallbackUrlError("Callback URL must not contain credentials");
+    throw new InvalidCallbackUrlError(
+      "Callback URL must not contain credentials",
+    );
   }
 
   return url.origin;
