@@ -53,7 +53,9 @@ export async function createApplication(
   const name = input.name.trim();
 
   if (!slug || !/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
-    throw new Error("Application slug must be lowercase letters, numbers, or hyphens");
+    throw new Error(
+      "Application slug must be lowercase letters, numbers, or hyphens",
+    );
   }
 
   if (!name) {
@@ -269,7 +271,10 @@ export async function resolveApplicationByHost(
   const [row] = await db
     .select({ application: applications })
     .from(applicationDomains)
-    .innerJoin(applications, eq(applicationDomains.applicationId, applications.id))
+    .innerJoin(
+      applications,
+      eq(applicationDomains.applicationId, applications.id),
+    )
     .where(
       and(
         eq(applicationDomains.hostname, hostname),
