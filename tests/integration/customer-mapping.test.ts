@@ -21,8 +21,14 @@ afterAll(async () => {
 
 describe("customer mapping", () => {
   it("does not auto-merge customers that share an email", async () => {
-    const firstApp = await createApplication({ slug: "first", name: "First" }, db);
-    const secondApp = await createApplication({ slug: "second", name: "Second" }, db);
+    const firstApp = await createApplication(
+      { slug: "first", name: "First" },
+      db,
+    );
+    const secondApp = await createApplication(
+      { slug: "second", name: "Second" },
+      db,
+    );
 
     const first = await createApplicationCustomer(
       {
