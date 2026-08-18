@@ -37,7 +37,10 @@ export const products = pgTable(
       table.key,
     ),
     index("products_application_idx").on(table.applicationId),
-    check("products_status_check", sql`${table.status} IN ('active', 'archived')`),
+    check(
+      "products_status_check",
+      sql`${table.status} IN ('active', 'archived')`,
+    ),
   ],
 );
 
@@ -87,7 +90,10 @@ export const prices = pgTable(
         AND ${table.intervalCount} >= 1
       )`,
     ),
-    check("prices_status_check", sql`${table.status} IN ('active', 'archived')`),
+    check(
+      "prices_status_check",
+      sql`${table.status} IN ('active', 'archived')`,
+    ),
   ],
 );
 
