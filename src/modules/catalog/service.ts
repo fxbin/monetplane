@@ -18,7 +18,9 @@ export class CatalogProductNotFoundError extends Error {
 function normalizeCatalogKey(value: string, label: string): string {
   const key = value.trim().toLowerCase();
   if (!key || !/^[a-z0-9][a-z0-9._-]*$/.test(key)) {
-    throw new Error(`${label} must use lowercase letters, numbers, dots, underscores, or hyphens`);
+    throw new Error(
+      `${label} must use lowercase letters, numbers, dots, underscores, or hyphens`,
+    );
   }
   return key;
 }
@@ -33,7 +35,9 @@ function normalizeCurrency(value: string): string {
 
 function assertMinorUnitAmount(value: number): void {
   if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error("Amount must be a non-negative safe integer in minor units");
+    throw new Error(
+      "Amount must be a non-negative safe integer in minor units",
+    );
   }
 }
 
@@ -113,11 +117,17 @@ export async function createPrice(
   assertMinorUnitAmount(input.amountMinor);
 
   if (input.billingType === "one_time") {
-    if (input.recurringInterval !== undefined || input.intervalCount !== undefined) {
+    if (
+      input.recurringInterval !== undefined ||
+      input.intervalCount !== undefined
+    ) {
       throw new Error("One-time prices cannot define a recurring interval");
     }
   } else {
-    if (input.recurringInterval !== "month" && input.recurringInterval !== "year") {
+    if (
+      input.recurringInterval !== "month" &&
+      input.recurringInterval !== "year"
+    ) {
       throw new Error("Recurring prices require a month or year interval");
     }
     if (
@@ -178,7 +188,10 @@ export async function addProductGrantConfig(
       id: `grantcfg_${randomUUID()}`,
       productId: input.productId,
       grantType: input.grantType,
-      referenceKey: normalizeCatalogKey(input.referenceKey, "Grant reference key"),
+      referenceKey: normalizeCatalogKey(
+        input.referenceKey,
+        "Grant reference key",
+      ),
       quantity: input.grantType === "credit" ? input.quantity : null,
       metadata: input.metadata ?? {},
     })
