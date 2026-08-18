@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, isNull } from "drizzle-orm";
-import type { Database } from "@/db/client";
-import { getDb } from "@/db/client";
+import type { Database } from "../../db/client";
+import { getDb } from "../../db/client";
 import {
   applicationBranding,
   applicationCallbackOrigins,
