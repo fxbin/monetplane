@@ -11,9 +11,7 @@ export const PROVIDER_CAPABILITIES = [
 ] as const;
 
 export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
-export type ProviderCapabilities = Readonly<
-  Record<ProviderCapability, boolean>
->;
+export type ProviderCapabilities = Readonly<Record<ProviderCapability, boolean>>;
 
 export type ProviderMode = "test" | "live";
 export type CheckoutBillingMode = "one_time" | "subscription";
@@ -53,10 +51,7 @@ export type CheckoutResult = {
   reconciliationMetadata: Record<string, string>;
 };
 
-export type GetPaymentInput = {
-  providerPaymentId: string;
-};
-
+export type GetPaymentInput = { providerPaymentId: string };
 export type NormalizedPayment = {
   providerPaymentId: string;
   status: "pending" | "succeeded" | "failed" | "refunded";
@@ -65,10 +60,13 @@ export type NormalizedPayment = {
   providerCustomerId?: string;
 };
 
-export type GetSubscriptionInput = {
+export type GetSubscriptionInput = { providerSubscriptionId: string };
+export type CancelSubscriptionInput = { providerSubscriptionId: string };
+export type UpdateSubscriptionInput = {
   providerSubscriptionId: string;
+  providerPriceId?: string;
+  metadata?: Record<string, string>;
 };
-
 export type NormalizedSubscription = {
   providerSubscriptionId: string;
   status: "pending" | "active" | "past_due" | "cancelled" | "expired";
@@ -78,15 +76,10 @@ export type NormalizedSubscription = {
   cancelAtPeriodEnd: boolean;
 };
 
-export type CancelSubscriptionInput = {
-  providerSubscriptionId: string;
-};
-
 export type RefundPaymentInput = {
   providerPaymentId: string;
   amountMinor?: number;
 };
-
 export type NormalizedRefund = {
   providerRefundId: string;
   providerPaymentId: string;
@@ -98,10 +91,7 @@ export type VerifyWebhookInput = {
   rawBody: string;
   headers: Readonly<Record<string, string | undefined>>;
 };
-
-export type VerifiedWebhook = {
-  rawBody: string;
-};
+export type VerifiedWebhook = { rawBody: string };
 
 export const NORMALIZED_PROVIDER_EVENT_TYPES = [
   "payment.succeeded",
@@ -115,7 +105,6 @@ export const NORMALIZED_PROVIDER_EVENT_TYPES = [
   "subscription.expired",
   "unknown",
 ] as const;
-
 export type NormalizedProviderEventType =
   (typeof NORMALIZED_PROVIDER_EVENT_TYPES)[number];
 
@@ -139,41 +128,35 @@ export type NormalizedProviderEvent = {
 
 export interface PaymentProviderAdapter {
   readonly provider: string;
-
-  getCapabilities(
-    connection: ProviderConnectionContext,
-  ): ProviderCapabilities;
-
+  getCapabilities(connection: ProviderConnectionContext): ProviderCapabilities;
   createCheckout(
     connection: ProviderConnectionContext,
     input: CreateCheckoutInput,
   ): Promise<CheckoutResult>;
-
   getPayment(
     connection: ProviderConnectionContext,
     input: GetPaymentInput,
   ): Promise<NormalizedPayment>;
-
   getSubscription(
     connection: ProviderConnectionContext,
     input: GetSubscriptionInput,
   ): Promise<NormalizedSubscription>;
-
   cancelSubscription(
     connection: ProviderConnectionContext,
     input: CancelSubscriptionInput,
   ): Promise<NormalizedSubscription>;
-
+  updateSubscription(
+    connection: ProviderConnectionContext,
+    input: UpdateSubscriptionInput,
+  ): Promise<NormalizedSubscription>;
   refundPayment(
     connection: ProviderConnectionContext,
     input: RefundPaymentInput,
   ): Promise<NormalizedRefund>;
-
   verifyWebhook(
     connection: ProviderConnectionContext,
     input: VerifyWebhookInput,
   ): Promise<VerifiedWebhook>;
-
   normalizeWebhook(
     connection: ProviderConnectionContext,
     input: VerifiedWebhook,
@@ -194,5 +177,12 @@ export class InvalidProviderWebhookSignatureError extends Error {
   constructor(message = "Invalid provider webhook signature") {
     super(message);
     this.name = "InvalidProviderWebhookSignatureError";
+  }
+}
+
+export class ProviderApplicationMismatchError extends Error {
+  constructor(message = "Provider request application context mismatch") {
+    super(message);
+    this.name = "ProviderApplicationMismatchError";
   }
 }
