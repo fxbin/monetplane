@@ -14,7 +14,7 @@
     "lint:fix": "biome check --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --exclude 'tests/integration/**'",
-    "test:integration": "vitest run tests/integration --no-file-parallelism",
+    "test:integration": "vitest run tests/integration --config vitest.integration.config.ts",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
