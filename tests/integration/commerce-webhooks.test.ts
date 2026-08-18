@@ -57,27 +57,35 @@ async function createFixture(mode: "one_time" | "subscription" = "one_time") {
     { applicationId: app.id, key: "pro", name: "Pro" },
     db,
   );
-  const price = await createPrice(
-    mode === "one_time"
-      ? {
-          applicationId: app.id,
-          productId: product.id,
-          key: "one-time",
-          currency: "USD",
-          amountMinor: 999,
-          billingType: "one_time",
-        }
-      : {
-          applicationId: app.id,
-          productId: product.id,
-          key: "monthly",
-          currency: "USD",
-          amountMinor: 1900,
-          billingType: "recurring",
-          recurringInterval: "month",
-        },
-    db,
-  );
+
+  let price: Awaited<ReturnType<typeof createPrice>>;
+  if (mode === "one_time") {
+    price = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "one-time",
+        currency: "USD",
+        amountMinor: 999,
+        billingType: "one_time",
+      },
+      db,
+    );
+  } else {
+    price = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "monthly",
+        currency: "USD",
+        amountMinor: 1900,
+        billingType: "recurring",
+        recurringInterval: "month",
+      },
+      db,
+    );
+  }
+
   const providerConnection = await createProviderConnection(
     {
       applicationId: app.id,
