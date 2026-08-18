@@ -18,3 +18,4 @@ export const platformMetadata = pgTable("platform_metadata", {
 export * from "../modules/applications/schema";
 export * from "../modules/catalog/schema";
 export * from "../modules/customers/schema";
+export * from "../modules/providers/schema";
