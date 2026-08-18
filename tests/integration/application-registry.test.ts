@@ -1,10 +1,15 @@
-import { describe, expect, it, beforeEach, afterAll } from "vitest";
+import { eq } from "drizzle-orm";
+import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import {
   applicationCredentials,
   applicationDomains,
   applications,
 } from "../../src/modules/applications/schema";
+import {
+  ApplicationContextMismatchError,
+  resolveApplicationContext,
+} from "../../src/modules/applications/context";
 import {
   assertAllowedCallbackUrl,
   authenticateApplicationCredential,
@@ -14,10 +19,6 @@ import {
   registerCallbackOrigin,
   resolveApplicationByHost,
 } from "../../src/modules/applications/service";
-import {
-  ApplicationContextMismatchError,
-  resolveApplicationContext,
-} from "../../src/modules/applications/context";
 
 const db = getDb();
 
@@ -80,12 +81,8 @@ describe("application registry integration", () => {
     const [stored] = await db
       .select()
       .from(applicationCredentials)
-      .where(
-        // The issued id is application-scoped and sufficient for this test fixture.
-        // The secret itself must never appear in this row.
-        // biome-ignore lint/suspicious/noExplicitAny: Drizzle where is supplied below via table selection.
-        (applicationCredentials.id as any).eq?.(issued.id) ?? undefined,
-      );
+      .where(eq(applicationCredentials.id, issued.id))
+      .limit(1);
 
     expect(issued.secret).toMatch(/^mp_app_/);
     expect(stored?.secretHash).toBeTruthy();
