@@ -1,5 +1,5 @@
-import { and, eq } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
+import { and, eq } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { applicationCustomers } from "../customers/schema";
@@ -27,13 +27,16 @@ function parseEventDate(value: string | undefined): Date | null {
   if (!value) return null;
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    throw new InvalidNormalizedCommerceEventError("Invalid provider event date");
+    throw new InvalidNormalizedCommerceEventError(
+      "Invalid provider event date",
+    );
   }
   return date;
 }
 
 function eventErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : "Unknown webhook error";
+  const message =
+    error instanceof Error ? error.message : "Unknown webhook error";
   return message.slice(0, 1000);
 }
 
@@ -196,10 +199,7 @@ export async function processProviderWebhook(
           .where(
             and(
               eq(applicationCustomers.applicationId, applicationId),
-              eq(
-                applicationCustomers.customerId,
-                event.monetplaneCustomerId,
-              ),
+              eq(applicationCustomers.customerId, event.monetplaneCustomerId),
             ),
           )
           .limit(1);
@@ -245,10 +245,7 @@ export async function processProviderWebhook(
             currency,
           })
           .onConflictDoUpdate({
-            target: [
-              payments.providerConnectionId,
-              payments.providerPaymentId,
-            ],
+            target: [payments.providerConnectionId, payments.providerPaymentId],
             set: {
               status: paymentStatus,
               orderId: order?.id ?? null,
@@ -311,10 +308,7 @@ export async function processProviderWebhook(
               amountMinor: event.amountMinor ?? null,
             })
             .onConflictDoUpdate({
-              target: [
-                refunds.providerConnectionId,
-                refunds.providerRefundId,
-              ],
+              target: [refunds.providerConnectionId, refunds.providerRefundId],
               set: {
                 status: "succeeded",
                 amountMinor: event.amountMinor ?? null,
@@ -324,9 +318,11 @@ export async function processProviderWebhook(
         }
       }
 
-      const isSubscriptionLifecycleEvent = event.type.startsWith("subscription.");
+      const isSubscriptionLifecycleEvent =
+        event.type.startsWith("subscription.");
       const isSubscriptionPaymentFailure =
-        event.type === "payment.failed" && Boolean(event.providerSubscriptionId);
+        event.type === "payment.failed" &&
+        Boolean(event.providerSubscriptionId);
 
       if (isSubscriptionLifecycleEvent || isSubscriptionPaymentFailure) {
         if (!event.providerSubscriptionId) {
@@ -374,7 +370,9 @@ export async function processProviderWebhook(
           if (event.type === "subscription.cancelled") return "cancelled";
           if (event.type === "subscription.expired") return "expired";
           return (
-            event.subscriptionStatus ?? existingSubscription?.status ?? "pending"
+            event.subscriptionStatus ??
+            existingSubscription?.status ??
+            "pending"
           );
         })();
 
