@@ -4,7 +4,7 @@
 
 MonetPlane gives teams one place to manage monetization across multiple products, domains, and payment providers without coupling product code to a single billing vendor.
 
-> Status: **Pre-alpha / architecture phase**
+> Status: **Pre-alpha / P0 implementation**
 
 ## What MonetPlane owns
 
@@ -49,11 +49,43 @@ Each product keeps its own business data. MonetPlane only owns monetization stat
 - Accounting/general-ledger functionality
 - Microservices, Kafka, Kubernetes, or distributed transactions
 
+## Development
+
+Requirements:
+
+- Node.js 22.12+
+- PostgreSQL (local PostgreSQL or a Neon-compatible connection string)
+
+```bash
+cp .env.example .env
+npm install
+npm run db:migrate
+npm run dev
+```
+
+Verification:
+
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run db:migrate
+npm run build
+```
+
+CI provisions a fresh PostgreSQL database, applies migrations twice to verify repeatability, then starts the production build and verifies `GET /api/health` against that database.
+
 ## Architecture
 
 - [System architecture](docs/architecture.md)
 - [Payment provider contract](docs/provider-contract.md)
 - [Credits and usage ledger](docs/credits-ledger.md)
+
+## Design references
+
+MonetPlane studies proven open-source billing systems rather than inventing billing concepts in isolation. [Autumn](https://github.com/useautumn/autumn) is a primary reference for feature/entitlement modelling, balances, usage enforcement, and normalized billing state. MonetPlane intentionally differs by making multi-application, multi-domain, and payment-provider abstraction first-class architectural boundaries.
+
+Reference means **learn from the domain model and failure cases**, not copy implementation details or couple MonetPlane to Autumn's runtime architecture.
 
 ## P0 outcome
 

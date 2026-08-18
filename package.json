@@ -1,0 +1,39 @@
+{
+  "name": "monetplane",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source monetization control plane for multi-product builders.",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:push": "drizzle-kit push"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.43.1",
+    "next": "^16.2.0",
+    "postgres": "3.4.7",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.2.2",
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "dotenv": "^16.6.1",
+    "drizzle-kit": "^0.31.1",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}
