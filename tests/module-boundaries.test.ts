@@ -19,7 +19,10 @@ async function collectTypeScriptFiles(directory: string): Promise<string[]> {
 
 describe("module boundaries", () => {
   it("keeps provider adapters from mutating credits or entitlements directly", async () => {
-    const providersDirectory = path.join(process.cwd(), "src/modules/providers");
+    const providersDirectory = path.join(
+      process.cwd(),
+      "src/modules/providers",
+    );
     const files = await collectTypeScriptFiles(providersDirectory);
 
     for (const file of files) {
