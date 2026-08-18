@@ -29,7 +29,9 @@ export const orders = pgTable(
     billingMode: text("billing_mode").notNull(),
     status: text("status").default("pending").notNull(),
     currency: text("currency").notNull(),
-    totalAmountMinor: bigint("total_amount_minor", { mode: "number" }).notNull(),
+    totalAmountMinor: bigint("total_amount_minor", {
+      mode: "number",
+    }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -48,7 +50,10 @@ export const orders = pgTable(
       "orders_status_check",
       sql`${table.status} IN ('pending', 'paid', 'failed', 'refunded')`,
     ),
-    check("orders_total_nonnegative_check", sql`${table.totalAmountMinor} >= 0`),
+    check(
+      "orders_total_nonnegative_check",
+      sql`${table.totalAmountMinor} >= 0`,
+    ),
   ],
 );
 
@@ -218,7 +223,9 @@ export const subscriptions = pgTable(
       .references(() => providerConnections.id, { onDelete: "restrict" }),
     providerSubscriptionId: text("provider_subscription_id").notNull(),
     status: text("status").notNull(),
-    currentPeriodStart: timestamp("current_period_start", { withTimezone: true }),
+    currentPeriodStart: timestamp("current_period_start", {
+      withTimezone: true,
+    }),
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     cancelAtPeriodEnd: boolean("cancel_at_period_end").default(false).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
