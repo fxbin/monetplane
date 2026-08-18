@@ -8,9 +8,13 @@ import type {
   GetSubscriptionInput,
   ProviderCapability,
   RefundPaymentInput,
+  UpdateSubscriptionInput,
   VerifyWebhookInput,
 } from "./contract";
-import { UnsupportedProviderCapabilityError } from "./contract";
+import {
+  ProviderApplicationMismatchError,
+  UnsupportedProviderCapabilityError,
+} from "./contract";
 import { getProviderAdapter } from "./registry";
 import { loadProviderConnectionContext } from "./service";
 
@@ -34,6 +38,10 @@ export async function createProviderCheckout(
   input: CreateCheckoutInput,
   db: Database = getDb(),
 ) {
+  if (input.applicationId !== applicationId) {
+    throw new ProviderApplicationMismatchError();
+  }
+
   const connection = await loadProviderConnectionContext(
     applicationId,
     connectionId,
@@ -108,6 +116,26 @@ export async function cancelProviderSubscription(
     "subscription_cancel",
   );
   return adapter.cancelSubscription(connection, input);
+}
+
+export async function updateProviderSubscription(
+  applicationId: string,
+  connectionId: string,
+  input: UpdateSubscriptionInput,
+  db: Database = getDb(),
+) {
+  const connection = await loadProviderConnectionContext(
+    applicationId,
+    connectionId,
+    db,
+  );
+  const adapter = getProviderAdapter(connection.provider);
+  requireCapability(
+    connection.provider,
+    adapter.getCapabilities(connection),
+    "subscription_update",
+  );
+  return adapter.updateSubscription(connection, input);
 }
 
 export async function refundProviderPayment(
