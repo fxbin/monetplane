@@ -2,9 +2,9 @@ import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
 import { extractApplicationBearerToken } from "./security";
 import {
+  type ApplicationRecord,
   authenticateApplicationCredential,
   resolveApplicationByHost,
-  type ApplicationRecord,
 } from "./service";
 
 export type ApplicationContext = {
@@ -27,7 +27,9 @@ export class InvalidApplicationCredentialError extends Error {
 }
 
 export class ApplicationContextMismatchError extends Error {
-  constructor(message = "Host and credential resolve to different applications") {
+  constructor(
+    message = "Host and credential resolve to different applications",
+  ) {
     super(message);
     this.name = "ApplicationContextMismatchError";
   }
