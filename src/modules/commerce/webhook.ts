@@ -1,13 +1,13 @@
-import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
-import { orderItems } from "./schema";
+import { applicationCustomers } from "../customers/schema";
 import type { NormalizedProviderEvent } from "../providers/contract";
 import { verifyAndNormalizeProviderWebhook } from "../providers/runtime";
-import { applicationCustomers } from "../customers/schema";
 import {
   checkoutSessions,
+  orderItems,
   orders,
   payments,
   refunds,
