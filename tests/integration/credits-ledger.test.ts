@@ -104,9 +104,9 @@ describe("atomic credits ledger", () => {
       .from(creditTransactions)
       .where(eq(creditTransactions.applicationId, fixture.app.id));
     expect(transactions).toHaveLength(51);
-    expect(transactions.every((transaction) => transaction.availableAfter >= 0)).toBe(
-      true,
-    );
+    expect(
+      transactions.every((transaction) => transaction.availableAfter >= 0),
+    ).toBe(true);
   });
 
   it("serializes repeated idempotency keys so a debit and reserve apply once", async () => {
@@ -129,7 +129,9 @@ describe("atomic credits ledger", () => {
         ),
       ),
     );
-    expect(repeatedDebits.filter((result) => !result.duplicate)).toHaveLength(1);
+    expect(repeatedDebits.filter((result) => !result.duplicate)).toHaveLength(
+      1,
+    );
     expect(
       await getCreditBalance(fixture.app.id, "user-1", "agent.run", db),
     ).toEqual({ creditType: "agent.run", available: 17, reserved: 0 });
@@ -300,8 +302,12 @@ describe("atomic credits ledger", () => {
       ),
     ]);
 
-    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
-    expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(
+      results.filter((result) => result.status === "rejected"),
+    ).toHaveLength(1);
 
     const [reservation] = await db
       .select()
@@ -375,9 +381,9 @@ describe("atomic credits ledger", () => {
       .select()
       .from(creditTransactions)
       .where(eq(creditTransactions.applicationId, first.app.id));
-    expect(transactions.some((transaction) => transaction.sourceId === "job-refund")).toBe(
-      true,
-    );
+    expect(
+      transactions.some((transaction) => transaction.sourceId === "job-refund"),
+    ).toBe(true);
     expect(
       transactions.some(
         (transaction) => transaction.metadata.reason === "refund.usage",
