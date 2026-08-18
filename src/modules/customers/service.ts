@@ -77,43 +77,10 @@ export async function findApplicationCustomer(
     .where(
       and(
         eq(applicationCustomers.applicationId, applicationId),
-        eq(
-          applicationCustomers.externalCustomerId,
-          externalCustomerId.trim(),
-        ),
+        eq(applicationCustomers.externalCustomerId, externalCustomerId.trim()),
       ),
     )
     .limit(1);
-
-  return mapping ?? null;
-}
-
-export async function updateApplicationCustomerMetadata(
-  applicationId: string,
-  externalCustomerId: string,
-  input: { email?: string | null; metadata?: Record<string, unknown> },
-  db: Database = getDb(),
-) {
-  const [mapping] = await db
-    .update(applicationCustomers)
-    .set({
-      email:
-        input.email === undefined
-          ? undefined
-          : input.email?.trim().toLowerCase() || null,
-      metadata: input.metadata,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(applicationCustomers.applicationId, applicationId),
-        eq(
-          applicationCustomers.externalCustomerId,
-          externalCustomerId.trim(),
-        ),
-      ),
-    )
-    .returning();
 
   return mapping ?? null;
 }
