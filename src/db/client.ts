@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { getDatabaseUrl } from "@/config/env";
+import { getDatabaseUrl } from "../config/env";
 import * as schema from "./schema";
 
 type SqlClient = ReturnType<typeof postgres>;
