@@ -13,7 +13,8 @@ afterEach(() => {
 
 describe("getDatabaseUrl", () => {
   it("accepts PostgreSQL URLs", () => {
-    process.env.DATABASE_URL = "postgresql://user:pass@localhost:5432/monetplane";
+    process.env.DATABASE_URL =
+      "postgresql://user:pass@localhost:5432/monetplane";
     expect(getDatabaseUrl()).toBe(process.env.DATABASE_URL);
   });
 
