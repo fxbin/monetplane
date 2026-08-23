@@ -370,6 +370,7 @@ describe("atomic credits ledger", () => {
         sourceType: "usage_refund",
         sourceId: "job-refund",
         idempotencyKey: "refund-usage",
+        metadata: { reason: "refund.usage" },
       },
       db,
     );
