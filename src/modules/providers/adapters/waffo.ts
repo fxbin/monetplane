@@ -125,7 +125,10 @@ async function waffoRequest(
     headers: {
       "content-type": "application/json",
       "x-api-key": requiredCredential(connection, "apiKey"),
-      "x-signature": signatureFor(rawBody, requiredCredential(connection, "signingSecret")),
+      "x-signature": signatureFor(
+        rawBody,
+        requiredCredential(connection, "signingSecret"),
+      ),
     },
     body: rawBody,
   });
@@ -275,16 +278,16 @@ function normalizeSubscriptionObject(value: JsonRecord): NormalizedSubscription 
   if (!providerSubscriptionId) {
     throw new Error("Waffo subscription response is missing id");
   }
+  const cancelAtPeriodEnd =
+    booleanValue(value.cancelAtPeriodEnd) ??
+    value.subscriptionStatus === "MERCHANT_CANCELLED";
   return {
     providerSubscriptionId,
     status: mapSubscriptionStatus(value.subscriptionStatus ?? value.status),
     providerCustomerId: stringValue(value.customerId ?? value.buyerId),
     currentPeriodStart: timestampValue(value.currentPeriodStart ?? value.periodStart),
     currentPeriodEnd: timestampValue(value.currentPeriodEnd ?? value.periodEnd),
-    cancelAtPeriodEnd:
-      booleanValue(value.cancelAtPeriodEnd) ??
-      value.subscriptionStatus === "MERCHANT_CANCELLED" ??
-      false,
+    cancelAtPeriodEnd,
   };
 }
 
@@ -367,7 +370,9 @@ function normalizeWaffoWebhook(
 
   if (event.providerEventName === "PAYMENT_NOTIFICATION") {
     const payment = normalizePaymentObject(result);
-    const subscriptionId = stringValue(recordValue(result.subscriptionInfo)?.subscriptionId);
+    const subscriptionId = stringValue(
+      recordValue(result.subscriptionInfo)?.subscriptionId,
+    );
     return {
       ...base,
       ...correlation,
