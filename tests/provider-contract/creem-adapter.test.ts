@@ -1,8 +1,25 @@
 import { createHmac } from "node:crypto";
 import { createCreemProviderAdapter } from "../../src/modules/providers/adapters/creem";
-import { createProviderContractSuite } from "./adapter-contract";
+import type { ProviderConnectionContext } from "../../src/modules/providers/contract";
+import { defineProviderAdapterContractTests } from "./adapter-contract";
 
 const webhookSecret = "creem-contract-secret";
+
+const connection: ProviderConnectionContext = {
+  id: "pc_creem_contract",
+  applicationId: "app_contract",
+  provider: "creem",
+  mode: "test",
+  metadata: {
+    catalog: {
+      price_internal: { productId: "prod_contract" },
+    },
+  },
+  credentials: {
+    apiKey: "creem_test_key",
+    webhookSecret,
+  },
+};
 
 const fakeFetch: typeof fetch = async (input, init) => {
   const url = String(input);
@@ -16,10 +33,13 @@ const fakeFetch: typeof fetch = async (input, init) => {
       { status: 200, headers: { "content-type": "application/json" } },
     );
   }
-  return new Response(JSON.stringify({ message: `Unexpected request: ${url}` }), {
-    status: 404,
-    headers: { "content-type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({ message: `Unexpected request: ${url}` }),
+    {
+      status: 404,
+      headers: { "content-type": "application/json" },
+    },
+  );
 };
 
 const adapter = createCreemProviderAdapter({
@@ -27,25 +47,40 @@ const adapter = createCreemProviderAdapter({
   baseUrls: { test: "https://creem.test" },
 });
 
-createProviderContractSuite({
-  name: "Creem",
-  adapter,
-  context: {
-    id: "pc_creem_contract",
-    applicationId: "app_contract",
-    provider: "creem",
-    mode: "test",
+const webhookPayload = JSON.stringify({
+  id: "evt_contract",
+  eventType: "checkout.completed",
+  created_at: 1787076000000,
+  object: {
+    id: "ch_contract_1",
+    request_id: "ord_contract",
     metadata: {
-      catalog: {
-        price_internal: { productId: "prod_contract" },
-      },
+      monetplane_order_id: "ord_contract",
+      monetplane_customer_id: "cus_contract",
     },
-    credentials: {
-      apiKey: "creem_test_key",
-      webhookSecret,
+    customer: { id: "cust_contract_1" },
+    order: {
+      transaction: "tran_contract_1",
+      amount_paid: 2500,
+      currency: "USD",
+      type: "onetime",
     },
   },
-  checkoutInput: {
+});
+
+function signWebhook(payload: string) {
+  return {
+    "creem-signature": createHmac("sha256", webhookSecret)
+      .update(payload)
+      .digest("hex"),
+  };
+}
+
+defineProviderAdapterContractTests({
+  name: "Creem",
+  adapter,
+  connection,
+  checkout: {
     applicationId: "app_contract",
     monetplaneOrderId: "ord_contract",
     monetplaneCustomerId: "cus_contract",
@@ -62,36 +97,14 @@ createProviderContractSuite({
     successUrl: "https://product.test/success",
     cancelUrl: "https://product.test/cancel",
   },
-  webhookPayload: JSON.stringify({
-    id: "evt_contract",
-    eventType: "checkout.completed",
-    created_at: 1787076000000,
-    object: {
-      id: "ch_contract_1",
-      request_id: "ord_contract",
-      metadata: {
-        monetplane_order_id: "ord_contract",
-        monetplane_customer_id: "cus_contract",
-      },
-      customer: { id: "cust_contract_1" },
-      order: {
-        transaction: "tran_contract_1",
-        amount_paid: 2500,
-        currency: "USD",
-        type: "onetime",
-      },
-    },
-  }),
-  signWebhook(payload) {
-    return {
-      "creem-signature": createHmac("sha256", webhookSecret)
-        .update(payload)
-        .digest("hex"),
-    };
+  validWebhook: {
+    rawBody: webhookPayload,
+    headers: signWebhook(webhookPayload),
   },
-  invalidWebhookHeaders: { "creem-signature": "00".repeat(32) },
-  expectedNormalizedEvent: {
-    type: "payment.succeeded",
-    providerEventId: "evt_contract",
+  invalidWebhook: {
+    rawBody: webhookPayload,
+    headers: { "creem-signature": "00".repeat(32) },
   },
+  expectedEventId: "evt_contract",
+  expectedEventType: "payment.succeeded",
 });

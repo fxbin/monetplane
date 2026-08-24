@@ -166,7 +166,9 @@ describe("Creem adapter", () => {
       baseUrls: { test: "https://creem.test" },
     });
 
-    expect(await adapter.getPayment(connection, { providerPaymentId: "tran_1" })).toEqual({
+    expect(
+      await adapter.getPayment(connection, { providerPaymentId: "tran_1" }),
+    ).toEqual({
       providerPaymentId: "tran_1",
       status: "succeeded",
       amountMinor: 2100,
@@ -242,12 +244,16 @@ describe("Creem adapter", () => {
 
     const activeVerified = await adapter.verifyWebhook(connection, active);
     const paidVerified = await adapter.verifyWebhook(connection, paid);
-    expect(await adapter.normalizeWebhook(connection, activeVerified)).toMatchObject({
+    expect(
+      await adapter.normalizeWebhook(connection, activeVerified),
+    ).toMatchObject({
       type: "subscription.created",
       providerSubscriptionId: "sub_1",
       subscriptionStatus: "pending",
     });
-    expect(await adapter.normalizeWebhook(connection, paidVerified)).toMatchObject({
+    expect(
+      await adapter.normalizeWebhook(connection, paidVerified),
+    ).toMatchObject({
       type: "subscription.renewed",
       providerSubscriptionId: "sub_1",
       providerPaymentId: "tran_paid_1",

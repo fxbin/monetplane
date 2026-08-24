@@ -1,11 +1,7 @@
-import {
-  createHmac,
-  timingSafeEqual,
-} from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
-  CreateCheckoutInput,
   GetPaymentInput,
   GetSubscriptionInput,
   NormalizedPayment,
@@ -61,7 +57,9 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function recordValue(value: unknown): JsonRecord | undefined {
@@ -101,7 +99,9 @@ function baseUrl(
   options: CreemAdapterOptions,
 ): string {
   const configured =
-    connection.mode === "test" ? options.baseUrls?.test : options.baseUrls?.live;
+    connection.mode === "test"
+      ? options.baseUrls?.test
+      : options.baseUrls?.live;
   const official =
     connection.mode === "test" ? CREEM_TEST_API : CREEM_PRODUCTION_API;
   return (configured ?? official).replace(/\/+$/, "");
@@ -198,7 +198,9 @@ function mapSubscriptionStatus(
   }
 }
 
-function normalizeSubscriptionObject(value: JsonRecord): NormalizedSubscription {
+function normalizeSubscriptionObject(
+  value: JsonRecord,
+): NormalizedSubscription {
   const id = stringValue(value.id);
   if (!id) throw new Error("Creem subscription response is missing id");
   return {
@@ -228,7 +230,12 @@ function parseWebhook(input: VerifiedWebhook): {
   const providerEventName = stringValue(parsed.eventType);
   const createdAt = numberValue(parsed.created_at);
   const object = recordValue(parsed.object);
-  if (!providerEventId || !providerEventName || createdAt === undefined || !object) {
+  if (
+    !providerEventId ||
+    !providerEventName ||
+    createdAt === undefined ||
+    !object
+  ) {
     throw new Error("Creem webhook is missing required event fields");
   }
   const occurredAt = new Date(createdAt).toISOString();
@@ -239,7 +246,8 @@ function metadataCorrelation(object: JsonRecord) {
   const metadata = recordValue(object.metadata);
   return {
     monetplaneOrderId:
-      stringValue(metadata?.monetplane_order_id) ?? stringValue(object.request_id),
+      stringValue(metadata?.monetplane_order_id) ??
+      stringValue(object.request_id),
     monetplaneCustomerId: stringValue(metadata?.monetplane_customer_id),
   };
 }
@@ -306,7 +314,9 @@ function normalizeCreemWebhook(
       providerPaymentId: transactionId,
       providerCustomerId: customerId ?? providerObjectId(order?.customer),
       amountMinor:
-        numberValue(order?.amount_paid) ?? numberValue(order?.amount_due) ?? numberValue(order?.amount),
+        numberValue(order?.amount_paid) ??
+        numberValue(order?.amount_due) ??
+        numberValue(order?.amount),
       currency: stringValue(order?.currency),
       rawEventReference: event.providerEventId,
     };
@@ -355,7 +365,8 @@ function normalizeCreemWebhook(
       type: "payment.failed",
       providerSubscriptionId: subscriptionId,
       providerPaymentId:
-        stringValue(object.last_transaction_id) ?? `creem-event:${event.providerEventId}`,
+        stringValue(object.last_transaction_id) ??
+        `creem-event:${event.providerEventId}`,
       providerCustomerId: customerId,
       amountMinor: numberValue(recordValue(object.product)?.price),
       currency: stringValue(recordValue(object.product)?.currency),
@@ -480,41 +491,54 @@ export function createCreemProviderAdapter(
       const customer = input.providerCustomerId
         ? { id: input.providerCustomerId }
         : undefined;
-      const response = await creemRequest(connection, options, "/v1/checkouts", {
-        method: "POST",
-        body: JSON.stringify({
-          product_id: productId,
-          request_id: input.monetplaneOrderId,
-          units: item.quantity,
-          customer,
-          success_url: input.successUrl,
-          metadata,
-        }),
-      });
+      const response = await creemRequest(
+        connection,
+        options,
+        "/v1/checkouts",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            product_id: productId,
+            request_id: input.monetplaneOrderId,
+            units: item.quantity,
+            customer,
+            success_url: input.successUrl,
+            metadata,
+          }),
+        },
+      );
       const providerCheckoutId = stringValue(response.id);
       const checkoutUrl = stringValue(response.checkout_url);
       if (!providerCheckoutId || !checkoutUrl) {
-        throw new Error("Creem checkout response is missing id or checkout_url");
+        throw new Error(
+          "Creem checkout response is missing id or checkout_url",
+        );
       }
       return {
         providerCheckoutId,
         checkoutUrl,
         providerCustomerId: providerObjectId(response.customer),
         reconciliationMetadata: {
+          monetplane_order_id: input.monetplaneOrderId,
+          monetplane_customer_id: input.monetplaneCustomerId,
           requestId: input.monetplaneOrderId,
           creemProductId: productId,
         },
       };
     },
 
-    async getPayment(connection, input: GetPaymentInput): Promise<NormalizedPayment> {
+    async getPayment(
+      connection,
+      input: GetPaymentInput,
+    ): Promise<NormalizedPayment> {
       const response = await creemRequest(
         connection,
         options,
         `/v1/transactions?transaction_id=${encodeURIComponent(input.providerPaymentId)}`,
       );
       const id = stringValue(response.id);
-      const amount = numberValue(response.amount_paid) ?? numberValue(response.amount);
+      const amount =
+        numberValue(response.amount_paid) ?? numberValue(response.amount);
       const currency = stringValue(response.currency);
       if (!id || amount === undefined || !currency) {
         throw new Error("Creem transaction response is incomplete");
