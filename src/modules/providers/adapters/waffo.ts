@@ -2,8 +2,6 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
-  GetPaymentInput,
-  GetSubscriptionInput,
   NormalizedPayment,
   NormalizedProviderEvent,
   NormalizedRefund,
@@ -58,7 +56,9 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function booleanValue(value: unknown): boolean | undefined {
@@ -92,7 +92,9 @@ function baseUrl(
   options: WaffoAdapterOptions,
 ): string {
   const configured =
-    connection.mode === "test" ? options.baseUrls?.test : options.baseUrls?.live;
+    connection.mode === "test"
+      ? options.baseUrls?.test
+      : options.baseUrls?.live;
   const official =
     connection.mode === "test" ? WAFFO_SANDBOX_API : WAFFO_PRODUCTION_API;
   return (configured ?? official).replace(/\/+$/, "");
@@ -145,7 +147,8 @@ async function waffoRequest(
     }
   }
 
-  if (!isRecord(parsed)) throw new Error("Waffo response must be a JSON object");
+  if (!isRecord(parsed))
+    throw new Error("Waffo response must be a JSON object");
   if (!response.ok) {
     throw new Error(
       stringValue(parsed.msg) ??
@@ -157,7 +160,9 @@ async function waffoRequest(
   const code = stringValue(parsed.code);
   if (code && code !== "0") {
     throw new Error(
-      stringValue(parsed.msg) ?? stringValue(parsed.message) ?? `Waffo error ${code}`,
+      stringValue(parsed.msg) ??
+        stringValue(parsed.message) ??
+        `Waffo error ${code}`,
     );
   }
   const data = recordValue(parsed.data);
@@ -187,7 +192,8 @@ function timestampValue(value: unknown): string | undefined {
 }
 
 function centsFromAmount(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return Math.round(value);
+  if (typeof value === "number" && Number.isFinite(value))
+    return Math.round(value);
   if (typeof value !== "string" || !value.trim()) return undefined;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return undefined;
@@ -259,10 +265,13 @@ function normalizePaymentObject(value: JsonRecord): NormalizedPayment {
     stringValue(value.orderId) ??
     stringValue(value.paymentId) ??
     stringValue(value.id);
-  if (!providerPaymentId) throw new Error("Waffo payment response is missing id");
+  if (!providerPaymentId)
+    throw new Error("Waffo payment response is missing id");
   return {
     providerPaymentId,
-    status: mapPaymentStatus(value.orderStatus ?? value.paymentStatus ?? value.status),
+    status: mapPaymentStatus(
+      value.orderStatus ?? value.paymentStatus ?? value.status,
+    ),
     amountMinor:
       centsFromAmount(value.orderAmount ?? value.amount) ??
       numberValue(value.amountMinor) ??
@@ -272,7 +281,9 @@ function normalizePaymentObject(value: JsonRecord): NormalizedPayment {
   };
 }
 
-function normalizeSubscriptionObject(value: JsonRecord): NormalizedSubscription {
+function normalizeSubscriptionObject(
+  value: JsonRecord,
+): NormalizedSubscription {
   const providerSubscriptionId =
     stringValue(value.subscriptionId) ?? stringValue(value.id);
   if (!providerSubscriptionId) {
@@ -285,7 +296,9 @@ function normalizeSubscriptionObject(value: JsonRecord): NormalizedSubscription 
     providerSubscriptionId,
     status: mapSubscriptionStatus(value.subscriptionStatus ?? value.status),
     providerCustomerId: stringValue(value.customerId ?? value.buyerId),
-    currentPeriodStart: timestampValue(value.currentPeriodStart ?? value.periodStart),
+    currentPeriodStart: timestampValue(
+      value.currentPeriodStart ?? value.periodStart,
+    ),
     currentPeriodEnd: timestampValue(value.currentPeriodEnd ?? value.periodEnd),
     cancelAtPeriodEnd,
   };
@@ -376,7 +389,8 @@ function normalizeWaffoWebhook(
     return {
       ...base,
       ...correlation,
-      type: payment.status === "succeeded" ? "payment.succeeded" : "payment.failed",
+      type:
+        payment.status === "succeeded" ? "payment.succeeded" : "payment.failed",
       providerPaymentId: payment.providerPaymentId,
       providerSubscriptionId: subscriptionId,
       providerCustomerId: payment.providerCustomerId,
@@ -391,7 +405,8 @@ function normalizeWaffoWebhook(
       stringValue(result.refundId) ?? stringValue(result.refundTicketId);
     const providerPaymentId =
       stringValue(result.acquiringOrderId) ?? stringValue(result.orderId);
-    if (!providerRefundId || !providerPaymentId) return unknownEvent(connection, event);
+    if (!providerRefundId || !providerPaymentId)
+      return unknownEvent(connection, event);
     return {
       ...base,
       ...correlation,
@@ -516,12 +531,16 @@ export function createWaffoProviderAdapter(
         stringValue(response.orderAction) ??
         stringValue(response.paymentUrl);
       if (!providerCheckoutId || !checkoutUrl) {
-        throw new Error("Waffo checkout response is missing checkout id or url");
+        throw new Error(
+          "Waffo checkout response is missing checkout id or url",
+        );
       }
       return {
         providerCheckoutId,
         checkoutUrl,
-        providerCustomerId: stringValue(response.customerId ?? response.buyerId),
+        providerCustomerId: stringValue(
+          response.customerId ?? response.buyerId,
+        ),
         reconciliationMetadata: {
           monetplane_order_id: input.monetplaneOrderId,
           monetplane_customer_id: input.monetplaneCustomerId,
@@ -531,9 +550,14 @@ export function createWaffoProviderAdapter(
     },
 
     async getPayment(connection, input): Promise<NormalizedPayment> {
-      const response = await waffoRequest(connection, options, "/api/v1/order/inquiry", {
-        acquiringOrderId: input.providerPaymentId,
-      });
+      const response = await waffoRequest(
+        connection,
+        options,
+        "/api/v1/order/inquiry",
+        {
+          acquiringOrderId: input.providerPaymentId,
+        },
+      );
       return normalizePaymentObject(response);
     },
 
@@ -583,23 +607,36 @@ export function createWaffoProviderAdapter(
       });
     },
 
-    async refundPayment(connection, input: RefundPaymentInput): Promise<NormalizedRefund> {
-      const response = await waffoRequest(connection, options, "/api/v1/order/refund", {
-        acquiringOrderId: input.providerPaymentId,
-        refundAmount: input.amountMinor,
-      });
+    async refundPayment(
+      connection,
+      input: RefundPaymentInput,
+    ): Promise<NormalizedRefund> {
+      const response = await waffoRequest(
+        connection,
+        options,
+        "/api/v1/order/refund",
+        {
+          acquiringOrderId: input.providerPaymentId,
+          refundAmount: input.amountMinor,
+        },
+      );
       const providerRefundId =
         stringValue(response.refundId) ?? stringValue(response.refundTicketId);
-      if (!providerRefundId) throw new Error("Waffo refund response is missing id");
+      if (!providerRefundId)
+        throw new Error("Waffo refund response is missing id");
       return {
         providerRefundId,
         providerPaymentId: input.providerPaymentId,
         status: mapRefundStatus(response.refundStatus ?? response.status),
-        amountMinor: centsFromAmount(response.refundAmount) ?? input.amountMinor,
+        amountMinor:
+          centsFromAmount(response.refundAmount) ?? input.amountMinor,
       };
     },
 
-    async verifyWebhook(connection, input: VerifyWebhookInput): Promise<VerifiedWebhook> {
+    async verifyWebhook(
+      connection,
+      input: VerifyWebhookInput,
+    ): Promise<VerifiedWebhook> {
       const signature = headerValue(input.headers, "x-signature");
       if (!signature) {
         throw new InvalidProviderWebhookSignatureError(
