@@ -215,6 +215,40 @@ describe("commerce checkout", () => {
       ),
     ).rejects.toThrow("do not belong");
   });
+
+  it("rejects open redirect attempts through unregistered callback URLs", async () => {
+    const fixture = await createFixture("one_time");
+
+    // successUrl from an unregistered origin (open redirect attempt)
+    await expect(
+      createCommerceCheckout(
+        fixture.app.id,
+        {
+          externalCustomerId: "user-1",
+          providerConnectionId: fixture.providerConnection.id,
+          items: [{ priceId: fixture.price.id, quantity: 1 }],
+          successUrl: "https://attacker.test/phish",
+          cancelUrl: "https://product.test/cancel",
+        },
+        db,
+      ),
+    ).rejects.toThrow("not allowed");
+
+    // cancelUrl from an unregistered origin
+    await expect(
+      createCommerceCheckout(
+        fixture.app.id,
+        {
+          externalCustomerId: "user-1",
+          providerConnectionId: fixture.providerConnection.id,
+          items: [{ priceId: fixture.price.id, quantity: 1 }],
+          successUrl: "https://product.test/success",
+          cancelUrl: "https://evil.test/steal",
+        },
+        db,
+      ),
+    ).rejects.toThrow("not allowed");
+  });
 });
 
 describe("commerce webhook inbox", () => {
