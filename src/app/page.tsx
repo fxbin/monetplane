@@ -1,5 +1,7 @@
-import { redirect } from "next/navigation";
-
+/**
+ * Root page — redirect is handled by middleware.
+ * This page only renders during SSR fallback or edge cases.
+ */
 export default function HomePage() {
-  redirect("/overview");
+  return null;
 }
