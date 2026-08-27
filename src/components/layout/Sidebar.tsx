@@ -1,3 +1,8 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
 const navSections = [
   {
     label: "Overview",
@@ -18,6 +23,8 @@ const navSections = [
 ];
 
 export function Sidebar() {
+  const pathname = usePathname();
+
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">MonetPlane</div>
@@ -25,11 +32,19 @@ export function Sidebar() {
         {navSections.map((section) => (
           <div key={section.label} className="sidebar-section">
             <span className="sidebar-section-label">{section.label}</span>
-            {section.items.map((item) => (
-              <a key={item.href} href={item.href} className="sidebar-link">
-                {item.label}
-              </a>
-            ))}
+            {section.items.map((item) => {
+              const isActive =
+                pathname === item.href || pathname.startsWith(`${item.href}/`);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`sidebar-link${isActive ? " sidebar-link-active" : ""}`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
           </div>
         ))}
       </nav>
