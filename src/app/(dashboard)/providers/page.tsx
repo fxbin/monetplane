@@ -1,17 +1,45 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { getProviderList } from "@/modules/admin/queries";
+import { getConsoleContext } from "@/server/control-plane/context";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProvidersPage() {
-  const providers = await getProviderList();
+  const context = await getConsoleContext();
+  const providers = await getProviderList(
+    context.selectedApplication?.id,
+    context.environment,
+  );
+  const projectName = context.selectedApplication?.name;
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   return (
     <PageContainer
       title="Payment Providers"
-      description="Connect and monitor your payment provider integrations."
-      primaryAction={{ label: "Connect provider", href: "/providers/new" }}
+      description={
+        projectName
+          ? `Manage ${environmentLabel} payment providers for ${projectName}.`
+          : "Create a project before connecting a payment provider."
+      }
+      primaryAction={
+        context.selectedApplication
+          ? { label: "Connect provider", href: "/providers/new" }
+          : { label: "Create project", href: "/applications/new" }
+      }
     >
+      <div className="context-notice">
+        <span className="context-notice-label">
+          Current provider environment
+        </span>
+        <strong>{environmentLabel}</strong>
+        <span>
+          Catalog, customer, and credit state remain project-scoped in P1; this
+          environment context currently selects provider configuration and
+          test/live checkout behavior.
+        </span>
+      </div>
+
       {providers.length > 0 ? (
         <div className="card">
           <div className="table-wrapper">
@@ -20,7 +48,6 @@ export default async function ProvidersPage() {
                 <tr>
                   <th>Provider</th>
                   <th>Name</th>
-                  <th>Application</th>
                   <th>Mode</th>
                   <th>Status</th>
                   <th>Created</th>
@@ -31,9 +58,6 @@ export default async function ProvidersPage() {
                   <tr key={conn.id}>
                     <td className="cell-mono">{conn.provider}</td>
                     <td>{conn.name}</td>
-                    <td className="cell-muted">
-                      {conn.applicationName ?? "—"}
-                    </td>
                     <td>
                       <span className={`badge badge-${conn.mode}`}>
                         {conn.mode}
@@ -55,15 +79,28 @@ export default async function ProvidersPage() {
         </div>
       ) : (
         <div className="empty-state">
-          <h2 className="empty-state-title">No providers connected</h2>
+          <h2 className="empty-state-title">
+            {context.selectedApplication
+              ? `No ${environmentLabel} provider connected`
+              : "No project selected"}
+          </h2>
           <p className="empty-state-desc">
-            Connect a payment provider to start accepting payments. MonetPlane
-            supports Creem, Waffo, and custom providers through a shared
-            contract.
+            {context.selectedApplication
+              ? `Connect a provider for ${projectName} in ${environmentLabel}. MonetPlane keeps provider-specific behavior behind one shared billing contract.`
+              : "Create a project first, then connect its Sandbox provider before moving to Production."}
           </p>
           <div className="empty-state-actions">
-            <a className="btn btn-primary" href="/providers/new">
-              Connect provider
+            <a
+              className="btn btn-primary"
+              href={
+                context.selectedApplication
+                  ? "/providers/new"
+                  : "/applications/new"
+              }
+            >
+              {context.selectedApplication
+                ? "Connect provider"
+                : "Create project"}
             </a>
           </div>
         </div>

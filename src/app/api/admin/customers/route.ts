@@ -1,24 +1,25 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/modules/admin/guard";
 import { getCustomerList } from "@/modules/admin/queries";
+import { getConsoleContext } from "@/server/control-plane/context";
 
-/**
- * GET /api/admin/customers
- *
- * Returns all application customers with their parent application name.
- */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json(
-      { error: "Unauthorized", code: "unauthorized" },
-      { status: 401 },
-    );
-  }
+  const guard = await requireAdmin();
+  if (guard instanceof NextResponse) return guard;
 
   try {
-    const customers = await getCustomerList(100);
-    return NextResponse.json({ customers });
+    const context = await getConsoleContext();
+    const customers = await getCustomerList(
+      100,
+      context.selectedApplication?.id,
+    );
+    return NextResponse.json({
+      context: {
+        application: context.selectedApplication,
+        environment: context.environment,
+      },
+      customers,
+    });
   } catch (error) {
     console.error("[admin/customers] Error:", error);
     return NextResponse.json(

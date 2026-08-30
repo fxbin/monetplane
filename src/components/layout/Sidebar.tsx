@@ -1,8 +1,14 @@
-import { getApplicationList } from "@/modules/admin/queries";
+import { getConsoleContext } from "@/server/control-plane/context";
 import { SidebarNavigation } from "./SidebarNavigation";
 
 export async function Sidebar() {
-  const applications = await getApplicationList();
+  const context = await getConsoleContext();
 
-  return <SidebarNavigation applications={applications} />;
+  return (
+    <SidebarNavigation
+      applications={context.applications}
+      selectedApplicationId={context.selectedApplication?.id ?? null}
+      environment={context.environment}
+    />
+  );
 }

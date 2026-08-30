@@ -2,13 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-type ApplicationSummary = {
-  id: string;
-  name: string;
-  slug: string;
-  status: string;
-};
+import type {
+  ConsoleApplication,
+  ConsoleEnvironment,
+} from "@/server/control-plane/context";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 
 type NavItem = {
   label: string;
@@ -123,21 +121,18 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
   );
 }
 
+type SidebarNavigationProps = {
+  applications: ConsoleApplication[];
+  selectedApplicationId: string | null;
+  environment: ConsoleEnvironment;
+};
+
 export function SidebarNavigation({
   applications,
-}: {
-  applications: ApplicationSummary[];
-}) {
+  selectedApplicationId,
+  environment,
+}: SidebarNavigationProps) {
   const pathname = usePathname();
-  const activeApplications = applications.filter(
-    (application) => application.status === "active",
-  );
-  const scopeLabel =
-    activeApplications.length === 1
-      ? activeApplications[0]?.name
-      : activeApplications.length > 1
-        ? "All applications"
-        : "No applications";
 
   return (
     <aside className="sidebar sidebar-p1">
@@ -155,16 +150,14 @@ export function SidebarNavigation({
         className="sidebar-context-card"
         aria-label="Application context"
       >
-        <span className="sidebar-context-label">Project scope</span>
-        <div className="sidebar-context-value-row">
-          <span className="sidebar-context-dot" />
-          <span className="sidebar-context-value">{scopeLabel}</span>
-        </div>
-        <span className="sidebar-context-meta">
-          {activeApplications.length > 0
-            ? `${activeApplications.length} active application${activeApplications.length === 1 ? "" : "s"}`
-            : "Create an application to get started"}
-        </span>
+        <ProjectSwitcher
+          applications={applications}
+          selectedApplicationId={selectedApplicationId}
+          environment={environment}
+        />
+        <Link className="sidebar-manage-projects" href="/applications">
+          Manage projects
+        </Link>
       </section>
 
       <nav className="sidebar-nav sidebar-nav-p1">
