@@ -3,6 +3,8 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import "../console-shell.css";
 import "../application-context.css";
+import "../product-builder.css";
+import "../product-routing.css";
 
 export default function DashboardLayout({
   children,

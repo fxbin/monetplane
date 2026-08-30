@@ -8,6 +8,31 @@ export type BillingType = "one_time" | "recurring";
 export type RecurringInterval = "month" | "year";
 export type GrantType = "entitlement" | "credit";
 
+export type ConfiguredProductGrantInput = {
+  grantType: GrantType;
+  referenceKey: string;
+  quantity?: number;
+  metadata?: Record<string, unknown>;
+};
+
+export type CreateConfiguredProductInput = {
+  applicationId: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  metadata?: Record<string, unknown>;
+  price: {
+    key: string;
+    currency: string;
+    amountMinor: number;
+    billingType: BillingType;
+    recurringInterval?: RecurringInterval;
+    intervalCount?: number;
+    metadata?: Record<string, unknown>;
+  };
+  grants?: ConfiguredProductGrantInput[];
+};
+
 export class CatalogProductNotFoundError extends Error {
   constructor(message = "Product not found for application") {
     super(message);
@@ -199,6 +224,73 @@ export async function addProductGrantConfig(
 
   if (!grant) throw new Error("Failed to create product grant config");
   return grant;
+}
+
+/**
+ * Creates a product, its primary price, and all configured grants atomically.
+ *
+ * The Control Plane builder uses this instead of orchestrating raw catalog
+ * mutations from the browser, so a validation or grant failure never leaves a
+ * half-created sellable product behind.
+ */
+export async function createConfiguredProduct(
+  input: CreateConfiguredProductInput,
+  db: Database = getDb(),
+) {
+  const grants = input.grants ?? [];
+  const grantKeys = new Set<string>();
+
+  for (const grant of grants) {
+    const dedupeKey = `${grant.grantType}:${grant.referenceKey.trim().toLowerCase()}`;
+    if (grantKeys.has(dedupeKey)) {
+      throw new Error(
+        `Duplicate ${grant.grantType} grant reference: ${grant.referenceKey}`,
+      );
+    }
+    grantKeys.add(dedupeKey);
+  }
+
+  return db.transaction(async (tx) => {
+    // Drizzle's transaction client is structurally compatible with the catalog
+    // operations we use here, but its generic type is narrower than Database.
+    const catalogDb = tx as unknown as Database;
+
+    const product = await createProduct(
+      {
+        applicationId: input.applicationId,
+        key: input.key,
+        name: input.name,
+        description: input.description,
+        metadata: input.metadata,
+      },
+      catalogDb,
+    );
+
+    const price = await createPrice(
+      {
+        applicationId: input.applicationId,
+        productId: product.id,
+        ...input.price,
+      },
+      catalogDb,
+    );
+
+    const createdGrants = [];
+    for (const grant of grants) {
+      createdGrants.push(
+        await addProductGrantConfig(
+          {
+            applicationId: input.applicationId,
+            productId: product.id,
+            ...grant,
+          },
+          catalogDb,
+        ),
+      );
+    }
+
+    return { product, price, grants: createdGrants };
+  });
 }
 
 export async function listApplicationCatalog(
