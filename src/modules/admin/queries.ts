@@ -1,4 +1,4 @@
-import { count, desc, eq, sum } from "drizzle-orm";
+import { and, count, desc, eq, sum } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { applications } from "@/modules/applications/schema";
 import { prices, products } from "@/modules/catalog/schema";
@@ -14,26 +14,61 @@ import { providerConnections } from "@/modules/providers/schema";
  * These are read-only queries — no mutations.
  */
 
-export async function getOverviewStats() {
+export async function getOverviewStats(
+  applicationId?: string,
+  providerMode?: "test" | "live",
+) {
   const db = getDb();
 
-  const [appCount] = await db.select({ count: count() }).from(applications);
-  const [productCount] = await db.select({ count: count() }).from(products);
+  const [appCount] = await db
+    .select({ count: count() })
+    .from(applications)
+    .where(applicationId ? eq(applications.id, applicationId) : undefined);
+  const [productCount] = await db
+    .select({ count: count() })
+    .from(products)
+    .where(applicationId ? eq(products.applicationId, applicationId) : undefined);
   const [customerCount] = await db
     .select({ count: count() })
-    .from(applicationCustomers);
+    .from(applicationCustomers)
+    .where(
+      applicationId
+        ? eq(applicationCustomers.applicationId, applicationId)
+        : undefined,
+    );
   const [providerCount] = await db
     .select({ count: count() })
     .from(providerConnections)
-    .where(eq(providerConnections.status, "active"));
-  const [orderCount] = await db.select({ count: count() }).from(orders);
+    .where(
+      and(
+        eq(providerConnections.status, "active"),
+        applicationId
+          ? eq(providerConnections.applicationId, applicationId)
+          : undefined,
+        providerMode ? eq(providerConnections.mode, providerMode) : undefined,
+      ),
+    );
+  const [orderCount] = await db
+    .select({ count: count() })
+    .from(orders)
+    .where(applicationId ? eq(orders.applicationId, applicationId) : undefined);
   const [revenueSum] = await db
     .select({ total: sum(orders.totalAmountMinor) })
     .from(orders)
-    .where(eq(orders.status, "paid"));
+    .where(
+      and(
+        eq(orders.status, "paid"),
+        applicationId ? eq(orders.applicationId, applicationId) : undefined,
+      ),
+    );
   const [txCount] = await db
     .select({ count: count() })
-    .from(creditTransactions);
+    .from(creditTransactions)
+    .where(
+      applicationId
+        ? eq(creditTransactions.applicationId, applicationId)
+        : undefined,
+    );
 
   return {
     applications: appCount?.count ?? 0,
@@ -46,7 +81,7 @@ export async function getOverviewStats() {
   };
 }
 
-export async function getRecentOrders(limit = 10) {
+export async function getRecentOrders(limit = 10, applicationId?: string) {
   const db = getDb();
 
   const rows = await db
@@ -66,13 +101,14 @@ export async function getRecentOrders(limit = 10) {
       applicationCustomers,
       eq(orders.applicationCustomerId, applicationCustomers.id),
     )
+    .where(applicationId ? eq(orders.applicationId, applicationId) : undefined)
     .orderBy(desc(orders.createdAt))
     .limit(limit);
 
   return rows;
 }
 
-export async function getProductList() {
+export async function getProductList(applicationId?: string) {
   const db = getDb();
 
   const rows = await db
@@ -88,6 +124,7 @@ export async function getProductList() {
     })
     .from(products)
     .leftJoin(applications, eq(products.applicationId, applications.id))
+    .where(applicationId ? eq(products.applicationId, applicationId) : undefined)
     .orderBy(desc(products.createdAt));
 
   return rows;
@@ -112,7 +149,10 @@ export async function getProductPrices(productId: string) {
     .orderBy(desc(prices.createdAt));
 }
 
-export async function getProviderList() {
+export async function getProviderList(
+  applicationId?: string,
+  mode?: "test" | "live",
+) {
   const db = getDb();
 
   const rows = await db
@@ -132,12 +172,20 @@ export async function getProviderList() {
       applications,
       eq(providerConnections.applicationId, applications.id),
     )
+    .where(
+      and(
+        applicationId
+          ? eq(providerConnections.applicationId, applicationId)
+          : undefined,
+        mode ? eq(providerConnections.mode, mode) : undefined,
+      ),
+    )
     .orderBy(desc(providerConnections.createdAt));
 
   return rows;
 }
 
-export async function getCustomerList(limit = 50) {
+export async function getCustomerList(limit = 50, applicationId?: string) {
   const db = getDb();
 
   const rows = await db
@@ -153,6 +201,11 @@ export async function getCustomerList(limit = 50) {
     .leftJoin(
       applications,
       eq(applicationCustomers.applicationId, applications.id),
+    )
+    .where(
+      applicationId
+        ? eq(applicationCustomers.applicationId, applicationId)
+        : undefined,
     )
     .orderBy(desc(applicationCustomers.createdAt))
     .limit(limit);
