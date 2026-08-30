@@ -1,8 +1,12 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { ProductProviderRouteEditor } from "@/components/products/ProductProviderRouteEditor";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
-import { getProductBuilderDetail } from "@/server/control-plane/products";
+import {
+  getBuilderProviderOptions,
+  getProductBuilderDetail,
+} from "@/server/control-plane/products";
 
 export const dynamic = "force-dynamic";
 
@@ -17,28 +21,38 @@ const TYPE_LABELS: Record<string, string> = {
   usage_based: "Usage-oriented plan",
 };
 
-export default async function ProductDetailPage({ params }: ProductDetailPageProps) {
+export default async function ProductDetailPage({
+  params,
+}: ProductDetailPageProps) {
   const { productId } = await params;
   const context = await getConsoleContext();
   if (!context.selectedApplication) notFound();
 
-  const detail = await getProductBuilderDetail(
-    context.selectedApplication.id,
-    productId,
-    context.environment,
-  );
+  const [detail, providerOptions] = await Promise.all([
+    getProductBuilderDetail(
+      context.selectedApplication.id,
+      productId,
+      context.environment,
+    ),
+    getBuilderProviderOptions(
+      context.selectedApplication.id,
+      context.environment,
+    ),
+  ]);
   if (!detail) notFound();
 
   const price = detail.primaryPrice;
   const typeLabel = detail.productType
     ? TYPE_LABELS[detail.productType] ?? detail.productType
     : "Legacy catalog product";
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   const checkoutPayload = price
     ? JSON.stringify(
         {
-          providerConnectionId: detail.providerConnectionId ?? "<choose-provider>",
+          providerConnectionId:
+            detail.providerConnectionId ?? "<choose-provider>",
           items: [{ priceId: price.id, quantity: 1 }],
           successUrl: "https://your-app.example/success",
           cancelUrl: "https://your-app.example/cancel",
@@ -51,7 +65,10 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
   return (
     <PageContainer
       title={detail.product.name}
-      description={detail.product.description ?? `Catalog product in ${context.selectedApplication.name}.`}
+      description={
+        detail.product.description ??
+        `Catalog product in ${context.selectedApplication.name}.`
+      }
       primaryAction={{ label: "Back to products", href: "/products" }}
     >
       <div className="product-detail-hero card">
@@ -65,7 +82,8 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
           </div>
           <code>{detail.product.key}</code>
           <p>
-            Created {formatDateTime(detail.product.createdAt)} · Project {context.selectedApplication.name}
+            Created {formatDateTime(detail.product.createdAt)} · Project{" "}
+            {context.selectedApplication.name}
           </p>
         </div>
 
@@ -95,8 +113,11 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
             </div>
           </div>
 
-          {detail.creditGrants.length === 0 && detail.featureGrants.length === 0 ? (
-            <p className="card-empty-copy">No grants configured for this product.</p>
+          {detail.creditGrants.length === 0 &&
+          detail.featureGrants.length === 0 ? (
+            <p className="card-empty-copy">
+              No grants configured for this product.
+            </p>
           ) : (
             <div className="grant-summary-list">
               {detail.creditGrants.map((grant) => (
@@ -147,15 +168,29 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
             <div className="provider-missing-route">
               <strong>No provider preference in {environmentLabel}</strong>
               <p>
-                This can happen for legacy products or when a product was created in the other environment.
+                This can happen for legacy products or when the product was first
+                created in the other environment.
               </p>
             </div>
           )}
 
+          <ProductProviderRouteEditor
+            productId={detail.product.id}
+            environment={context.environment}
+            currentProviderConnectionId={detail.providerConnectionId}
+            providers={providerOptions.map((provider) => ({
+              id: provider.id,
+              provider: provider.provider,
+              name: provider.name,
+              mode: provider.mode,
+            }))}
+          />
+
           <p className="product-routing-note">
-            The P0 checkout contract still accepts an explicit provider connection ID.
-            This routing preference keeps the intended provider visible and copyable without
-            pretending full environment routing exists before #49 is resolved.
+            The P0 checkout contract still accepts an explicit provider connection
+            ID. This routing preference keeps the intended provider visible and
+            copyable without pretending full environment routing exists before #49
+            is resolved.
           </p>
         </section>
       </div>
@@ -172,24 +207,34 @@ export default async function ProductDetailPage({ params }: ProductDetailPagePro
             <dl className="product-id-list">
               <div>
                 <dt>Product ID</dt>
-                <dd><code>{detail.product.id}</code></dd>
+                <dd>
+                  <code>{detail.product.id}</code>
+                </dd>
               </div>
               <div>
                 <dt>Price ID</dt>
-                <dd><code>{price?.id}</code></dd>
+                <dd>
+                  <code>{price?.id}</code>
+                </dd>
               </div>
               <div>
                 <dt>Provider connection</dt>
-                <dd><code>{detail.providerConnectionId ?? "Not configured"}</code></dd>
+                <dd>
+                  <code>{detail.providerConnectionId ?? "Not configured"}</code>
+                </dd>
               </div>
             </dl>
             <div className="checkout-payload">
               <span>Checkout input shape</span>
-              <pre><code>{checkoutPayload}</code></pre>
+              <pre>
+                <code>{checkoutPayload}</code>
+              </pre>
             </div>
           </div>
         ) : (
-          <p className="card-empty-copy">Create an active price before starting checkout.</p>
+          <p className="card-empty-copy">
+            Create an active price before starting checkout.
+          </p>
         )}
       </section>
     </PageContainer>
