@@ -25,8 +25,13 @@ export function ProductProviderRouteEditor({
   providers,
 }: ProductProviderRouteEditorProps) {
   const router = useRouter();
+  const currentRouteIsActive = providers.some(
+    (provider) => provider.id === currentProviderConnectionId,
+  );
   const [providerConnectionId, setProviderConnectionId] = useState(
-    currentProviderConnectionId ?? providers[0]?.id ?? "",
+    currentRouteIsActive
+      ? (currentProviderConnectionId ?? "")
+      : (providers[0]?.id ?? ""),
   );
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -58,7 +63,9 @@ export function ProductProviderRouteEditor({
       router.refresh();
     } catch (cause) {
       setMessage(
-        cause instanceof Error ? cause.message : "Failed to update provider route",
+        cause instanceof Error
+          ? cause.message
+          : "Failed to update provider route",
       );
     } finally {
       setPending(false);
@@ -97,7 +104,11 @@ export function ProductProviderRouteEditor({
       <button
         className="btn btn-secondary"
         type="submit"
-        disabled={pending || providerConnectionId === currentProviderConnectionId}
+        disabled={
+          pending ||
+          (currentRouteIsActive &&
+            providerConnectionId === currentProviderConnectionId)
+        }
       >
         {pending ? "Saving…" : "Save route"}
       </button>
