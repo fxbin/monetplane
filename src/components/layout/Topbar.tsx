@@ -1,4 +1,6 @@
 import { auth } from "@/auth";
+import { getConsoleContext } from "@/server/control-plane/context";
+import { EnvironmentSwitcher } from "./EnvironmentSwitcher";
 
 function initials(name: string) {
   return (
@@ -12,21 +14,22 @@ function initials(name: string) {
 }
 
 export async function Topbar() {
-  const session = await auth();
+  const [session, context] = await Promise.all([auth(), getConsoleContext()]);
   const userName = session?.user?.name ?? session?.user?.email ?? "Admin";
+  const applicationName = context.selectedApplication?.name ?? "No project";
 
   return (
     <header className="topbar topbar-p1">
       <div className="topbar-left">
         <div className="topbar-context">
           <span className="topbar-context-label">Environment</span>
-          <span className="topbar-env-badge topbar-env-live">
-            <span className="topbar-env-dot" />
-            Production
-          </span>
+          <EnvironmentSwitcher
+            applicationId={context.selectedApplication?.id ?? null}
+            environment={context.environment}
+          />
         </div>
         <span className="topbar-divider" aria-hidden="true" />
-        <span className="topbar-scope-copy">All application data</span>
+        <span className="topbar-scope-copy">{applicationName}</span>
       </div>
       <div className="topbar-right">
         <div className="topbar-user-copy">
