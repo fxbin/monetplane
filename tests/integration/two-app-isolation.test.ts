@@ -131,7 +131,10 @@ function createInProcessFetch(appSecret: string): typeof fetch {
         const name = error instanceof Error ? error.name : "";
         if (name === "CreditCustomerNotFoundError") {
           return new Response(
-            JSON.stringify({ error: "Customer not found", code: "invalid_state" }),
+            JSON.stringify({
+              error: "Customer not found",
+              code: "invalid_state",
+            }),
             { status: 404, headers: { "content-type": "application/json" } },
           );
         }
@@ -178,7 +181,10 @@ function createInProcessFetch(appSecret: string): typeof fetch {
         }
         if (name === "CreditCustomerNotFoundError") {
           return new Response(
-            JSON.stringify({ error: "Customer not found", code: "invalid_state" }),
+            JSON.stringify({
+              error: "Customer not found",
+              code: "invalid_state",
+            }),
             { status: 404, headers: { "content-type": "application/json" } },
           );
         }
