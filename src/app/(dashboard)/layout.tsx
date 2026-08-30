@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import "../console-shell.css";
+import "../application-context.css";
 
 export default function DashboardLayout({
   children,
