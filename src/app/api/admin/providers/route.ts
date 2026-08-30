@@ -1,24 +1,25 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/modules/admin/guard";
 import { getProviderList } from "@/modules/admin/queries";
+import { getConsoleContext } from "@/server/control-plane/context";
 
-/**
- * GET /api/admin/providers
- *
- * Returns all provider connections with their parent application name.
- */
 export async function GET() {
-  const session = await auth();
-  if (!session?.user) {
-    return NextResponse.json(
-      { error: "Unauthorized", code: "unauthorized" },
-      { status: 401 },
-    );
-  }
+  const guard = await requireAdmin();
+  if (guard instanceof NextResponse) return guard;
 
   try {
-    const providers = await getProviderList();
-    return NextResponse.json({ providers });
+    const context = await getConsoleContext();
+    const providers = await getProviderList(
+      context.selectedApplication?.id,
+      context.environment,
+    );
+    return NextResponse.json({
+      context: {
+        application: context.selectedApplication,
+        environment: context.environment,
+      },
+      providers,
+    });
   } catch (error) {
     console.error("[admin/providers] Error:", error);
     return NextResponse.json(
