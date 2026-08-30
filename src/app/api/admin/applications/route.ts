@@ -27,7 +27,10 @@ export async function POST(request: Request) {
   }
 
   if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
   }
 
   const input = body as Record<string, unknown>;
@@ -91,7 +94,8 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create project";
+    const message =
+      error instanceof Error ? error.message : "Failed to create project";
     const status = message.toLowerCase().includes("unique") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }

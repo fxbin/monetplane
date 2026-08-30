@@ -64,7 +64,9 @@ export default async function ApplicationDetailPage({
               <h2>{detail.application.name}</h2>
             </div>
             <div className="project-detail-badges">
-              {isCurrent && <span className="badge badge-current">Current</span>}
+              {isCurrent && (
+                <span className="badge badge-current">Current</span>
+              )}
               <span className={`badge badge-${detail.application.status}`}>
                 {detail.application.status}
               </span>
@@ -90,19 +92,31 @@ export default async function ApplicationDetailPage({
           <div className="onboarding-progress-heading">
             <div>
               <span className="project-detail-kicker">Setup progress</span>
-              <h2>{completed} of {onboarding.length} complete</h2>
+              <h2>
+                {completed} of {onboarding.length} complete
+              </h2>
             </div>
             <span className="onboarding-progress-value">
               {Math.round((completed / onboarding.length) * 100)}%
             </span>
           </div>
           <div className="onboarding-progress-track" aria-hidden="true">
-            <span style={{ width: `${(completed / onboarding.length) * 100}%` }} />
+            <span
+              style={{ width: `${(completed / onboarding.length) * 100}%` }}
+            />
           </div>
           <div className="onboarding-progress-list">
             {onboarding.map((item) => (
-              <a key={item.label} href={item.href} className="onboarding-progress-item">
-                <span className={item.complete ? "setup-check is-complete" : "setup-check"}>
+              <a
+                key={item.label}
+                href={item.href}
+                className="onboarding-progress-item"
+              >
+                <span
+                  className={
+                    item.complete ? "setup-check is-complete" : "setup-check"
+                  }
+                >
                   {item.complete ? "✓" : ""}
                 </span>
                 <span>{item.label}</span>
@@ -128,18 +142,23 @@ export default async function ApplicationDetailPage({
                     <strong>{domain.hostname}</strong>
                     <span>{domain.kind}</span>
                   </div>
-                  {domain.isPrimary && <span className="badge badge-current">Primary</span>}
+                  {domain.isPrimary && (
+                    <span className="badge badge-current">Primary</span>
+                  )}
                 </div>
               ))}
             </div>
           ) : (
             <p className="card-empty-copy">
-              No hostname registered yet. Add one before relying on host-based project resolution.
+              No hostname registered yet. Add one before relying on host-based
+              project resolution.
             </p>
           )}
 
           <div className="card-subsection">
-            <span className="project-detail-kicker">Allowed callback origins</span>
+            <span className="project-detail-kicker">
+              Allowed callback origins
+            </span>
             {detail.callbackOrigins.length > 0 ? (
               <div className="detail-list compact">
                 {detail.callbackOrigins.map((origin) => (
@@ -164,7 +183,10 @@ export default async function ApplicationDetailPage({
           {detail.credentials.length > 0 ? (
             <div className="detail-list">
               {detail.credentials.map((credential) => (
-                <div key={credential.id} className="detail-list-row credential-row">
+                <div
+                  key={credential.id}
+                  className="detail-list-row credential-row"
+                >
                   <div>
                     <strong>{credential.name}</strong>
                     <code>{credential.secretPrefix}••••••••</code>
@@ -174,7 +196,9 @@ export default async function ApplicationDetailPage({
                         : "Never used"}
                     </span>
                   </div>
-                  <span className={`badge ${credential.revokedAt ? "badge-revoked" : "badge-active"}`}>
+                  <span
+                    className={`badge ${credential.revokedAt ? "badge-revoked" : "badge-active"}`}
+                  >
                     {credential.revokedAt ? "Revoked" : "Active"}
                   </span>
                 </div>
@@ -182,12 +206,13 @@ export default async function ApplicationDetailPage({
             </div>
           ) : (
             <p className="card-empty-copy">
-              No server credential exists. Generate one before integrating the SDK.
+              No server credential exists. Generate one before integrating the
+              SDK.
             </p>
           )}
           <div className="secret-warning">
-            Existing secrets are intentionally never displayed. Rotate or create a new key rather
-            than attempting to recover an old secret.
+            Existing secrets are intentionally never displayed. Rotate or create
+            a new key rather than attempting to recover an old secret.
           </div>
         </section>
       </div>

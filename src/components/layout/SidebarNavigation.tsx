@@ -146,7 +146,10 @@ export function SidebarNavigation({
         </div>
       </div>
 
-      <section className="sidebar-context-card" aria-label="Application context">
+      <section
+        className="sidebar-context-card"
+        aria-label="Application context"
+      >
         <ProjectSwitcher
           applications={applications}
           selectedApplicationId={selectedApplicationId}

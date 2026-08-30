@@ -2,7 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import type { ConsoleApplication, ConsoleEnvironment } from "@/server/control-plane/context";
+import type {
+  ConsoleApplication,
+  ConsoleEnvironment,
+} from "@/server/control-plane/context";
 
 type ProjectSwitcherProps = {
   applications: ConsoleApplication[];

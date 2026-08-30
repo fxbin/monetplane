@@ -25,7 +25,10 @@ export async function POST(request: Request) {
   }
 
   if (!body || typeof body !== "object") {
-    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
   }
 
   const input = body as Record<string, unknown>;
@@ -53,7 +56,10 @@ export async function POST(request: Request) {
     .limit(1);
 
   if (!application) {
-    return NextResponse.json({ error: "Application not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Application not found" },
+      { status: 404 },
+    );
   }
 
   const response = NextResponse.json({
@@ -69,7 +75,11 @@ export async function POST(request: Request) {
     maxAge: 60 * 60 * 24 * 365,
   };
 
-  response.cookies.set(CONSOLE_APPLICATION_COOKIE, applicationId, cookieOptions);
+  response.cookies.set(
+    CONSOLE_APPLICATION_COOKIE,
+    applicationId,
+    cookieOptions,
+  );
   response.cookies.set(CONSOLE_ENVIRONMENT_COOKIE, environment, cookieOptions);
 
   return response;

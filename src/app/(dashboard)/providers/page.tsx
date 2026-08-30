@@ -11,7 +11,8 @@ export default async function ProvidersPage() {
     context.environment,
   );
   const projectName = context.selectedApplication?.name;
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   return (
     <PageContainer
@@ -28,12 +29,14 @@ export default async function ProvidersPage() {
       }
     >
       <div className="context-notice">
-        <span className="context-notice-label">Current provider environment</span>
+        <span className="context-notice-label">
+          Current provider environment
+        </span>
         <strong>{environmentLabel}</strong>
         <span>
           Catalog, customer, and credit state remain project-scoped in P1; this
-          environment context currently selects provider configuration and test/live
-          checkout behavior.
+          environment context currently selects provider configuration and
+          test/live checkout behavior.
         </span>
       </div>
 
@@ -89,9 +92,15 @@ export default async function ProvidersPage() {
           <div className="empty-state-actions">
             <a
               className="btn btn-primary"
-              href={context.selectedApplication ? "/providers/new" : "/applications/new"}
+              href={
+                context.selectedApplication
+                  ? "/providers/new"
+                  : "/applications/new"
+              }
             >
-              {context.selectedApplication ? "Connect provider" : "Create project"}
+              {context.selectedApplication
+                ? "Connect provider"
+                : "Create project"}
             </a>
           </div>
         </div>

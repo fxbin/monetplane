@@ -31,14 +31,20 @@ export default async function ApplicationsPage() {
               </thead>
               <tbody>
                 {applications.map((application) => {
-                  const selected = context.selectedApplication?.id === application.id;
+                  const selected =
+                    context.selectedApplication?.id === application.id;
                   return (
                     <tr key={application.id}>
                       <td>
-                        <Link className="table-primary-link" href={`/applications/${application.id}`}>
+                        <Link
+                          className="table-primary-link"
+                          href={`/applications/${application.id}`}
+                        >
                           {application.name}
                         </Link>
-                        {selected && <span className="badge badge-current">Current</span>}
+                        {selected && (
+                          <span className="badge badge-current">Current</span>
+                        )}
                       </td>
                       <td className="cell-mono">{application.slug}</td>
                       <td>
@@ -60,8 +66,8 @@ export default async function ApplicationsPage() {
         <div className="empty-state">
           <h2 className="empty-state-title">Create your first project</h2>
           <p className="empty-state-desc">
-            Projects are the isolation boundary for catalog, customers, billing providers,
-            entitlements, and credits.
+            Projects are the isolation boundary for catalog, customers, billing
+            providers, entitlements, and credits.
           </p>
           <div className="empty-state-actions">
             <a className="btn btn-primary" href="/applications/new">

@@ -46,7 +46,9 @@ export default async function CustomersPage() {
       ) : (
         <div className="empty-state">
           <h2 className="empty-state-title">
-            {context.selectedApplication ? "No customers yet" : "No project selected"}
+            {context.selectedApplication
+              ? "No customers yet"
+              : "No project selected"}
           </h2>
           <p className="empty-state-desc">
             {context.selectedApplication

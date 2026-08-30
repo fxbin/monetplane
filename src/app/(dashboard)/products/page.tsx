@@ -57,7 +57,9 @@ export default async function ProductsPage() {
       ) : (
         <div className="empty-state">
           <h2 className="empty-state-title">
-            {context.selectedApplication ? "Create your first product" : "Create a project first"}
+            {context.selectedApplication
+              ? "Create your first product"
+              : "Create a project first"}
           </h2>
           <p className="empty-state-desc">
             {context.selectedApplication
@@ -67,9 +69,15 @@ export default async function ProductsPage() {
           <div className="empty-state-actions">
             <a
               className="btn btn-primary"
-              href={context.selectedApplication ? "/products/new" : "/applications/new"}
+              href={
+                context.selectedApplication
+                  ? "/products/new"
+                  : "/applications/new"
+              }
             >
-              {context.selectedApplication ? "Create product" : "Create project"}
+              {context.selectedApplication
+                ? "Create product"
+                : "Create project"}
             </a>
           </div>
         </div>

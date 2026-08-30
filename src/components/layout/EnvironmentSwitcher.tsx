@@ -44,7 +44,7 @@ export function EnvironmentSwitcher({
   }
 
   return (
-    <div className="environment-switcher" aria-label="Billing environment">
+    <section className="environment-switcher" aria-label="Billing environment">
       {environments.map((item) => {
         const active = item.value === environment;
         return (
@@ -64,6 +64,6 @@ export function EnvironmentSwitcher({
           </button>
         );
       })}
-    </div>
+    </section>
   );
 }

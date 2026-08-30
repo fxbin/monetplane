@@ -19,7 +19,9 @@ export type ConsoleContext = {
   environment: ConsoleEnvironment;
 };
 
-function isConsoleEnvironment(value: string | undefined): value is ConsoleEnvironment {
+function isConsoleEnvironment(
+  value: string | undefined,
+): value is ConsoleEnvironment {
   return value === "test" || value === "live";
 }
 
@@ -32,11 +34,17 @@ export async function getConsoleContext(): Promise<ConsoleContext> {
   const applications = applicationRows.filter(
     (application) => application.status === "active",
   );
-  const requestedApplicationId = cookieStore.get(CONSOLE_APPLICATION_COOKIE)?.value;
-  const requestedEnvironment = cookieStore.get(CONSOLE_ENVIRONMENT_COOKIE)?.value;
+  const requestedApplicationId = cookieStore.get(
+    CONSOLE_APPLICATION_COOKIE,
+  )?.value;
+  const requestedEnvironment = cookieStore.get(
+    CONSOLE_ENVIRONMENT_COOKIE,
+  )?.value;
 
   const selectedApplication =
-    applications.find((application) => application.id === requestedApplicationId) ??
+    applications.find(
+      (application) => application.id === requestedApplicationId,
+    ) ??
     applications[0] ??
     null;
 

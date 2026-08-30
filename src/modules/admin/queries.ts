@@ -27,7 +27,9 @@ export async function getOverviewStats(
   const [productCount] = await db
     .select({ count: count() })
     .from(products)
-    .where(applicationId ? eq(products.applicationId, applicationId) : undefined);
+    .where(
+      applicationId ? eq(products.applicationId, applicationId) : undefined,
+    );
   const [customerCount] = await db
     .select({ count: count() })
     .from(applicationCustomers)
@@ -124,7 +126,9 @@ export async function getProductList(applicationId?: string) {
     })
     .from(products)
     .leftJoin(applications, eq(products.applicationId, applications.id))
-    .where(applicationId ? eq(products.applicationId, applicationId) : undefined)
+    .where(
+      applicationId ? eq(products.applicationId, applicationId) : undefined,
+    )
     .orderBy(desc(products.createdAt));
 
   return rows;

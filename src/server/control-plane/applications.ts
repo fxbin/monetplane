@@ -27,50 +27,56 @@ export async function getConsoleApplicationDetail(applicationId: string) {
 
   if (!application) return null;
 
-  const [domains, callbackOrigins, credentials, productCount, customerCount, providerCount] =
-    await Promise.all([
-      db
-        .select({
-          id: applicationDomains.id,
-          hostname: applicationDomains.hostname,
-          kind: applicationDomains.kind,
-          isPrimary: applicationDomains.isPrimary,
-          createdAt: applicationDomains.createdAt,
-        })
-        .from(applicationDomains)
-        .where(eq(applicationDomains.applicationId, applicationId)),
-      db
-        .select({
-          id: applicationCallbackOrigins.id,
-          origin: applicationCallbackOrigins.origin,
-          createdAt: applicationCallbackOrigins.createdAt,
-        })
-        .from(applicationCallbackOrigins)
-        .where(eq(applicationCallbackOrigins.applicationId, applicationId)),
-      db
-        .select({
-          id: applicationCredentials.id,
-          name: applicationCredentials.name,
-          secretPrefix: applicationCredentials.secretPrefix,
-          createdAt: applicationCredentials.createdAt,
-          lastUsedAt: applicationCredentials.lastUsedAt,
-          revokedAt: applicationCredentials.revokedAt,
-        })
-        .from(applicationCredentials)
-        .where(eq(applicationCredentials.applicationId, applicationId)),
-      db
-        .select({ count: count() })
-        .from(products)
-        .where(eq(products.applicationId, applicationId)),
-      db
-        .select({ count: count() })
-        .from(applicationCustomers)
-        .where(eq(applicationCustomers.applicationId, applicationId)),
-      db
-        .select({ count: count() })
-        .from(providerConnections)
-        .where(eq(providerConnections.applicationId, applicationId)),
-    ]);
+  const [
+    domains,
+    callbackOrigins,
+    credentials,
+    productCount,
+    customerCount,
+    providerCount,
+  ] = await Promise.all([
+    db
+      .select({
+        id: applicationDomains.id,
+        hostname: applicationDomains.hostname,
+        kind: applicationDomains.kind,
+        isPrimary: applicationDomains.isPrimary,
+        createdAt: applicationDomains.createdAt,
+      })
+      .from(applicationDomains)
+      .where(eq(applicationDomains.applicationId, applicationId)),
+    db
+      .select({
+        id: applicationCallbackOrigins.id,
+        origin: applicationCallbackOrigins.origin,
+        createdAt: applicationCallbackOrigins.createdAt,
+      })
+      .from(applicationCallbackOrigins)
+      .where(eq(applicationCallbackOrigins.applicationId, applicationId)),
+    db
+      .select({
+        id: applicationCredentials.id,
+        name: applicationCredentials.name,
+        secretPrefix: applicationCredentials.secretPrefix,
+        createdAt: applicationCredentials.createdAt,
+        lastUsedAt: applicationCredentials.lastUsedAt,
+        revokedAt: applicationCredentials.revokedAt,
+      })
+      .from(applicationCredentials)
+      .where(eq(applicationCredentials.applicationId, applicationId)),
+    db
+      .select({ count: count() })
+      .from(products)
+      .where(eq(products.applicationId, applicationId)),
+    db
+      .select({ count: count() })
+      .from(applicationCustomers)
+      .where(eq(applicationCustomers.applicationId, applicationId)),
+    db
+      .select({ count: count() })
+      .from(providerConnections)
+      .where(eq(providerConnections.applicationId, applicationId)),
+  ]);
 
   return {
     application,
