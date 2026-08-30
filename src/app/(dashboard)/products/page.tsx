@@ -22,7 +22,8 @@ export default async function ProductsPage() {
         context.environment,
       )
     : [];
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   return (
     <PageContainer
@@ -43,11 +44,14 @@ export default async function ProductsPage() {
           <div className="catalog-summary-row">
             <div>
               <span className="builder-kicker">Current catalog</span>
-              <strong>{products.length} product{products.length === 1 ? "" : "s"}</strong>
+              <strong>
+                {products.length} product{products.length === 1 ? "" : "s"}
+              </strong>
             </div>
             <p>
-              Provider column shows the routing preference for {environmentLabel}. Catalog and
-              benefit definitions remain project-scoped.
+              Provider column shows the routing preference for{" "}
+              {environmentLabel}. Catalog and benefit definitions remain
+              project-scoped.
             </p>
           </div>
 
@@ -76,19 +80,27 @@ export default async function ProductsPage() {
                           >
                             {item.product.name}
                           </Link>
-                          <code className="product-key-inline">{item.product.key}</code>
+                          <code className="product-key-inline">
+                            {item.product.key}
+                          </code>
                         </td>
                         <td>
                           <span className="product-type-pill">
                             {item.productType
-                              ? TYPE_LABELS[item.productType] ?? item.productType
+                              ? (TYPE_LABELS[item.productType] ??
+                                item.productType)
                               : "Legacy"}
                           </span>
                         </td>
                         <td>
                           {price ? (
                             <div className="product-price-cell">
-                              <strong>{formatAmount(price.amountMinor, price.currency)}</strong>
+                              <strong>
+                                {formatAmount(
+                                  price.amountMinor,
+                                  price.currency,
+                                )}
+                              </strong>
                               <span>
                                 {price.billingType === "recurring"
                                   ? `/${price.recurringInterval === "year" ? "year" : "month"}`
@@ -126,11 +138,15 @@ export default async function ProductsPage() {
                               <span>{item.provider.provider}</span>
                             </div>
                           ) : (
-                            <span className="routing-missing">Not configured</span>
+                            <span className="routing-missing">
+                              Not configured
+                            </span>
                           )}
                         </td>
                         <td>
-                          <span className={`badge badge-${item.product.status}`}>
+                          <span
+                            className={`badge badge-${item.product.status}`}
+                          >
                             {item.product.status}
                           </span>
                         </td>

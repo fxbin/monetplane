@@ -63,7 +63,8 @@ export async function POST(request: Request) {
         amountMinor:
           typeof body.amountMinor === "number" ? body.amountMinor : Number.NaN,
         recurringInterval:
-          body.recurringInterval === "month" || body.recurringInterval === "year"
+          body.recurringInterval === "month" ||
+          body.recurringInterval === "year"
             ? body.recurringInterval
             : undefined,
         providerConnectionId:
@@ -73,15 +74,21 @@ export async function POST(request: Request) {
         credits: Array.isArray(body.credits)
           ? body.credits.map((credit) => ({
               referenceKey:
-                typeof credit.referenceKey === "string" ? credit.referenceKey : "",
+                typeof credit.referenceKey === "string"
+                  ? credit.referenceKey
+                  : "",
               quantity:
-                typeof credit.quantity === "number" ? credit.quantity : Number.NaN,
+                typeof credit.quantity === "number"
+                  ? credit.quantity
+                  : Number.NaN,
             }))
           : [],
         features: Array.isArray(body.features)
           ? body.features.map((feature) => ({
               referenceKey:
-                typeof feature.referenceKey === "string" ? feature.referenceKey : "",
+                typeof feature.referenceKey === "string"
+                  ? feature.referenceKey
+                  : "",
             }))
           : [],
       },
@@ -103,7 +110,8 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("[admin/products] Create error:", error);
-    const message = error instanceof Error ? error.message : "Failed to create product";
+    const message =
+      error instanceof Error ? error.message : "Failed to create product";
     const isConflict = /unique|duplicate/i.test(message);
 
     return NextResponse.json(

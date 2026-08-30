@@ -174,7 +174,10 @@
   border-radius: 11px;
   background: #fff;
   cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .product-type-card:hover {
@@ -279,7 +282,9 @@
   color: #202226;
   font: inherit;
   font-size: 0.78rem;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .field-group textarea {

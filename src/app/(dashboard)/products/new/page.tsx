@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { ProductBuilderWizard } from "@/components/products/ProductBuilderWizard";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { ProductBuilderWizard } from "@/components/products/ProductBuilderWizard";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getBuilderProviderOptions } from "@/server/control-plane/products";
 
@@ -18,8 +18,8 @@ export default async function NewProductPage() {
         <div className="empty-state">
           <h2 className="empty-state-title">Create a project first</h2>
           <p className="empty-state-desc">
-            A MonetPlane project is the isolation boundary for catalog, customers,
-            providers, entitlements, and credits.
+            A MonetPlane project is the isolation boundary for catalog,
+            customers, providers, entitlements, and credits.
           </p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">

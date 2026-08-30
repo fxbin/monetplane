@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   readProductBuilderType,
   readProductProviderRoute,
-} from "../src/server/control-plane/products";
+} from "../src/server/control-plane/product-metadata";
 
 describe("product builder metadata", () => {
   it("reads the product presentation type", () => {

@@ -43,7 +43,7 @@ export default async function ProductDetailPage({
 
   const price = detail.primaryPrice;
   const typeLabel = detail.productType
-    ? TYPE_LABELS[detail.productType] ?? detail.productType
+    ? (TYPE_LABELS[detail.productType] ?? detail.productType)
     : "Legacy catalog product";
   const environmentLabel =
     context.environment === "test" ? "Sandbox" : "Production";
@@ -168,8 +168,8 @@ export default async function ProductDetailPage({
             <div className="provider-missing-route">
               <strong>No provider preference in {environmentLabel}</strong>
               <p>
-                This can happen for legacy products or when the product was first
-                created in the other environment.
+                This can happen for legacy products or when the product was
+                first created in the other environment.
               </p>
             </div>
           )}
@@ -187,10 +187,10 @@ export default async function ProductDetailPage({
           />
 
           <p className="product-routing-note">
-            The P0 checkout contract still accepts an explicit provider connection
-            ID. This routing preference keeps the intended provider visible and
-            copyable without pretending full environment routing exists before #49
-            is resolved.
+            The P0 checkout contract still accepts an explicit provider
+            connection ID. This routing preference keeps the intended provider
+            visible and copyable without pretending full environment routing
+            exists before #49 is resolved.
           </p>
         </section>
       </div>

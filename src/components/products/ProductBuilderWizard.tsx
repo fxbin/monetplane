@@ -11,11 +11,7 @@ type ProviderOption = {
   mode: "test" | "live";
 };
 
-type ProductType =
-  | "one_time"
-  | "subscription"
-  | "credit_pack"
-  | "usage_based";
+type ProductType = "one_time" | "subscription" | "credit_pack" | "usage_based";
 
 type CreditDraft = { id: number; referenceKey: string; quantity: string };
 type FeatureDraft = { id: number; referenceKey: string };
@@ -37,7 +33,8 @@ const PRODUCT_TYPES: Array<{
     value: "one_time",
     title: "One-time purchase",
     eyebrow: "Pay once",
-    description: "Sell a downloadable product, lifetime unlock, or single purchase.",
+    description:
+      "Sell a downloadable product, lifetime unlock, or single purchase.",
     billing: "One-time price",
   },
   {
@@ -58,7 +55,8 @@ const PRODUCT_TYPES: Array<{
     value: "usage_based",
     title: "Usage-oriented plan",
     eyebrow: "Recurring allowance",
-    description: "Charge recurring and replenish a credit allowance for metered usage.",
+    description:
+      "Charge recurring and replenish a credit allowance for metered usage.",
     billing: "Monthly or annual + credits",
   },
 ];
@@ -179,13 +177,15 @@ export function ProductBuilderWizard({
 
       for (const credit of credits) {
         const quantity = Number(credit.quantity);
-        if (!credit.referenceKey.trim()) return "Every credit grant needs a key.";
+        if (!credit.referenceKey.trim())
+          return "Every credit grant needs a key.";
         if (!Number.isSafeInteger(quantity) || quantity <= 0) {
           return "Credit quantities must be positive whole numbers.";
         }
       }
       for (const feature of features) {
-        if (!feature.referenceKey.trim()) return "Every feature needs an entitlement key.";
+        if (!feature.referenceKey.trim())
+          return "Every feature needs an entitlement key.";
       }
     }
 
@@ -264,7 +264,9 @@ export function ProductBuilderWizard({
       router.push(`/products/${result.product.id}`);
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to create product");
+      setError(
+        cause instanceof Error ? cause.message : "Failed to create product",
+      );
     } finally {
       setPending(false);
     }
@@ -365,7 +367,6 @@ export function ProductBuilderWizard({
                     if (!keyTouched) setKey(slugify(value));
                   }}
                   placeholder="Pro plan"
-                  autoFocus
                 />
                 <small>Customer-facing name shown in your catalog.</small>
               </label>
@@ -411,7 +412,10 @@ export function ProductBuilderWizard({
               <div className="builder-price-inputs">
                 <label className="field-group currency-field">
                   <span>Currency</span>
-                  <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+                  <select
+                    value={currency}
+                    onChange={(event) => setCurrency(event.target.value)}
+                  >
                     <option value="USD">USD</option>
                     <option value="EUR">EUR</option>
                     <option value="GBP">GBP</option>
@@ -432,7 +436,11 @@ export function ProductBuilderWizard({
               {isRecurring && (
                 <fieldset className="interval-choice">
                   <legend>Billing interval</legend>
-                  <label className={recurringInterval === "month" ? "is-selected" : undefined}>
+                  <label
+                    className={
+                      recurringInterval === "month" ? "is-selected" : undefined
+                    }
+                  >
                     <input
                       type="radio"
                       name="interval"
@@ -442,7 +450,11 @@ export function ProductBuilderWizard({
                     <strong>Monthly</strong>
                     <span>Renews every month</span>
                   </label>
-                  <label className={recurringInterval === "year" ? "is-selected" : undefined}>
+                  <label
+                    className={
+                      recurringInterval === "year" ? "is-selected" : undefined
+                    }
+                  >
                     <input
                       type="radio"
                       name="interval"
@@ -475,7 +487,8 @@ export function ProductBuilderWizard({
               <h2>What does the customer receive?</h2>
               <p>
                 Credits map to MonetPlane credit grant configs. Features map to
-                entitlement grant configs—there is no parallel UI-only benefit model.
+                entitlement grant configs—there is no parallel UI-only benefit
+                model.
               </p>
             </div>
 
@@ -489,7 +502,11 @@ export function ProductBuilderWizard({
                       : "Optional prepaid or recurring usage allowance."}
                   </p>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={addCredit}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={addCredit}
+                >
                   Add credit grant
                 </button>
               </div>
@@ -508,7 +525,11 @@ export function ProductBuilderWizard({
                             setCredits((current) =>
                               current.map((item) =>
                                 item.id === credit.id
-                                  ? { ...item, referenceKey: event.target.value.toLowerCase() }
+                                  ? {
+                                      ...item,
+                                      referenceKey:
+                                        event.target.value.toLowerCase(),
+                                    }
                                   : item,
                               ),
                             )
@@ -556,12 +577,18 @@ export function ProductBuilderWizard({
                   <h3>Features</h3>
                   <p>Entitlement keys unlocked after successful purchase.</p>
                 </div>
-                <button type="button" className="btn btn-secondary" onClick={addFeature}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={addFeature}
+                >
                   Add feature
                 </button>
               </div>
               {features.length === 0 ? (
-                <div className="benefit-empty">No feature entitlements included.</div>
+                <div className="benefit-empty">
+                  No feature entitlements included.
+                </div>
               ) : (
                 <div className="benefit-rows">
                   {features.map((feature) => (
@@ -575,7 +602,11 @@ export function ProductBuilderWizard({
                             setFeatures((current) =>
                               current.map((item) =>
                                 item.id === feature.id
-                                  ? { ...item, referenceKey: event.target.value.toLowerCase() }
+                                  ? {
+                                      ...item,
+                                      referenceKey:
+                                        event.target.value.toLowerCase(),
+                                    }
                                   : item,
                               ),
                             )
@@ -618,9 +649,13 @@ export function ProductBuilderWizard({
             {providers.length === 0 ? (
               <div className="provider-empty-state">
                 <div>
-                  <strong>No {environment === "test" ? "Sandbox" : "Production"} provider connected</strong>
+                  <strong>
+                    No {environment === "test" ? "Sandbox" : "Production"}{" "}
+                    provider connected
+                  </strong>
                   <p>
-                    Connect a provider first, then return here to finish the sellable product.
+                    Connect a provider first, then return here to finish the
+                    sellable product.
                   </p>
                 </div>
                 <Link className="btn btn-primary" href="/providers/new">
@@ -647,16 +682,18 @@ export function ProductBuilderWizard({
                       <strong>{provider.name}</strong>
                       <span>{provider.provider}</span>
                     </div>
-                    <small>{provider.mode === "test" ? "Sandbox" : "Production"}</small>
+                    <small>
+                      {provider.mode === "test" ? "Sandbox" : "Production"}
+                    </small>
                   </label>
                 ))}
               </div>
             )}
 
             <div className="builder-note">
-              Provider routing is stored per environment in product metadata. Catalog,
-              credits, and customer state remain project-scoped until #49 defines full
-              Sandbox/Production data isolation.
+              Provider routing is stored per environment in product metadata.
+              Catalog, credits, and customer state remain project-scoped until
+              #49 defines full Sandbox/Production data isolation.
             </div>
           </section>
         )}
@@ -667,8 +704,8 @@ export function ProductBuilderWizard({
               <span className="builder-kicker">Review</span>
               <h2>Ready to create</h2>
               <p>
-                Review the catalog object MonetPlane will create. Product, primary
-                price, and grants are committed atomically.
+                Review the catalog object MonetPlane will create. Product,
+                primary price, and grants are committed atomically.
               </p>
             </div>
 
@@ -690,8 +727,12 @@ export function ProductBuilderWizard({
               </section>
               <section className="review-card">
                 <span>Benefits</span>
-                <strong>{credits.length} credit grant{credits.length === 1 ? "" : "s"}</strong>
-                <p>{features.length} feature{features.length === 1 ? "" : "s"}</p>
+                <strong>
+                  {credits.length} credit grant{credits.length === 1 ? "" : "s"}
+                </strong>
+                <p>
+                  {features.length} feature{features.length === 1 ? "" : "s"}
+                </p>
               </section>
               <section className="review-card">
                 <span>Provider</span>
@@ -721,12 +762,21 @@ export function ProductBuilderWizard({
           </section>
         )}
 
-        {error && <div className="builder-error" role="alert">{error}</div>}
+        {error && (
+          <div className="builder-error" role="alert">
+            {error}
+          </div>
+        )}
 
         <div className="builder-actions">
           <div>
             {step > 0 && (
-              <button type="button" className="btn btn-secondary" onClick={back} disabled={pending}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={back}
+                disabled={pending}
+              >
                 Back
               </button>
             )}

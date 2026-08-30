@@ -75,7 +75,9 @@ export function ProductProviderRouteEditor({
   if (providers.length === 0) {
     return (
       <div className="route-editor-empty">
-        <p>No active {environmentLabel} provider is connected to this project.</p>
+        <p>
+          No active {environmentLabel} provider is connected to this project.
+        </p>
         <Link href="/providers/new" className="btn btn-secondary">
           Connect provider
         </Link>
