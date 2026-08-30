@@ -4,7 +4,10 @@ import {
   listApplicationCatalog,
   type RecurringInterval,
 } from "@/modules/catalog";
-import { getProviderConnection, listProviderConnections } from "@/modules/providers/service";
+import {
+  getProviderConnection,
+  listProviderConnections,
+} from "@/modules/providers/service";
 import type { ConsoleEnvironment } from "./context";
 
 export const PRODUCT_BUILDER_TYPES = [
@@ -38,7 +41,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function readMonetPlaneMetadata(metadata: Record<string, unknown>) {
+function readMonetPlaneMetadata(
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
   const value = metadata.monetplane;
   return isRecord(value) ? value : {};
 }
@@ -206,7 +211,9 @@ export async function getProductBuilderList(
     listApplicationCatalog(applicationId),
     listProviderConnections(applicationId),
   ]);
-  const providersById = new Map(providers.map((provider) => [provider.id, provider]));
+  const providersById = new Map(
+    providers.map((provider) => [provider.id, provider]),
+  );
 
   return catalog
     .map(({ product, prices, grants }) => {
