@@ -1,7 +1,9 @@
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   createConfiguredProduct,
   listApplicationCatalog,
+  products,
   type RecurringInterval,
 } from "@/modules/catalog";
 import {
@@ -126,21 +128,18 @@ function billingShape(productType: ProductBuilderType) {
   return { billingType: "recurring" as const };
 }
 
-export async function createProductFromBuilder(
+async function assertProviderForEnvironment(
   applicationId: string,
   environment: ConsoleEnvironment,
-  input: ProductBuilderInput,
+  providerConnectionId: string,
 ) {
-  assertBuilderType(input.productType);
-  assertBenefits(input);
-
-  if (!input.providerConnectionId.trim()) {
+  if (!providerConnectionId.trim()) {
     throw new Error("Choose a payment provider for this environment");
   }
 
   const provider = await getProviderConnection(
     applicationId,
-    input.providerConnectionId,
+    providerConnectionId,
   );
   if (!provider || provider.status !== "active") {
     throw new Error("Selected payment provider is not active for this project");
@@ -150,6 +149,23 @@ export async function createProductFromBuilder(
       `Selected provider belongs to ${provider.mode === "test" ? "Sandbox" : "Production"}, not the current environment`,
     );
   }
+
+  return provider;
+}
+
+export async function createProductFromBuilder(
+  applicationId: string,
+  environment: ConsoleEnvironment,
+  input: ProductBuilderInput,
+) {
+  assertBuilderType(input.productType);
+  assertBenefits(input);
+
+  const provider = await assertProviderForEnvironment(
+    applicationId,
+    environment,
+    input.providerConnectionId,
+  );
 
   const billing = billingShape(input.productType);
   if (
@@ -201,6 +217,66 @@ export async function createProductFromBuilder(
   });
 
   return { ...result, provider };
+}
+
+export async function setProductProviderRoute(
+  applicationId: string,
+  productId: string,
+  environment: ConsoleEnvironment,
+  providerConnectionId: string,
+) {
+  const provider = await assertProviderForEnvironment(
+    applicationId,
+    environment,
+    providerConnectionId,
+  );
+  const db = getDb();
+  const [product] = await db
+    .select()
+    .from(products)
+    .where(
+      and(
+        eq(products.id, productId),
+        eq(products.applicationId, applicationId),
+      ),
+    )
+    .limit(1);
+
+  if (!product) {
+    throw new Error("Product not found in the current project");
+  }
+
+  const monetplane = readMonetPlaneMetadata(product.metadata);
+  const existingRouting = isRecord(monetplane.providerRouting)
+    ? monetplane.providerRouting
+    : {};
+  const metadata = {
+    ...product.metadata,
+    monetplane: {
+      ...monetplane,
+      providerRouting: {
+        ...existingRouting,
+        [environment]: provider.id,
+      },
+    },
+  };
+
+  const [updatedProduct] = await db
+    .update(products)
+    .set({ metadata, updatedAt: new Date() })
+    .where(
+      and(
+        eq(products.id, productId),
+        eq(products.applicationId, applicationId),
+      ),
+    )
+    .returning();
+
+  if (!updatedProduct) {
+    throw new Error("Failed to update product provider routing");
+  }
+
+  return { product: updatedProduct, provider };
 }
 
 export async function getProductBuilderList(
