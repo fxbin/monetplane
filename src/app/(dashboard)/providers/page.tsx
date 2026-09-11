@@ -34,9 +34,9 @@ export default async function ProvidersPage() {
         </span>
         <strong>{environmentLabel}</strong>
         <span>
-          Catalog, customer, and credit state remain project-scoped in P1; this
-          environment context currently selects provider configuration and
-          test/live checkout behavior.
+          Provider credentials and checkout mode follow this environment. Catalog,
+          customer, and credit state are currently shared within the selected
+          project.
         </span>
       </div>
 
