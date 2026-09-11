@@ -25,8 +25,9 @@ export function ProviderConnectForm({
   environment,
 }: ProviderConnectFormProps) {
   const router = useRouter();
+  const environmentLabel = environment === "test" ? "Sandbox" : "Production";
   const [provider, setProvider] = useState("creem");
-  const [name, setName] = useState("Creem");
+  const [name, setName] = useState(`Creem ${environmentLabel}`);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +38,6 @@ export function ProviderConnectForm({
       SUPPORTED_PROVIDER_SETUPS[0],
     [provider],
   );
-  const environmentLabel = environment === "test" ? "Sandbox" : "Production";
 
   function chooseProvider(nextProvider: string) {
     const next = SUPPORTED_PROVIDER_SETUPS.find(
@@ -45,7 +45,7 @@ export function ProviderConnectForm({
     );
     if (!next) return;
     setProvider(next.provider);
-    setName(next.label);
+    setName(`${next.label} ${environmentLabel}`);
     setCredentials({});
     setError(null);
   }
@@ -143,8 +143,8 @@ export function ProviderConnectForm({
               required
             />
             <span className="form-help">
-              A human-readable label. You can connect more than one account per
-              provider using different names.
+              A human-readable label. The default includes the environment so a
+              Sandbox and Production connection can coexist safely.
             </span>
           </label>
 
