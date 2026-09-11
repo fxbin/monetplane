@@ -5,6 +5,7 @@ import "../console-shell.css";
 import "../application-context.css";
 import "../product-builder.css";
 import "../product-routing.css";
+import "../provider-connect.css";
 
 export default function DashboardLayout({
   children,
