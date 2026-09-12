@@ -22,15 +22,22 @@ export async function POST(request: Request, { params }: RouteContext) {
       }>,
     ]);
     if (!context.selectedApplication) {
-      return NextResponse.json({ error: "Select a project first" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Select a project first" },
+        { status: 400 },
+      );
     }
 
     const creditType =
       typeof body.creditType === "string" ? body.creditType.trim() : "";
-    const amount = typeof body.amount === "number" ? body.amount : Number(body.amount);
+    const amount =
+      typeof body.amount === "number" ? body.amount : Number(body.amount);
     const note = typeof body.note === "string" ? body.note : undefined;
     if (!creditType) {
-      return NextResponse.json({ error: "Credit type is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Credit type is required" },
+        { status: 400 },
+      );
     }
 
     const result = await grantCustomerCredits(
@@ -42,7 +49,10 @@ export async function POST(request: Request, { params }: RouteContext) {
   } catch (error) {
     console.error("[admin/customers/credits] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to grant credits" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to grant credits",
+      },
       { status: 400 },
     );
   }
