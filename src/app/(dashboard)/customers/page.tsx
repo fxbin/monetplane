@@ -16,7 +16,9 @@ function normalizeFilter(value: string | undefined): CustomerListFilter {
   return value === "subscribed" || value === "credits" ? value : "all";
 }
 
-export default async function CustomersPage({ searchParams }: CustomersPageProps) {
+export default async function CustomersPage({
+  searchParams,
+}: CustomersPageProps) {
   const [context, params] = await Promise.all([
     getConsoleContext(),
     searchParams,
@@ -104,9 +106,13 @@ export default async function CustomersPage({ searchParams }: CustomersPageProps
                     </td>
                     <td>
                       <div className="customer-credit-cell">
-                        <strong>{customer.credits.available.toLocaleString()}</strong>
+                        <strong>
+                          {customer.credits.available.toLocaleString()}
+                        </strong>
                         {customer.credits.reserved > 0 && (
-                          <span>{customer.credits.reserved.toLocaleString()} reserved</span>
+                          <span>
+                            {customer.credits.reserved.toLocaleString()} reserved
+                          </span>
                         )}
                       </div>
                     </td>
