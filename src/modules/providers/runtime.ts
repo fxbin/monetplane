@@ -1,11 +1,14 @@
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
+import { createCreemProviderAdapter } from "./adapters/creem";
+import { createWaffoProviderAdapter } from "./adapters/waffo";
 import type {
   CancelSubscriptionInput,
   CheckoutBillingMode,
   CreateCheckoutInput,
   GetPaymentInput,
   GetSubscriptionInput,
+  PaymentProviderAdapter,
   ProviderCapability,
   RefundPaymentInput,
   UpdateSubscriptionInput,
@@ -15,7 +18,11 @@ import {
   ProviderApplicationMismatchError,
   UnsupportedProviderCapabilityError,
 } from "./contract";
-import { getProviderAdapter } from "./registry";
+import {
+  getProviderAdapter,
+  ProviderAdapterNotRegisteredError,
+  registerProviderAdapter,
+} from "./registry";
 import { loadProviderConnectionContext } from "./service";
 
 function requireCapability(
@@ -30,6 +37,38 @@ function requireCapability(
 
 function checkoutCapability(mode: CheckoutBillingMode): ProviderCapability {
   return mode === "one_time" ? "one_time_checkout" : "recurring_subscription";
+}
+
+function resolveProviderAdapter(provider: string): PaymentProviderAdapter {
+  try {
+    return getProviderAdapter(provider);
+  } catch (error) {
+    if (!(error instanceof ProviderAdapterNotRegisteredError)) throw error;
+
+    const adapter =
+      provider === "creem"
+        ? createCreemProviderAdapter()
+        : provider === "waffo"
+          ? createWaffoProviderAdapter()
+          : null;
+    if (!adapter) throw error;
+
+    registerProviderAdapter(adapter);
+    return adapter;
+  }
+}
+
+export async function getProviderCapabilities(
+  applicationId: string,
+  connectionId: string,
+  db: Database = getDb(),
+) {
+  const connection = await loadProviderConnectionContext(
+    applicationId,
+    connectionId,
+    db,
+  );
+  return resolveProviderAdapter(connection.provider).getCapabilities(connection);
 }
 
 export async function createProviderCheckout(
@@ -47,7 +86,7 @@ export async function createProviderCheckout(
     connectionId,
     db,
   );
-  const adapter = getProviderAdapter(connection.provider);
+  const adapter = resolveProviderAdapter(connection.provider);
   const capabilities = adapter.getCapabilities(connection);
 
   requireCapability(
@@ -78,7 +117,7 @@ export async function getProviderPayment(
     connectionId,
     db,
   );
-  return getProviderAdapter(connection.provider).getPayment(connection, input);
+  return resolveProviderAdapter(connection.provider).getPayment(connection, input);
 }
 
 export async function getProviderSubscription(
@@ -92,7 +131,7 @@ export async function getProviderSubscription(
     connectionId,
     db,
   );
-  return getProviderAdapter(connection.provider).getSubscription(
+  return resolveProviderAdapter(connection.provider).getSubscription(
     connection,
     input,
   );
@@ -109,7 +148,7 @@ export async function cancelProviderSubscription(
     connectionId,
     db,
   );
-  const adapter = getProviderAdapter(connection.provider);
+  const adapter = resolveProviderAdapter(connection.provider);
   requireCapability(
     connection.provider,
     adapter.getCapabilities(connection),
@@ -129,7 +168,7 @@ export async function updateProviderSubscription(
     connectionId,
     db,
   );
-  const adapter = getProviderAdapter(connection.provider);
+  const adapter = resolveProviderAdapter(connection.provider);
   requireCapability(
     connection.provider,
     adapter.getCapabilities(connection),
@@ -149,7 +188,7 @@ export async function refundProviderPayment(
     connectionId,
     db,
   );
-  const adapter = getProviderAdapter(connection.provider);
+  const adapter = resolveProviderAdapter(connection.provider);
   requireCapability(
     connection.provider,
     adapter.getCapabilities(connection),
@@ -169,7 +208,7 @@ export async function verifyAndNormalizeProviderWebhook(
     connectionId,
     db,
   );
-  const adapter = getProviderAdapter(connection.provider);
+  const adapter = resolveProviderAdapter(connection.provider);
   const verified = await adapter.verifyWebhook(connection, input);
   return adapter.normalizeWebhook(connection, verified);
 }
