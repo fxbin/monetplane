@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 
 type ActionDialogProps = {
   title: string;
@@ -22,6 +22,7 @@ function ActionDialog({
   children,
   onConfirm,
 }: ActionDialogProps) {
+  const titleId = useId();
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,14 +55,14 @@ function ActionDialog({
       {open && (
         <div className="customer-action-backdrop">
           <section
-            aria-labelledby="customer-action-title"
+            aria-labelledby={titleId}
             aria-modal="true"
             className="customer-action-dialog card"
             role="dialog"
           >
             <div>
               <span className="customer-action-kicker">Confirm operation</span>
-              <h2 id="customer-action-title">{title}</h2>
+              <h2 id={titleId}>{title}</h2>
               <p>{description}</p>
             </div>
             {children}
