@@ -34,9 +34,9 @@ export default async function ProvidersPage() {
         </span>
         <strong>{environmentLabel}</strong>
         <span>
-          Provider credentials and checkout mode follow this environment. Catalog,
-          customer, and credit state are currently shared within the selected
-          project.
+          Provider credentials and checkout mode follow this environment.
+          Catalog, customer, and credit state are currently shared within the
+          selected project.
         </span>
       </div>
 

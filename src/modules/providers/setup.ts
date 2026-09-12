@@ -21,7 +21,8 @@ export const SUPPORTED_PROVIDER_SETUPS = [
   {
     provider: "waffo",
     label: "Waffo",
-    description: "One-time and recurring checkout with refund and subscription operations.",
+    description:
+      "One-time and recurring checkout with refund and subscription operations.",
     credentialFields: [
       {
         key: "apiKey",
@@ -49,7 +50,9 @@ export type SupportedProviderSetup =
   (typeof SUPPORTED_PROVIDER_SETUPS)[number]["provider"];
 
 export function getProviderSetup(provider: string) {
-  return SUPPORTED_PROVIDER_SETUPS.find((item) => item.provider === provider) ?? null;
+  return (
+    SUPPORTED_PROVIDER_SETUPS.find((item) => item.provider === provider) ?? null
+  );
 }
 
 export function validateProviderSetupCredentials(

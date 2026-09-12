@@ -54,7 +54,9 @@ export async function POST(request: Request) {
       credentials?: unknown;
     };
     const provider =
-      typeof body.provider === "string" ? body.provider.trim().toLowerCase() : "";
+      typeof body.provider === "string"
+        ? body.provider.trim().toLowerCase()
+        : "";
     const setup = getProviderSetup(provider);
     if (!setup) {
       return NextResponse.json(
@@ -105,7 +107,8 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("[admin/providers] Create error:", error);
-    const message = error instanceof Error ? error.message : "Failed to connect provider";
+    const message =
+      error instanceof Error ? error.message : "Failed to connect provider";
     const status =
       message.includes("required") ||
       message.includes("supported payment provider")
