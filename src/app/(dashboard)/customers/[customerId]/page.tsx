@@ -17,7 +17,9 @@ type CustomerPageProps = {
 };
 
 function subscriptionLabel(
-  subscription: Awaited<ReturnType<typeof getCustomerWorkspace>>["subscriptions"][number],
+  subscription: Awaited<
+    ReturnType<typeof getCustomerWorkspace>
+  >["subscriptions"][number],
 ) {
   const product = subscription.items[0]?.productName;
   return product || `Subscription ${subscription.id}`;
@@ -91,7 +93,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                   {currentSubscription.status.replace("_", " ")}
                 </span>
                 {currentSubscription.cancelAtPeriodEnd && (
-                  <span className="customer-inline-note">Cancels at period end</span>
+                  <span className="customer-inline-note">
+                    Cancels at period end
+                  </span>
                 )}
               </div>
             </>
@@ -113,7 +117,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
           <span>Payments</span>
           <strong>{workspace.payments.length}</strong>
           <small>
-            {workspace.payments.filter((payment) => payment.status === "succeeded").length} successful
+            {
+              workspace.payments.filter(
+                (payment) => payment.status === "succeeded",
+              ).length
+            }{" "}
+            successful
           </small>
         </section>
       </div>
@@ -126,11 +135,16 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
           </div>
         </div>
         {workspace.subscriptions.length === 0 ? (
-          <p className="card-empty-copy">This customer has no subscription history.</p>
+          <p className="card-empty-copy">
+            This customer has no subscription history.
+          </p>
         ) : (
           <div className="customer-subscription-list">
             {workspace.subscriptions.map((subscription) => (
-              <article className="customer-subscription-row" key={subscription.id}>
+              <article
+                className="customer-subscription-row"
+                key={subscription.id}
+              >
                 <div className="customer-subscription-main">
                   <div>
                     <strong>{subscriptionLabel(subscription)}</strong>
@@ -142,20 +156,26 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                 </div>
                 <div className="customer-subscription-meta">
                   <span>
-                    {subscription.providerName ?? subscription.provider ?? "Provider"}
+                    {subscription.providerName ??
+                      subscription.provider ??
+                      "Provider"}
                   </span>
                   <span>
                     {subscription.currentPeriodEnd
                       ? `Period ends ${formatDateTime(subscription.currentPeriodEnd)}`
                       : "No period end recorded"}
                   </span>
-                  {subscription.cancelAtPeriodEnd && <span>Cancellation scheduled</span>}
+                  {subscription.cancelAtPeriodEnd && (
+                    <span>Cancellation scheduled</span>
+                  )}
                 </div>
                 <div className="customer-subscription-products">
                   {subscription.items.map((item) => (
                     <span key={`${subscription.id}:${item.priceId}`}>
                       {item.productName ?? item.productId}
-                      {item.amountMinor !== null && item.amountMinor !== undefined && item.currency
+                      {item.amountMinor !== null &&
+                      item.amountMinor !== undefined &&
+                      item.currency
                         ? ` · ${formatAmount(item.amountMinor, item.currency)}/${item.recurringInterval ?? "period"}`
                         : ""}
                     </span>
@@ -192,7 +212,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                 <div className="credit-account-card" key={account.id}>
                   <code>{account.creditType}</code>
                   <strong>{account.availableBalance.toLocaleString()}</strong>
-                  <span>{account.reservedBalance.toLocaleString()} reserved</span>
+                  <span>
+                    {account.reservedBalance.toLocaleString()} reserved
+                  </span>
                 </div>
               ))}
             </div>
@@ -237,7 +259,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
           <span className="customer-section-note">Provider-neutral state</span>
         </div>
         {workspace.payments.length === 0 ? (
-          <p className="card-empty-copy">No payments recorded for this customer.</p>
+          <p className="card-empty-copy">
+            No payments recorded for this customer.
+          </p>
         ) : (
           <div className="table-wrapper">
             <table className="data-table customer-payment-table">
@@ -253,7 +277,10 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
               </thead>
               <tbody>
                 {workspace.payments.map((payment) => {
-                  const amountLabel = formatAmount(payment.amountMinor, payment.currency);
+                  const amountLabel = formatAmount(
+                    payment.amountMinor,
+                    payment.currency,
+                  );
                   const canRefund =
                     payment.canRefundProvider &&
                     payment.status === "succeeded" &&
@@ -265,7 +292,11 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                           <code>{payment.id}</code>
                           {payment.orderItems[0] && (
                             <span>
-                              {payment.orderItems.map((item) => item.productName ?? item.productId).join(", ")}
+                              {payment.orderItems
+                                .map(
+                                  (item) => item.productName ?? item.productId,
+                                )
+                                .join(", ")}
                             </span>
                           )}
                         </div>
@@ -276,8 +307,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                           {payment.status}
                         </span>
                       </td>
-                      <td>{payment.providerName ?? payment.provider ?? "—"}</td>
-                      <td className="cell-muted">{formatDateTime(payment.createdAt)}</td>
+                      <td>
+                        {payment.providerName ?? payment.provider ?? "—"}
+                      </td>
+                      <td className="cell-muted">
+                        {formatDateTime(payment.createdAt)}
+                      </td>
                       <td>
                         {canRefund ? (
                           <RefundPaymentAction
@@ -325,10 +360,17 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                     </span>
                   </div>
                   <div className="ledger-row-values">
-                    <strong className={entry.amount > 0 ? "is-positive" : "is-negative"}>
-                      {entry.amount > 0 ? "+" : ""}{entry.amount.toLocaleString()}
+                    <strong
+                      className={
+                        entry.amount > 0 ? "is-positive" : "is-negative"
+                      }
+                    >
+                      {entry.amount > 0 ? "+" : ""}
+                      {entry.amount.toLocaleString()}
                     </strong>
-                    <span>{entry.availableAfter.toLocaleString()} available</span>
+                    <span>
+                      {entry.availableAfter.toLocaleString()} available
+                    </span>
                   </div>
                 </div>
               ))}
@@ -344,7 +386,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
             </div>
           </div>
           {workspace.events.length === 0 ? (
-            <p className="card-empty-copy">No customer-linked provider events found.</p>
+            <p className="card-empty-copy">
+              No customer-linked provider events found.
+            </p>
           ) : (
             <div className="customer-event-list">
               {workspace.events.map((event) => (
@@ -355,7 +399,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                     <span>{event.providerEventName}</span>
                     <small>{formatDateTime(event.occurredAt)}</small>
                   </div>
-                  <span className={`badge badge-${event.status}`}>{event.status}</span>
+                  <span className={`badge badge-${event.status}`}>
+                    {event.status}
+                  </span>
                 </div>
               ))}
             </div>
