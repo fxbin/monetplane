@@ -16,7 +16,7 @@ import {
   subscriptions,
 } from "../../src/modules/commerce/schema";
 import { creditTransactions } from "../../src/modules/credits/schema";
-import { applicationCustomers, customers } from "../../src/modules/customers/schema";
+import { customers } from "../../src/modules/customers/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 import { entitlementGrants } from "../../src/modules/entitlements/schema";
 import { grantEntitlement } from "../../src/modules/entitlements/service";
