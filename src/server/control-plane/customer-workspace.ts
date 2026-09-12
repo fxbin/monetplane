@@ -1,18 +1,7 @@
 import { randomUUID } from "node:crypto";
-import {
-  and,
-  desc,
-  eq,
-  ilike,
-  inArray,
-  or,
-} from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import {
-  prices,
-  productGrantConfigs,
-  products,
-} from "@/modules/catalog/schema";
+import { prices, productGrantConfigs, products } from "@/modules/catalog/schema";
 import {
   orderItems,
   orders,
@@ -131,7 +120,10 @@ export async function getCustomerWorkspaceList(
     subscriptionState.set(row.applicationCustomerId, current);
   }
 
-  const creditState = new Map<string, { available: number; reserved: number }>();
+  const creditState = new Map<
+    string,
+    { available: number; reserved: number }
+  >();
   for (const row of creditRows) {
     const current = creditState.get(row.applicationCustomerId) ?? {
       available: 0,
