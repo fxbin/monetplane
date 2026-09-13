@@ -38,6 +38,24 @@ function requiredBoolean(value: unknown, label: string): boolean {
   return value;
 }
 
+async function findOperationByIdempotencyKey(
+  applicationId: string,
+  idempotencyKey: string,
+) {
+  const db = getDb();
+  const [operation] = await db
+    .select()
+    .from(billingOperations)
+    .where(
+      and(
+        eq(billingOperations.applicationId, applicationId),
+        eq(billingOperations.idempotencyKey, idempotencyKey),
+      ),
+    )
+    .limit(1);
+  return operation;
+}
+
 async function createOrGetOperation(input: {
   applicationId: string;
   type: "refund" | "cancel_subscription";
@@ -61,16 +79,10 @@ async function createOrGetOperation(input: {
     .returning();
   if (inserted) return { operation: inserted, created: true } as const;
 
-  const [existing] = await db
-    .select()
-    .from(billingOperations)
-    .where(
-      and(
-        eq(billingOperations.applicationId, input.applicationId),
-        eq(billingOperations.idempotencyKey, input.idempotencyKey),
-      ),
-    )
-    .limit(1);
+  const existing = await findOperationByIdempotencyKey(
+    input.applicationId,
+    input.idempotencyKey,
+  );
   if (!existing) throw new Error("Failed to resolve billing operation");
   return { operation: existing, created: false } as const;
 }
@@ -169,12 +181,42 @@ function assertOperationCanProceed(
   );
 }
 
+async function resumeExistingOperation(
+  applicationId: string,
+  operation: typeof billingOperations.$inferSelect,
+  providerMode: ProviderMode,
+) {
+  await assertOperationEnvironment(
+    applicationId,
+    operation.providerConnectionId,
+    providerMode,
+  );
+  assertOperationCanProceed(operation, false);
+  if (operation.status === "completed") return operation;
+  if (
+    operation.status === "provider_succeeded" ||
+    operation.status === "needs_reconciliation"
+  ) {
+    return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  }
+  throw new Error("Billing operation cannot be resumed automatically");
+}
+
 export async function refundPaymentWithJournal(
   applicationId: string,
   paymentId: string,
   providerMode: ProviderMode,
 ) {
   const payment = await getPaymentDetail(applicationId, paymentId, providerMode);
+  const idempotencyKey = `refund:${payment.id}:full`;
+  const existing = await findOperationByIdempotencyKey(
+    applicationId,
+    idempotencyKey,
+  );
+  if (existing) {
+    return resumeExistingOperation(applicationId, existing, providerMode);
+  }
+
   if (!payment.refundEligibility.eligible) {
     throw new Error(
       payment.refundEligibility.reason ?? "This payment cannot be refunded.",
@@ -188,16 +230,10 @@ export async function refundPaymentWithJournal(
     resourceId: payment.id,
     providerConnectionId: payment.providerConnectionId,
     providerResourceId: payment.providerPaymentId,
-    idempotencyKey: `refund:${payment.id}:full`,
+    idempotencyKey,
   });
-  assertOperationCanProceed(operation, created);
-
-  if (operation.status === "completed") return operation;
-  if (
-    operation.status === "provider_succeeded" ||
-    operation.status === "needs_reconciliation"
-  ) {
-    return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  if (!created) {
+    return resumeExistingOperation(applicationId, operation, providerMode);
   }
 
   let result;
@@ -233,6 +269,15 @@ export async function cancelSubscriptionWithJournal(
     subscriptionId,
     providerMode,
   );
+  const idempotencyKey = `cancel:${subscription.id}`;
+  const existing = await findOperationByIdempotencyKey(
+    applicationId,
+    idempotencyKey,
+  );
+  if (existing) {
+    return resumeExistingOperation(applicationId, existing, providerMode);
+  }
+
   if (!subscription.cancellationEligibility.eligible) {
     throw new Error(
       subscription.cancellationEligibility.reason ??
@@ -247,16 +292,10 @@ export async function cancelSubscriptionWithJournal(
     resourceId: subscription.id,
     providerConnectionId: subscription.providerConnectionId,
     providerResourceId: subscription.providerSubscriptionId,
-    idempotencyKey: `cancel:${subscription.id}`,
+    idempotencyKey,
   });
-  assertOperationCanProceed(operation, created);
-
-  if (operation.status === "completed") return operation;
-  if (
-    operation.status === "provider_succeeded" ||
-    operation.status === "needs_reconciliation"
-  ) {
-    return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  if (!created) {
+    return resumeExistingOperation(applicationId, operation, providerMode);
   }
 
   let result;
