@@ -1,0 +1,29 @@
+name: Temporary PR41 Waffo SDK Inspect
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - name: Install
+        run: npx --yes pnpm@10 install --no-frozen-lockfile
+      - name: Inspect Waffo SDK package
+        run: |
+          echo '=== package ==='
+          cat node_modules/@waffo/waffo-node/package.json
+          echo '=== files ==='
+          find node_modules/@waffo/waffo-node -maxdepth 4 -type f | sort
+          echo '=== declarations containing key APIs ==='
+          grep -R -n -E 'class Waffo|Environment|WaffoUnknownStatusError|refund\(|cancel\(|inquiry\(|verifyWebhook|webhook|RefundRequest|SubscriptionCancel|OrderCreate|MerchantConfig' node_modules/@waffo/waffo-node --include='*.d.ts' | head -n 500
+          echo '=== declarations ==='
+          find node_modules/@waffo/waffo-node -type f -name '*.d.ts' -print0 | sort -z | xargs -0 -I{} sh -c 'echo --- {}; cat {}'
