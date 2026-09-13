@@ -4,20 +4,19 @@ import { getDb } from "@/db/client";
 import { orders, payments, refunds, subscriptions } from "@/modules/commerce/schema";
 import { revokeEntitlementsBySource } from "@/modules/entitlements/service";
 import { billingOperations } from "@/modules/operations/schema";
+import type { ProviderMode } from "@/modules/providers/contract";
 import {
   cancelProviderSubscription,
   refundProviderPayment,
 } from "@/modules/providers/runtime";
+import { providerConnections } from "@/modules/providers/schema";
 import {
   getOperationById,
   getPaymentDetail,
   getSubscriptionDetail,
 } from "./billing-operations";
 
-function requiredString(
-  value: unknown,
-  label: string,
-): string {
+function requiredString(value: unknown, label: string): string {
   if (typeof value !== "string" || !value) {
     throw new Error(`${label} is missing from the normalized provider result`);
   }
@@ -96,6 +95,28 @@ async function updateOperation(
   return updated;
 }
 
+async function assertOperationEnvironment(
+  applicationId: string,
+  providerConnectionId: string,
+  providerMode: ProviderMode,
+) {
+  const db = getDb();
+  const [connection] = await db
+    .select({ id: providerConnections.id })
+    .from(providerConnections)
+    .where(
+      and(
+        eq(providerConnections.id, providerConnectionId),
+        eq(providerConnections.applicationId, applicationId),
+        eq(providerConnections.mode, providerMode),
+      ),
+    )
+    .limit(1);
+  if (!connection) {
+    throw new Error("Billing operation does not belong to the selected environment");
+  }
+}
+
 async function recordProviderFailure(
   applicationId: string,
   operationId: string,
@@ -119,8 +140,8 @@ async function markNeedsReconciliation(
         error instanceof Error ? error.message : "Local reconciliation failed",
     });
   } catch {
-    // The operation is already durable. A later inspection/reconciliation pass can
-    // recover it even if this best-effort status update is unavailable.
+    // The journal row is already durable. A later reconciliation pass can inspect it
+    // even if this best-effort status transition is temporarily unavailable.
   }
 }
 
@@ -151,8 +172,9 @@ function assertOperationCanProceed(
 export async function refundPaymentWithJournal(
   applicationId: string,
   paymentId: string,
+  providerMode: ProviderMode,
 ) {
-  const payment = await getPaymentDetail(applicationId, paymentId);
+  const payment = await getPaymentDetail(applicationId, paymentId, providerMode);
   if (!payment.refundEligibility.eligible) {
     throw new Error(
       payment.refundEligibility.reason ?? "This payment cannot be refunded.",
@@ -175,7 +197,7 @@ export async function refundPaymentWithJournal(
     operation.status === "provider_succeeded" ||
     operation.status === "needs_reconciliation"
   ) {
-    return reconcileBillingOperation(applicationId, operation.id);
+    return reconcileBillingOperation(applicationId, operation.id, providerMode);
   }
 
   let result;
@@ -198,14 +220,19 @@ export async function refundPaymentWithJournal(
     normalizedResult: { ...result },
     errorMessage: null,
   });
-  return reconcileBillingOperation(applicationId, operation.id);
+  return reconcileBillingOperation(applicationId, operation.id, providerMode);
 }
 
 export async function cancelSubscriptionWithJournal(
   applicationId: string,
   subscriptionId: string,
+  providerMode: ProviderMode,
 ) {
-  const subscription = await getSubscriptionDetail(applicationId, subscriptionId);
+  const subscription = await getSubscriptionDetail(
+    applicationId,
+    subscriptionId,
+    providerMode,
+  );
   if (!subscription.cancellationEligibility.eligible) {
     throw new Error(
       subscription.cancellationEligibility.reason ??
@@ -229,7 +256,7 @@ export async function cancelSubscriptionWithJournal(
     operation.status === "provider_succeeded" ||
     operation.status === "needs_reconciliation"
   ) {
-    return reconcileBillingOperation(applicationId, operation.id);
+    return reconcileBillingOperation(applicationId, operation.id, providerMode);
   }
 
   let result;
@@ -249,14 +276,21 @@ export async function cancelSubscriptionWithJournal(
     normalizedResult: { ...result },
     errorMessage: null,
   });
-  return reconcileBillingOperation(applicationId, operation.id);
+  return reconcileBillingOperation(applicationId, operation.id, providerMode);
 }
 
 export async function reconcileBillingOperation(
   applicationId: string,
   operationId: string,
+  providerMode: ProviderMode,
 ) {
   const operation = await getOperationById(applicationId, operationId);
+  await assertOperationEnvironment(
+    applicationId,
+    operation.providerConnectionId,
+    providerMode,
+  );
+
   if (operation.status === "completed") return operation;
   if (
     operation.status !== "provider_succeeded" &&
