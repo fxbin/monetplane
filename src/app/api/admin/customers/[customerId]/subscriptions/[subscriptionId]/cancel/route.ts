@@ -39,6 +39,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const operation = await cancelSubscriptionWithJournal(
       context.selectedApplication.id,
       subscriptionId,
+      context.environment,
     );
     return NextResponse.json({ operation });
   } catch (error) {
