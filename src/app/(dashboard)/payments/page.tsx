@@ -41,8 +41,11 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
   const applicationId = context.selectedApplication?.id;
   const [rows, providers] = applicationId
     ? await Promise.all([
-        getPaymentsList(applicationId, filter),
-        getProviderFilterOptions(applicationId),
+        getPaymentsList(applicationId, {
+          ...filter,
+          providerMode: context.environment,
+        }),
+        getProviderFilterOptions(applicationId, context.environment),
       ])
     : [[], []];
 
@@ -91,7 +94,9 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                           <code>{payment.id}</code>
                           <span>{payment.providerPaymentId}</span>
                           {latestOperation?.status === "needs_reconciliation" && (
-                            <span className="badge badge-warning">Needs reconciliation</span>
+                            <span className="badge badge-warning">
+                              Needs reconciliation
+                            </span>
                           )}
                         </div>
                       </td>
@@ -110,22 +115,34 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                       <td>
                         {payment.items.length > 0
                           ? payment.items
-                              .map((item) => item.productName ?? item.productKey ?? item.productId)
+                              .map(
+                                (item) =>
+                                  item.productName ??
+                                  item.productKey ??
+                                  item.productId,
+                              )
                               .join(", ")
                           : "—"}
                       </td>
-                      <td>{formatAmount(payment.amountMinor, payment.currency)}</td>
+                      <td>
+                        {formatAmount(payment.amountMinor, payment.currency)}
+                      </td>
                       <td>
                         <span className={`badge badge-${payment.status}`}>
                           {payment.status}
                         </span>
                       </td>
-                      <td>{payment.providerName ?? payment.provider ?? "—"}</td>
+                      <td>
+                        {payment.providerName ?? payment.provider ?? "—"}
+                      </td>
                       <td className="cell-muted">
                         {formatDateTime(payment.createdAt)}
                       </td>
                       <td>
-                        <Link className="table-row-link" href={`/payments/${payment.id}`}>
+                        <Link
+                          className="table-row-link"
+                          href={`/payments/${payment.id}`}
+                        >
                           Open
                         </Link>
                       </td>
@@ -139,7 +156,9 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
       ) : (
         <div className="empty-state">
           <h2 className="empty-state-title">
-            {applicationId ? "No payments match this view" : "No project selected"}
+            {applicationId
+              ? "No payments match this view"
+              : "No project selected"}
           </h2>
           <p className="empty-state-desc">
             {applicationId
