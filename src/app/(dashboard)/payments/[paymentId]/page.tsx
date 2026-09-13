@@ -85,7 +85,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
           <span>Refunds</span>
           <strong>{payment.refunds.length}</strong>
           <small>
-            {payment.refundEligibility.eligible ? "Eligible now" : "Not eligible"}
+            {payment.refundEligibility.eligible
+              ? "Eligible now"
+              : "Not eligible"}
           </small>
         </section>
       </div>

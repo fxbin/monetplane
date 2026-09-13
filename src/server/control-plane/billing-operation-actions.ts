@@ -1,7 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { orders, payments, refunds, subscriptions } from "@/modules/commerce/schema";
+import {
+  orders,
+  payments,
+  refunds,
+  subscriptions,
+} from "@/modules/commerce/schema";
 import { revokeEntitlementsBySource } from "@/modules/entitlements/service";
 import { billingOperations } from "@/modules/operations/schema";
 import type {
@@ -32,7 +37,9 @@ function optionalString(value: unknown): string | undefined {
 }
 
 function optionalNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function requiredBoolean(value: unknown, label: string): boolean {
@@ -78,7 +85,10 @@ async function createOrGetOperation(input: {
       normalizedResult: {},
     })
     .onConflictDoNothing({
-      target: [billingOperations.applicationId, billingOperations.idempotencyKey],
+      target: [
+        billingOperations.applicationId,
+        billingOperations.idempotencyKey,
+      ],
     })
     .returning();
   if (inserted) return { operation: inserted, created: true } as const;
@@ -214,7 +224,11 @@ export async function refundPaymentWithJournal(
   paymentId: string,
   providerMode: ProviderMode,
 ) {
-  const payment = await getPaymentDetail(applicationId, paymentId, providerMode);
+  const payment = await getPaymentDetail(
+    applicationId,
+    paymentId,
+    providerMode,
+  );
   const idempotencyKey = `refund:${payment.id}:full`;
   const existing = await findOperationByIdempotencyKey(
     applicationId,

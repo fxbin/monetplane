@@ -32,7 +32,9 @@ function readFilter(
   };
 }
 
-export default async function PaymentsPage({ searchParams }: PaymentsPageProps) {
+export default async function PaymentsPage({
+  searchParams,
+}: PaymentsPageProps) {
   const [context, params] = await Promise.all([
     getConsoleContext(),
     searchParams,
@@ -93,7 +95,8 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                         <div className="billing-id-cell">
                           <code>{payment.id}</code>
                           <span>{payment.providerPaymentId}</span>
-                          {latestOperation?.status === "needs_reconciliation" && (
+                          {latestOperation?.status ===
+                            "needs_reconciliation" && (
                             <span className="badge badge-warning">
                               Needs reconciliation
                             </span>
@@ -102,14 +105,18 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                       </td>
                       <td>
                         {payment.applicationCustomerId ? (
-                          <Link href={`/customers/${payment.applicationCustomerId}`}>
+                          <Link
+                            href={`/customers/${payment.applicationCustomerId}`}
+                          >
                             {payment.externalCustomerId ?? "Customer"}
                           </Link>
                         ) : (
                           <span className="cell-muted">Unknown</span>
                         )}
                         {payment.customerEmail && (
-                          <div className="cell-muted">{payment.customerEmail}</div>
+                          <div className="cell-muted">
+                            {payment.customerEmail}
+                          </div>
                         )}
                       </td>
                       <td>
@@ -132,9 +139,7 @@ export default async function PaymentsPage({ searchParams }: PaymentsPageProps) 
                           {payment.status}
                         </span>
                       </td>
-                      <td>
-                        {payment.providerName ?? payment.provider ?? "—"}
-                      </td>
+                      <td>{payment.providerName ?? payment.provider ?? "—"}</td>
                       <td className="cell-muted">
                         {formatDateTime(payment.createdAt)}
                       </td>

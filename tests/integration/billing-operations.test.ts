@@ -20,7 +20,10 @@ import { entitlementGrants } from "../../src/modules/entitlements/schema";
 import { grantEntitlement } from "../../src/modules/entitlements/service";
 import { billingOperations } from "../../src/modules/operations/schema";
 import { mockProviderAdapter } from "../../src/modules/providers/adapters/mock";
-import type { PaymentProviderAdapter, ProviderMode } from "../../src/modules/providers/contract";
+import type {
+  PaymentProviderAdapter,
+  ProviderMode,
+} from "../../src/modules/providers/contract";
 import {
   clearProviderAdaptersForTests,
   registerProviderAdapter,

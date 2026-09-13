@@ -17,7 +17,10 @@ export async function POST(_request: Request, { params }: RouteContext) {
       getConsoleContext(),
     ]);
     if (!context.selectedApplication) {
-      return NextResponse.json({ error: "Select a project first" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Select a project first" },
+        { status: 400 },
+      );
     }
 
     const operation = await cancelSubscriptionWithJournal(

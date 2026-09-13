@@ -94,7 +94,9 @@ export default async function RefundPage({ params }: RefundPageProps) {
           </div>
         </div>
         {refund.items.length === 0 ? (
-          <p className="card-empty-copy">No order items are linked to this refund.</p>
+          <p className="card-empty-copy">
+            No order items are linked to this refund.
+          </p>
         ) : (
           <div className="billing-item-list">
             {refund.items.map((item) => (

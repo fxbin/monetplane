@@ -96,7 +96,8 @@ export default async function SubscriptionsPage({
                         <div className="billing-id-cell">
                           <code>{subscription.id}</code>
                           <span>{subscription.providerSubscriptionId}</span>
-                          {latestOperation?.status === "needs_reconciliation" && (
+                          {latestOperation?.status ===
+                            "needs_reconciliation" && (
                             <span className="badge badge-warning">
                               Needs reconciliation
                             </span>
@@ -129,14 +130,17 @@ export default async function SubscriptionsPage({
                                 .join(", ")}
                             </strong>
                             {subscription.items[0]?.amountMinor !== null &&
-                              subscription.items[0]?.amountMinor !== undefined &&
+                              subscription.items[0]?.amountMinor !==
+                                undefined &&
                               subscription.items[0]?.currency && (
                                 <span>
                                   {formatAmount(
                                     subscription.items[0].amountMinor,
                                     subscription.items[0].currency,
                                   )}
-                                  /{subscription.items[0].recurringInterval ?? "period"}
+                                  /
+                                  {subscription.items[0].recurringInterval ??
+                                    "period"}
                                 </span>
                               )}
                           </div>
@@ -155,7 +159,9 @@ export default async function SubscriptionsPage({
                           : "—"}
                       </td>
                       <td>
-                        {subscription.providerName ?? subscription.provider ?? "—"}
+                        {subscription.providerName ??
+                          subscription.provider ??
+                          "—"}
                       </td>
                       <td className="cell-muted">
                         {formatDateTime(subscription.updatedAt)}

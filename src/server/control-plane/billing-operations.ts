@@ -1,15 +1,10 @@
-import {
-  and,
-  desc,
-  eq,
-  gte,
-  ilike,
-  inArray,
-  lte,
-  or,
-} from "drizzle-orm";
+import { and, desc, eq, gte, ilike, inArray, lte, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { prices, productGrantConfigs, products } from "@/modules/catalog/schema";
+import {
+  prices,
+  productGrantConfigs,
+  products,
+} from "@/modules/catalog/schema";
 import {
   orderItems,
   orders,
@@ -251,7 +246,8 @@ export async function getPaymentDetail(
     providerMode,
   });
   const payment = rows[0];
-  if (!payment) throw new Error("Payment not found in the selected project/environment");
+  if (!payment)
+    throw new Error("Payment not found in the selected project/environment");
 
   const db = getDb();
   const [events, eligibility] = await Promise.all([
@@ -299,19 +295,29 @@ async function getRefundEligibility(
   payment: Awaited<ReturnType<typeof getPaymentsList>>[number],
 ): Promise<OperationEligibility> {
   if (payment.status !== "succeeded") {
-    return { eligible: false, reason: "Only succeeded payments can be refunded." };
+    return {
+      eligible: false,
+      reason: "Only succeeded payments can be refunded.",
+    };
   }
   if (!payment.orderId || payment.billingMode !== "one_time") {
     return {
       eligible: false,
-      reason: "Subscription payments are handled from the subscription operations flow.",
+      reason:
+        "Subscription payments are handled from the subscription operations flow.",
     };
   }
   if (payment.refunds.some((refund) => refund.status !== "failed")) {
-    return { eligible: false, reason: "A refund already exists for this payment." };
+    return {
+      eligible: false,
+      reason: "A refund already exists for this payment.",
+    };
   }
   if (payment.amountMinor <= 0) {
-    return { eligible: false, reason: "Zero-value payments cannot be refunded." };
+    return {
+      eligible: false,
+      reason: "Zero-value payments cannot be refunded.",
+    };
   }
 
   const db = getDb();
@@ -399,9 +405,7 @@ export async function getSubscriptionsList(
     .where(
       and(
         eq(subscriptions.applicationId, applicationId),
-        filter.resourceId
-          ? eq(subscriptions.id, filter.resourceId)
-          : undefined,
+        filter.resourceId ? eq(subscriptions.id, filter.resourceId) : undefined,
         filter.status ? eq(subscriptions.status, filter.status) : undefined,
         filter.providerConnectionId
           ? eq(subscriptions.providerConnectionId, filter.providerConnectionId)
@@ -476,7 +480,9 @@ export async function getSubscriptionDetail(
   });
   const subscription = rows[0];
   if (!subscription) {
-    throw new Error("Subscription not found in the selected project/environment");
+    throw new Error(
+      "Subscription not found in the selected project/environment",
+    );
   }
 
   const db = getDb();
@@ -507,10 +513,8 @@ export async function getSubscriptionDetail(
 
   const relatedEvents = events.filter(
     (event) =>
-      normalizedEventString(
-        event.normalizedEvent,
-        "providerSubscriptionId",
-      ) === subscription.providerSubscriptionId,
+      normalizedEventString(event.normalizedEvent, "providerSubscriptionId") ===
+      subscription.providerSubscriptionId,
   );
 
   return {
@@ -525,7 +529,10 @@ async function getCancellationEligibility(
   subscription: Awaited<ReturnType<typeof getSubscriptionsList>>[number],
 ): Promise<OperationEligibility> {
   if (["cancelled", "expired"].includes(subscription.status)) {
-    return { eligible: false, reason: "This subscription is already terminal." };
+    return {
+      eligible: false,
+      reason: "This subscription is already terminal.",
+    };
   }
   try {
     const capabilities = await getProviderCapabilities(
@@ -644,7 +651,8 @@ export async function getRefundDetail(
     providerMode,
   });
   const refund = refundsList[0];
-  if (!refund) throw new Error("Refund not found in the selected project/environment");
+  if (!refund)
+    throw new Error("Refund not found in the selected project/environment");
 
   const payment = await getPaymentDetail(
     applicationId,

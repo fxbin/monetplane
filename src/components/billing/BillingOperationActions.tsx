@@ -45,7 +45,9 @@ function ConfirmAction({
       setOpen(false);
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Billing operation failed");
+      setError(
+        cause instanceof Error ? cause.message : "Billing operation failed",
+      );
     } finally {
       setPending(false);
     }

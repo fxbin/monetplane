@@ -94,7 +94,9 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                     </td>
                     <td>
                       {refund.applicationCustomerId ? (
-                        <Link href={`/customers/${refund.applicationCustomerId}`}>
+                        <Link
+                          href={`/customers/${refund.applicationCustomerId}`}
+                        >
                           {refund.externalCustomerId ?? "Customer"}
                         </Link>
                       ) : (
@@ -118,7 +120,10 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                     </td>
                     <td>
                       {refund.amountMinor !== null && refund.paymentCurrency
-                        ? formatAmount(refund.amountMinor, refund.paymentCurrency)
+                        ? formatAmount(
+                            refund.amountMinor,
+                            refund.paymentCurrency,
+                          )
                         : "—"}
                     </td>
                     <td>
@@ -147,7 +152,9 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
       ) : (
         <div className="empty-state">
           <h2 className="empty-state-title">
-            {applicationId ? "No refunds match this view" : "No project selected"}
+            {applicationId
+              ? "No refunds match this view"
+              : "No project selected"}
           </h2>
           <p className="empty-state-desc">
             {applicationId
