@@ -198,7 +198,8 @@ export default async function SubscriptionPage({
                     </span>
                     {operation.failureKind && (
                       <small>
-                        Provider outcome: {operation.failureKind.replaceAll("_", " ")}
+                        Provider outcome:{" "}
+                        {operation.failureKind.replaceAll("_", " ")}
                       </small>
                     )}
                     {operation.errorMessage && (
@@ -218,7 +219,9 @@ export default async function SubscriptionPage({
                     )}
                     {operation.status === "failed" &&
                       operation.failureKind === "rejected" && (
-                        <RetryBillingOperationAction operationId={operation.id} />
+                        <RetryBillingOperationAction
+                          operationId={operation.id}
+                        />
                       )}
                   </div>
                 </div>

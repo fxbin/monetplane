@@ -182,7 +182,8 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     </span>
                     {operation.failureKind && (
                       <small>
-                        Provider outcome: {operation.failureKind.replaceAll("_", " ")}
+                        Provider outcome:{" "}
+                        {operation.failureKind.replaceAll("_", " ")}
                       </small>
                     )}
                     {operation.errorMessage && (
@@ -202,7 +203,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     )}
                     {operation.status === "failed" &&
                       operation.failureKind === "rejected" && (
-                        <RetryBillingOperationAction operationId={operation.id} />
+                        <RetryBillingOperationAction
+                          operationId={operation.id}
+                        />
                       )}
                   </div>
                 </div>
