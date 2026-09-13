@@ -1,0 +1,370 @@
+.customer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  margin-bottom: 18px;
+}
+
+.customer-search-field {
+  flex: 1;
+}
+
+.customer-search-field input,
+.customer-filter-field select {
+  width: 100%;
+  min-height: 40px;
+  border: 1px solid var(--color-border, #e8e2d8);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0 12px;
+  color: #111827;
+}
+
+.customer-filter-field {
+  min-width: 190px;
+}
+
+.customer-clear-link,
+.table-row-link,
+.customer-workspace-footer a {
+  color: #4b5563;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.customer-clear-link:hover,
+.table-row-link:hover,
+.customer-workspace-footer a:hover {
+  color: #111827;
+  text-decoration: underline;
+}
+
+.customer-identity-cell,
+.customer-credit-cell,
+.customer-payment-id {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.customer-identity-cell span,
+.customer-credit-cell span,
+.customer-payment-id span {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.customer-workspace-hero {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 24px;
+  margin-bottom: 18px;
+}
+
+.customer-workspace-identity h2 {
+  margin: 6px 0 10px;
+  font-size: 25px;
+}
+
+.customer-identity-meta {
+  display: flex;
+  gap: 10px 16px;
+  align-items: center;
+  flex-wrap: wrap;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.customer-identity-meta code {
+  padding: 4px 7px;
+  border-radius: 6px;
+  background: #f4f0ea;
+  color: #374151;
+}
+
+.customer-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.customer-summary-card {
+  min-height: 128px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.customer-summary-card > span:first-child,
+.customer-summary-card small,
+.customer-section-note,
+.customer-inline-note,
+.customer-action-unavailable {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.customer-summary-card > strong {
+  font-size: 23px;
+  letter-spacing: -0.02em;
+}
+
+.customer-section {
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.customer-subscription-list,
+.entitlement-list,
+.ledger-list,
+.customer-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.customer-subscription-row {
+  border: 1px solid #e8e2d8;
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+}
+
+.customer-subscription-main,
+.customer-subscription-meta,
+.customer-subscription-products,
+.customer-row-actions,
+.entitlement-row,
+.ledger-row,
+.customer-event-row {
+  display: flex;
+  align-items: center;
+}
+
+.customer-subscription-main {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.customer-subscription-main > div,
+.entitlement-row > div,
+.customer-event-row > div:not(.customer-event-dot) {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.customer-subscription-main code,
+.customer-subscription-products,
+.customer-subscription-meta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.customer-subscription-meta,
+.customer-subscription-products {
+  gap: 8px 16px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.customer-row-actions {
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.customer-two-column-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.credit-account-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.credit-account-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid #e8e2d8;
+  border-radius: 10px;
+  background: #fbfaf7;
+}
+
+.credit-account-card strong {
+  font-size: 22px;
+}
+
+.credit-account-card span,
+.entitlement-row span,
+.ledger-row span,
+.customer-event-row span,
+.customer-event-row small {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.entitlement-row,
+.ledger-row,
+.customer-event-row {
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #eee9e1;
+}
+
+.entitlement-row:last-child,
+.ledger-row:last-child,
+.customer-event-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.ledger-row-values {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+}
+
+.ledger-row-values .is-positive {
+  color: #3f7f39;
+}
+
+.ledger-row-values .is-negative {
+  color: #b74237;
+}
+
+.customer-event-row {
+  justify-content: flex-start;
+}
+
+.customer-event-row > .badge {
+  margin-left: auto;
+}
+
+.customer-event-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #6b5bb7;
+}
+
+.customer-history-grid {
+  align-items: start;
+}
+
+.customer-payment-table td:last-child {
+  min-width: 160px;
+}
+
+.customer-danger-button {
+  border-color: #e7c8c3;
+  color: #a63f35;
+}
+
+.customer-action-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(17, 24, 39, 0.34);
+}
+
+.customer-action-dialog {
+  width: min(540px, 100%);
+  padding: 22px;
+  box-shadow: 0 24px 70px rgba(17, 24, 39, 0.18);
+}
+
+.customer-action-kicker {
+  color: #6b5bb7;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.customer-action-dialog h2 {
+  margin: 6px 0 8px;
+}
+
+.customer-action-dialog p {
+  margin: 0;
+  color: #6b7280;
+  line-height: 1.55;
+}
+
+.customer-action-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.customer-action-fields .span-two {
+  grid-column: 1 / -1;
+}
+
+.customer-action-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fdecec;
+  color: #a63f35;
+  font-size: 13px;
+}
+
+.customer-action-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.customer-workspace-footer {
+  padding: 4px 0 24px;
+}
+
+@media (max-width: 1050px) {
+  .customer-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .customer-toolbar,
+  .customer-workspace-hero {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .customer-filter-field {
+    min-width: 0;
+  }
+
+  .customer-summary-grid,
+  .customer-two-column-grid,
+  .credit-account-grid,
+  .customer-action-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .customer-action-fields .span-two {
+    grid-column: auto;
+  }
+}
