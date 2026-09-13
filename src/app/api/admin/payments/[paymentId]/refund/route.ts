@@ -23,12 +23,16 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const operation = await refundPaymentWithJournal(
       context.selectedApplication.id,
       paymentId,
+      context.environment,
     );
     return NextResponse.json({ operation });
   } catch (error) {
     console.error("[admin/payments/refund] Error:", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to refund payment" },
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to refund payment",
+      },
       { status: 400 },
     );
   }
