@@ -21,8 +21,9 @@ import {
 } from "@/modules/commerce/schema";
 import { applicationCustomers } from "@/modules/customers/schema";
 import { billingOperations } from "@/modules/operations/schema";
-import { providerConnections } from "@/modules/providers/schema";
+import type { ProviderMode } from "@/modules/providers/contract";
 import { getProviderCapabilities } from "@/modules/providers/runtime";
+import { providerConnections } from "@/modules/providers/schema";
 
 export type BillingOperationsFilter = {
   status?: string;
@@ -31,6 +32,8 @@ export type BillingOperationsFilter = {
   providerConnectionId?: string;
   from?: string;
   to?: string;
+  providerMode?: ProviderMode;
+  resourceId?: string;
 };
 
 export type OperationEligibility = {
@@ -137,6 +140,7 @@ export async function getPaymentsList(
       customerEmail: applicationCustomers.email,
       provider: providerConnections.provider,
       providerName: providerConnections.name,
+      providerMode: providerConnections.mode,
     })
     .from(payments)
     .leftJoin(orders, eq(payments.orderId, orders.id))
@@ -154,9 +158,13 @@ export async function getPaymentsList(
     .where(
       and(
         eq(payments.applicationId, applicationId),
+        filter.resourceId ? eq(payments.id, filter.resourceId) : undefined,
         filter.status ? eq(payments.status, filter.status) : undefined,
         filter.providerConnectionId
           ? eq(payments.providerConnectionId, filter.providerConnectionId)
+          : undefined,
+        filter.providerMode
+          ? eq(providerConnections.mode, filter.providerMode)
           : undefined,
         from ? gte(payments.createdAt, from) : undefined,
         to ? lte(payments.createdAt, to) : undefined,
@@ -172,7 +180,7 @@ export async function getPaymentsList(
       ),
     )
     .orderBy(desc(payments.createdAt))
-    .limit(200);
+    .limit(filter.resourceId ? 1 : 200);
 
   const orderIds = rows.flatMap((row) => (row.orderId ? [row.orderId] : []));
   const paymentIds = rows.map((row) => row.id);
@@ -226,17 +234,24 @@ export async function getPaymentsList(
   return rows
     .map((row) => ({
       ...row,
-      items: row.orderId ? itemsByOrder.get(row.orderId) ?? [] : [],
+      items: row.orderId ? (itemsByOrder.get(row.orderId) ?? []) : [],
       refunds: refundsByPayment.get(row.id) ?? [],
       operations: operationsByPayment.get(row.id) ?? [],
     }))
     .filter((row) => matchesProduct(filter.product, row.items));
 }
 
-export async function getPaymentDetail(applicationId: string, paymentId: string) {
-  const rows = await getPaymentsList(applicationId);
-  const payment = rows.find((row) => row.id === paymentId);
-  if (!payment) throw new Error("Payment not found in the selected project");
+export async function getPaymentDetail(
+  applicationId: string,
+  paymentId: string,
+  providerMode?: ProviderMode,
+) {
+  const rows = await getPaymentsList(applicationId, {
+    resourceId: paymentId,
+    providerMode,
+  });
+  const payment = rows[0];
+  if (!payment) throw new Error("Payment not found in the selected project/environment");
 
   const db = getDb();
   const [events, eligibility] = await Promise.all([
@@ -250,7 +265,12 @@ export async function getPaymentDetail(applicationId: string, paymentId: string)
         normalizedEvent: webhookEvents.normalizedEvent,
       })
       .from(webhookEvents)
-      .where(eq(webhookEvents.applicationId, applicationId))
+      .where(
+        and(
+          eq(webhookEvents.applicationId, applicationId),
+          eq(webhookEvents.providerConnectionId, payment.providerConnectionId),
+        ),
+      )
       .orderBy(desc(webhookEvents.occurredAt))
       .limit(200),
     getRefundEligibility(applicationId, payment),
@@ -322,7 +342,10 @@ async function getRefundEligibility(
       payment.providerConnectionId,
     );
     if (!capabilities.refund) {
-      return { eligible: false, reason: "The connected provider does not support refunds." };
+      return {
+        eligible: false,
+        reason: "The connected provider does not support refunds.",
+      };
     }
   } catch {
     return {
@@ -359,6 +382,7 @@ export async function getSubscriptionsList(
       customerEmail: applicationCustomers.email,
       provider: providerConnections.provider,
       providerName: providerConnections.name,
+      providerMode: providerConnections.mode,
     })
     .from(subscriptions)
     .leftJoin(
@@ -375,9 +399,15 @@ export async function getSubscriptionsList(
     .where(
       and(
         eq(subscriptions.applicationId, applicationId),
+        filter.resourceId
+          ? eq(subscriptions.id, filter.resourceId)
+          : undefined,
         filter.status ? eq(subscriptions.status, filter.status) : undefined,
         filter.providerConnectionId
           ? eq(subscriptions.providerConnectionId, filter.providerConnectionId)
+          : undefined,
+        filter.providerMode
+          ? eq(providerConnections.mode, filter.providerMode)
           : undefined,
         from ? gte(subscriptions.createdAt, from) : undefined,
         to ? lte(subscriptions.createdAt, to) : undefined,
@@ -393,7 +423,7 @@ export async function getSubscriptionsList(
       ),
     )
     .orderBy(desc(subscriptions.updatedAt))
-    .limit(200);
+    .limit(filter.resourceId ? 1 : 200);
 
   const subscriptionIds = rows.map((row) => row.id);
   const [itemRows, operationRows] = await Promise.all([
@@ -438,11 +468,15 @@ export async function getSubscriptionsList(
 export async function getSubscriptionDetail(
   applicationId: string,
   subscriptionId: string,
+  providerMode?: ProviderMode,
 ) {
-  const rows = await getSubscriptionsList(applicationId);
-  const subscription = rows.find((row) => row.id === subscriptionId);
+  const rows = await getSubscriptionsList(applicationId, {
+    resourceId: subscriptionId,
+    providerMode,
+  });
+  const subscription = rows[0];
   if (!subscription) {
-    throw new Error("Subscription not found in the selected project");
+    throw new Error("Subscription not found in the selected project/environment");
   }
 
   const db = getDb();
@@ -457,7 +491,15 @@ export async function getSubscriptionDetail(
         normalizedEvent: webhookEvents.normalizedEvent,
       })
       .from(webhookEvents)
-      .where(eq(webhookEvents.applicationId, applicationId))
+      .where(
+        and(
+          eq(webhookEvents.applicationId, applicationId),
+          eq(
+            webhookEvents.providerConnectionId,
+            subscription.providerConnectionId,
+          ),
+        ),
+      )
       .orderBy(desc(webhookEvents.occurredAt))
       .limit(200),
     getCancellationEligibility(applicationId, subscription),
@@ -493,7 +535,8 @@ async function getCancellationEligibility(
     if (!capabilities.subscription_cancel) {
       return {
         eligible: false,
-        reason: "The connected provider does not support subscription cancellation.",
+        reason:
+          "The connected provider does not support subscription cancellation.",
       };
     }
   } catch {
@@ -531,6 +574,7 @@ export async function getRefundsList(
       customerEmail: applicationCustomers.email,
       provider: providerConnections.provider,
       providerName: providerConnections.name,
+      providerMode: providerConnections.mode,
     })
     .from(refunds)
     .leftJoin(payments, eq(refunds.paymentId, payments.id))
@@ -549,9 +593,13 @@ export async function getRefundsList(
     .where(
       and(
         eq(refunds.applicationId, applicationId),
+        filter.resourceId ? eq(refunds.id, filter.resourceId) : undefined,
         filter.status ? eq(refunds.status, filter.status) : undefined,
         filter.providerConnectionId
           ? eq(refunds.providerConnectionId, filter.providerConnectionId)
+          : undefined,
+        filter.providerMode
+          ? eq(providerConnections.mode, filter.providerMode)
           : undefined,
         from ? gte(refunds.createdAt, from) : undefined,
         to ? lte(refunds.createdAt, to) : undefined,
@@ -567,7 +615,7 @@ export async function getRefundsList(
       ),
     )
     .orderBy(desc(refunds.createdAt))
-    .limit(200);
+    .limit(filter.resourceId ? 1 : 200);
 
   const orderIds = rows.flatMap((row) => (row.orderId ? [row.orderId] : []));
   const itemRows = await loadOrderItems(orderIds);
@@ -581,21 +629,35 @@ export async function getRefundsList(
   return rows
     .map((row) => ({
       ...row,
-      items: row.orderId ? itemsByOrder.get(row.orderId) ?? [] : [],
+      items: row.orderId ? (itemsByOrder.get(row.orderId) ?? []) : [],
     }))
     .filter((row) => matchesProduct(filter.product, row.items));
 }
 
-export async function getRefundDetail(applicationId: string, refundId: string) {
-  const refundsList = await getRefundsList(applicationId);
-  const refund = refundsList.find((row) => row.id === refundId);
-  if (!refund) throw new Error("Refund not found in the selected project");
+export async function getRefundDetail(
+  applicationId: string,
+  refundId: string,
+  providerMode?: ProviderMode,
+) {
+  const refundsList = await getRefundsList(applicationId, {
+    resourceId: refundId,
+    providerMode,
+  });
+  const refund = refundsList[0];
+  if (!refund) throw new Error("Refund not found in the selected project/environment");
 
-  const payment = await getPaymentDetail(applicationId, refund.paymentId);
+  const payment = await getPaymentDetail(
+    applicationId,
+    refund.paymentId,
+    providerMode,
+  );
   return { ...refund, payment };
 }
 
-export async function getOperationById(applicationId: string, operationId: string) {
+export async function getOperationById(
+  applicationId: string,
+  operationId: string,
+) {
   const db = getDb();
   const [operation] = await db
     .select()
@@ -611,7 +673,10 @@ export async function getOperationById(applicationId: string, operationId: strin
   return operation;
 }
 
-export async function getProviderFilterOptions(applicationId: string) {
+export async function getProviderFilterOptions(
+  applicationId: string,
+  providerMode?: ProviderMode,
+) {
   const db = getDb();
   return db
     .select({
@@ -621,6 +686,11 @@ export async function getProviderFilterOptions(applicationId: string) {
       mode: providerConnections.mode,
     })
     .from(providerConnections)
-    .where(eq(providerConnections.applicationId, applicationId))
+    .where(
+      and(
+        eq(providerConnections.applicationId, applicationId),
+        providerMode ? eq(providerConnections.mode, providerMode) : undefined,
+      ),
+    )
     .orderBy(providerConnections.name);
 }
