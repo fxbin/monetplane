@@ -35,6 +35,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const operation = await refundPaymentWithJournal(
       context.selectedApplication.id,
       paymentId,
+      context.environment,
     );
     return NextResponse.json({ operation });
   } catch (error) {
