@@ -20,7 +20,11 @@ export default async function RefundPage({ params }: RefundPageProps) {
 
   let refund: Awaited<ReturnType<typeof getRefundDetail>>;
   try {
-    refund = await getRefundDetail(context.selectedApplication.id, refundId);
+    refund = await getRefundDetail(
+      context.selectedApplication.id,
+      refundId,
+      context.environment,
+    );
   } catch (error) {
     if (error instanceof Error && error.message.includes("Refund not found")) {
       notFound();
@@ -94,9 +98,14 @@ export default async function RefundPage({ params }: RefundPageProps) {
         ) : (
           <div className="billing-item-list">
             {refund.items.map((item) => (
-              <div className="billing-item-row" key={`${item.orderId}:${item.priceId}`}>
+              <div
+                className="billing-item-row"
+                key={`${item.orderId}:${item.priceId}`}
+              >
                 <div>
-                  <strong>{item.productName ?? item.productKey ?? item.productId}</strong>
+                  <strong>
+                    {item.productName ?? item.productKey ?? item.productId}
+                  </strong>
                   <code>{item.productId}</code>
                 </div>
                 <span>{item.quantity} × item</span>
@@ -115,7 +124,9 @@ export default async function RefundPage({ params }: RefundPageProps) {
           <span className="customer-section-note">Normalized events only</span>
         </div>
         {refund.payment.events.length === 0 ? (
-          <p className="card-empty-copy">No related provider events were found.</p>
+          <p className="card-empty-copy">
+            No related provider events were found.
+          </p>
         ) : (
           <div className="billing-timeline">
             {refund.payment.events.map((event) => (
@@ -126,7 +137,9 @@ export default async function RefundPage({ params }: RefundPageProps) {
                   <span>{event.providerEventName}</span>
                   <small>{formatDateTime(event.occurredAt)}</small>
                 </div>
-                <span className={`badge badge-${event.status}`}>{event.status}</span>
+                <span className={`badge badge-${event.status}`}>
+                  {event.status}
+                </span>
               </div>
             ))}
           </div>
