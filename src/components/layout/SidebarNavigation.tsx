@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { ReactNode } from "react";
 import type {
   ConsoleApplication,
   ConsoleEnvironment,
@@ -47,9 +48,13 @@ const navSections: Array<{ label?: string; items: NavItem[] }> = [
     label: "Business",
     items: [
       { label: "Customers", href: "/customers", icon: "customers" },
-      { label: "Payments", icon: "payments", comingSoon: true },
-      { label: "Subscriptions", icon: "subscriptions", comingSoon: true },
-      { label: "Refunds", icon: "refunds", comingSoon: true },
+      { label: "Payments", href: "/payments", icon: "payments" },
+      {
+        label: "Subscriptions",
+        href: "/subscriptions",
+        icon: "subscriptions",
+      },
+      { label: "Refunds", href: "/refunds", icon: "refunds" },
     ],
   },
   {
@@ -77,7 +82,7 @@ const navSections: Array<{ label?: string; items: NavItem[] }> = [
 ];
 
 function NavIcon({ name }: { name: NavItem["icon"] }) {
-  const paths: Record<NavItem["icon"], React.ReactNode> = {
+  const paths: Record<NavItem["icon"], ReactNode> = {
     overview: <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" />,
     box: <path d="m4 7 8-4 8 4-8 4-8-4Zm0 0v10l8 4 8-4V7M12 11v10" />,
     credits: <path d="M4 7h16v10H4zM8 11h4M4 9h16" />,

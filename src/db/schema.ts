@@ -21,4 +21,5 @@ export * from "../modules/commerce/schema";
 export * from "../modules/credits/schema";
 export * from "../modules/customers/schema";
 export * from "../modules/entitlements/schema";
+export * from "../modules/operations/schema";
 export * from "../modules/providers/schema";

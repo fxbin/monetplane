@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
-import { refundPaymentWithJournal } from "@/server/control-plane/billing-operation-actions";
+import { cancelSubscriptionWithJournal } from "@/server/control-plane/billing-operation-actions";
 import { getConsoleContext } from "@/server/control-plane/context";
-import { getCustomerWorkspace } from "@/server/control-plane/customer-workspace";
 
 type RouteContext = {
-  params: Promise<{ customerId: string; paymentId: string }>;
+  params: Promise<{ subscriptionId: string }>;
 };
 
 export async function POST(_request: Request, { params }: RouteContext) {
@@ -13,7 +12,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
   if (guard instanceof NextResponse) return guard;
 
   try {
-    const [{ customerId, paymentId }, context] = await Promise.all([
+    const [{ subscriptionId }, context] = await Promise.all([
       params,
       getConsoleContext(),
     ]);
@@ -24,26 +23,20 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    const workspace = await getCustomerWorkspace(
+    const operation = await cancelSubscriptionWithJournal(
       context.selectedApplication.id,
-      customerId,
-    );
-    if (!workspace.payments.some((payment) => payment.id === paymentId)) {
-      throw new Error("Payment not found for this customer");
-    }
-
-    const operation = await refundPaymentWithJournal(
-      context.selectedApplication.id,
-      paymentId,
+      subscriptionId,
       context.environment,
     );
     return NextResponse.json({ operation });
   } catch (error) {
-    console.error("[admin/customers/payments/refund] Error:", error);
+    console.error("[admin/subscriptions/cancel] Error:", error);
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to refund payment",
+          error instanceof Error
+            ? error.message
+            : "Failed to cancel subscription",
       },
       { status: 400 },
     );

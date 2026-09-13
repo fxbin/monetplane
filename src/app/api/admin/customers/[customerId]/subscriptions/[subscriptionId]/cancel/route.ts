@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { cancelSubscriptionWithJournal } from "@/server/control-plane/billing-operation-actions";
 import { getConsoleContext } from "@/server/control-plane/context";
-import { cancelCustomerSubscription } from "@/server/control-plane/customer-workspace";
+import { getCustomerWorkspace } from "@/server/control-plane/customer-workspace";
 
 type RouteContext = {
   params: Promise<{ customerId: string; subscriptionId: string }>;
@@ -23,12 +24,24 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    const subscription = await cancelCustomerSubscription(
+    const workspace = await getCustomerWorkspace(
       context.selectedApplication.id,
       customerId,
-      subscriptionId,
     );
-    return NextResponse.json({ subscription });
+    if (
+      !workspace.subscriptions.some(
+        (subscription) => subscription.id === subscriptionId,
+      )
+    ) {
+      throw new Error("Subscription not found for this customer");
+    }
+
+    const operation = await cancelSubscriptionWithJournal(
+      context.selectedApplication.id,
+      subscriptionId,
+      context.environment,
+    );
+    return NextResponse.json({ operation });
   } catch (error) {
     console.error("[admin/customers/subscriptions/cancel] Error:", error);
     return NextResponse.json(

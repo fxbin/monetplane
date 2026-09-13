@@ -50,6 +50,13 @@
       "when": 1787074800000,
       "tag": "0006_credits_ledger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789266600000,
+      "tag": "0007_billing_operations",
+      "breakpoints": true
     }
   ]
 }
