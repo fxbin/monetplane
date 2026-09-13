@@ -41,8 +41,11 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
   const applicationId = context.selectedApplication?.id;
   const [rows, providers] = applicationId
     ? await Promise.all([
-        getRefundsList(applicationId, filter),
-        getProviderFilterOptions(applicationId),
+        getRefundsList(applicationId, {
+          ...filter,
+          providerMode: context.environment,
+        }),
+        getProviderFilterOptions(applicationId, context.environment),
       ])
     : [[], []];
 
@@ -104,7 +107,12 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                     <td>
                       {refund.items.length > 0
                         ? refund.items
-                            .map((item) => item.productName ?? item.productKey ?? item.productId)
+                            .map(
+                              (item) =>
+                                item.productName ??
+                                item.productKey ??
+                                item.productId,
+                            )
                             .join(", ")
                         : "—"}
                     </td>
@@ -119,9 +127,14 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                       </span>
                     </td>
                     <td>{refund.providerName ?? refund.provider ?? "—"}</td>
-                    <td className="cell-muted">{formatDateTime(refund.createdAt)}</td>
+                    <td className="cell-muted">
+                      {formatDateTime(refund.createdAt)}
+                    </td>
                     <td>
-                      <Link className="table-row-link" href={`/refunds/${refund.id}`}>
+                      <Link
+                        className="table-row-link"
+                        href={`/refunds/${refund.id}`}
+                      >
                         Open
                       </Link>
                     </td>
