@@ -14,7 +14,7 @@
 }
 
 .billing-filter-bar label > span {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -23,10 +23,10 @@
 .billing-filter-bar select {
   width: 100%;
   min-height: 38px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border);
   border-radius: 9px;
-  background: var(--surface);
-  color: var(--text-primary);
+  background: var(--color-bg-card);
+  color: var(--color-text-primary);
   padding: 8px 10px;
   font: inherit;
 }
@@ -40,13 +40,13 @@
 }
 
 .billing-clear-filter {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 13px;
   text-decoration: none;
 }
 
 .billing-clear-filter:hover {
-  color: var(--text-primary);
+  color: var(--color-text-primary);
 }
 
 .billing-table-card {
@@ -70,7 +70,7 @@
 .billing-detail-meta code,
 .billing-operation-row code,
 .billing-item-row code {
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   font-size: 12px;
 }
 
@@ -79,7 +79,7 @@
 .billing-detail-meta,
 .billing-operation-row span,
 .billing-item-row code {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 
@@ -119,19 +119,19 @@
 }
 
 .billing-summary-card > span {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
 
 .billing-summary-card strong {
-  color: var(--text-primary);
+  color: var(--color-text-primary);
   font-size: 16px;
   overflow-wrap: anywhere;
 }
 
 .billing-summary-card small {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   overflow-wrap: anywhere;
 }
 
@@ -144,9 +144,9 @@
   align-items: center;
   justify-content: space-between;
   gap: 20px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--color-border);
   border-radius: 12px;
-  background: #faf8f5;
+  background: var(--color-bg-page);
   padding: 16px;
 }
 
@@ -162,7 +162,7 @@
 
 .billing-operation-callout p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -182,7 +182,7 @@
   justify-content: space-between;
   gap: 18px;
   min-height: 58px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--color-border);
   padding: 12px 0;
 }
 
@@ -202,7 +202,7 @@
 }
 
 .billing-operation-row small {
-  color: var(--error);
+  color: var(--color-danger);
   line-height: 1.4;
 }
 
@@ -245,13 +245,13 @@
 
 .billing-timeline-row span,
 .billing-timeline-row small {
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
 }
 
 .billing-danger-button {
   border-color: #e6c7c3;
-  color: var(--error);
+  color: var(--color-danger);
 }
 
 .billing-action-backdrop {
@@ -277,7 +277,7 @@
 
 .billing-action-dialog p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--color-text-secondary);
   line-height: 1.55;
 }
 
@@ -285,7 +285,7 @@
   margin-top: 16px;
   border: 1px solid #efc7c2;
   border-radius: 10px;
-  background: #fdf1ef;
+  background: var(--color-danger-bg);
   color: #9f3028;
   padding: 10px 12px;
   font-size: 13px;
@@ -301,21 +301,21 @@
 .badge-pending,
 .badge-provider_succeeded,
 .badge-received {
-  background: var(--info-bg, #eaf2fb);
-  color: var(--info, #2f6fb2);
+  background: var(--color-info-bg);
+  color: var(--color-info);
 }
 
 .badge-succeeded,
 .badge-completed,
 .badge-processed {
-  background: var(--success-bg, #eaf5e8);
-  color: var(--success, #4f8f45);
+  background: var(--color-success-bg);
+  color: var(--color-success);
 }
 
 .badge-failed,
 .badge-needs_reconciliation {
-  background: var(--error-bg, #fdecec);
-  color: var(--error, #dc4c3f);
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
 }
 
 .badge-refunded,
@@ -329,8 +329,8 @@
 .badge-past_due,
 .badge-warning,
 .badge-pending_provider {
-  background: var(--warning-bg, #fff4e5);
-  color: var(--warning, #d97706);
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
 }
 
 @media (max-width: 1180px) {
