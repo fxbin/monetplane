@@ -24,7 +24,11 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
 
   let payment: Awaited<ReturnType<typeof getPaymentDetail>>;
   try {
-    payment = await getPaymentDetail(context.selectedApplication.id, paymentId);
+    payment = await getPaymentDetail(
+      context.selectedApplication.id,
+      paymentId,
+      context.environment,
+    );
   } catch (error) {
     if (error instanceof Error && error.message.includes("Payment not found")) {
       notFound();
@@ -48,7 +52,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
             <span>{formatDateTime(payment.createdAt)}</span>
           </div>
         </div>
-        <span className={`badge badge-${payment.status}`}>{payment.status}</span>
+        <span className={`badge badge-${payment.status}`}>
+          {payment.status}
+        </span>
       </section>
 
       <div className="billing-summary-grid">
@@ -65,7 +71,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
         </section>
         <section className="card billing-summary-card">
           <span>Provider</span>
-          <strong>{payment.providerName ?? payment.provider ?? "Unknown"}</strong>
+          <strong>
+            {payment.providerName ?? payment.provider ?? "Unknown"}
+          </strong>
           <small>{payment.providerConnectionId}</small>
         </section>
         <section className="card billing-summary-card">
@@ -76,7 +84,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
         <section className="card billing-summary-card">
           <span>Refunds</span>
           <strong>{payment.refunds.length}</strong>
-          <small>{payment.refundEligibility.eligible ? "Eligible now" : "Not eligible"}</small>
+          <small>
+            {payment.refundEligibility.eligible ? "Eligible now" : "Not eligible"}
+          </small>
         </section>
       </div>
 
@@ -92,7 +102,8 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
             <div>
               <strong>Full refund is available</strong>
               <p>
-                The provider declares refund capability and MonetPlane found no unsafe credit-clawback condition.
+                The provider declares refund capability and MonetPlane found no
+                unsafe credit-clawback condition.
               </p>
             </div>
             <RefundPaymentAction paymentId={payment.id} />
@@ -115,17 +126,25 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
           </div>
         </div>
         {payment.items.length === 0 ? (
-          <p className="card-empty-copy">No order items are linked to this payment.</p>
+          <p className="card-empty-copy">
+            No order items are linked to this payment.
+          </p>
         ) : (
           <div className="billing-item-list">
             {payment.items.map((item) => (
-              <div className="billing-item-row" key={`${item.orderId}:${item.priceId}`}>
+              <div
+                className="billing-item-row"
+                key={`${item.orderId}:${item.priceId}`}
+              >
                 <div>
-                  <strong>{item.productName ?? item.productKey ?? item.productId}</strong>
+                  <strong>
+                    {item.productName ?? item.productKey ?? item.productId}
+                  </strong>
                   <code>{item.productId}</code>
                 </div>
                 <span>
-                  {item.quantity} × {formatAmount(item.unitAmountMinor, payment.currency)}
+                  {item.quantity} ×{" "}
+                  {formatAmount(item.unitAmountMinor, payment.currency)}
                 </span>
               </div>
             ))}
@@ -142,7 +161,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
             </div>
           </div>
           {payment.operations.length === 0 ? (
-            <p className="card-empty-copy">No operator mutations have been recorded.</p>
+            <p className="card-empty-copy">
+              No operator mutations have been recorded.
+            </p>
           ) : (
             <div className="billing-operation-list">
               {payment.operations.map((operation) => (
@@ -151,7 +172,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     <strong>{operation.type.replace("_", " ")}</strong>
                     <code>{operation.id}</code>
                     <span>{formatDateTime(operation.createdAt)}</span>
-                    {operation.errorMessage && <small>{operation.errorMessage}</small>}
+                    {operation.errorMessage && (
+                      <small>{operation.errorMessage}</small>
+                    )}
                   </div>
                   <div className="billing-operation-row-action">
                     <span className={`badge badge-${operation.status}`}>
@@ -160,7 +183,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     {["provider_succeeded", "needs_reconciliation"].includes(
                       operation.status,
                     ) && (
-                      <ReconcileBillingOperationAction operationId={operation.id} />
+                      <ReconcileBillingOperationAction
+                        operationId={operation.id}
+                      />
                     )}
                   </div>
                 </div>
@@ -214,7 +239,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
           <span className="customer-section-note">Normalized events only</span>
         </div>
         {payment.events.length === 0 ? (
-          <p className="card-empty-copy">No related provider events were found.</p>
+          <p className="card-empty-copy">
+            No related provider events were found.
+          </p>
         ) : (
           <div className="billing-timeline">
             {payment.events.map((event) => (
@@ -225,7 +252,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                   <span>{event.providerEventName}</span>
                   <small>{formatDateTime(event.occurredAt)}</small>
                 </div>
-                <span className={`badge badge-${event.status}`}>{event.status}</span>
+                <span className={`badge badge-${event.status}`}>
+                  {event.status}
+                </span>
               </div>
             ))}
           </div>
