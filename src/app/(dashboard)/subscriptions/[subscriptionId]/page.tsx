@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import {
   CancelSubscriptionAction,
   ReconcileBillingOperationAction,
+  RetryBillingOperationAction,
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { formatAmount, formatDateTime } from "@/lib/format";
@@ -189,7 +190,17 @@ export default async function SubscriptionPage({
                   <div>
                     <strong>{operation.type.replace("_", " ")}</strong>
                     <code>{operation.id}</code>
-                    <span>{formatDateTime(operation.createdAt)}</span>
+                    <span>
+                      Attempt {operation.attemptNumber}
+                      {operation.retryOfOperationId ? " · retry" : ""}
+                      {" · "}
+                      {formatDateTime(operation.createdAt)}
+                    </span>
+                    {operation.failureKind && (
+                      <small>
+                        Provider outcome: {operation.failureKind.replaceAll("_", " ")}
+                      </small>
+                    )}
                     {operation.errorMessage && (
                       <small>{operation.errorMessage}</small>
                     )}
@@ -205,6 +216,10 @@ export default async function SubscriptionPage({
                         operationId={operation.id}
                       />
                     )}
+                    {operation.status === "failed" &&
+                      operation.failureKind === "rejected" && (
+                        <RetryBillingOperationAction operationId={operation.id} />
+                      )}
                   </div>
                 </div>
               ))}
