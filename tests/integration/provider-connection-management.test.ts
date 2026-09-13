@@ -56,7 +56,11 @@ describe("provider connection management", () => {
     expect(updated?.name).toBe("Primary Sandbox");
     expect(updated).not.toHaveProperty("encryptedCredentials");
 
-    const runtime = await loadProviderConnectionContext(app.id, connection.id, db);
+    const runtime = await loadProviderConnectionContext(
+      app.id,
+      connection.id,
+      db,
+    );
     expect(runtime.credentials).toEqual({
       apiKey: "old-api-key",
       webhookSecret: "old-webhook-secret",
@@ -96,7 +100,11 @@ describe("provider connection management", () => {
     expect(updated?.credentialConfigured).toBe(true);
     expect(updated).not.toHaveProperty("encryptedCredentials");
 
-    const runtime = await loadProviderConnectionContext(app.id, connection.id, db);
+    const runtime = await loadProviderConnectionContext(
+      app.id,
+      connection.id,
+      db,
+    );
     expect(runtime.credentials).toEqual({
       apiKey: "new-api-key",
       webhookSecret: "new-webhook-secret",
@@ -122,7 +130,9 @@ describe("provider connection management", () => {
       db,
     );
 
-    expect(await revokeProviderConnection(app.id, connection.id, db)).toBe(true);
+    expect(await revokeProviderConnection(app.id, connection.id, db)).toBe(
+      true,
+    );
 
     const historical = await getProviderConnection(app.id, connection.id, db);
     expect(historical?.status).toBe("revoked");

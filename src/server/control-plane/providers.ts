@@ -26,7 +26,10 @@ export async function getConsoleProviderConnectionDetail(
 
   if (connection.status === "active") {
     try {
-      capabilities = await getProviderCapabilities(applicationId, connection.id);
+      capabilities = await getProviderCapabilities(
+        applicationId,
+        connection.id,
+      );
     } catch (error) {
       capabilityError =
         error instanceof Error
@@ -39,10 +42,9 @@ export async function getConsoleProviderConnectionDetail(
   }
 
   const capabilityRows: ConsoleProviderCapability[] = capabilities
-    ? (Object.entries(capabilities) as Array<[
-        ProviderCapability,
-        boolean,
-      ]>).map(([key, supported]) => ({ key, supported }))
+    ? (
+        Object.entries(capabilities) as Array<[ProviderCapability, boolean]>
+      ).map(([key, supported]) => ({ key, supported }))
     : [];
 
   return {

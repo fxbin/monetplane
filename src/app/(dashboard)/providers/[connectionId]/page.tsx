@@ -42,7 +42,8 @@ export default async function ProviderDetailPage({
 
   const { connection, setup } = detail;
   const providerLabel = setup?.label ?? connection.provider;
-  const environmentLabel = connection.mode === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    connection.mode === "test" ? "Sandbox" : "Production";
 
   return (
     <PageContainer
@@ -54,9 +55,13 @@ export default async function ProviderDetailPage({
         <section className="card provider-detail-summary">
           <div className="provider-detail-heading">
             <div>
-              <span className="provider-detail-kicker">Provider connection</span>
+              <span className="provider-detail-kicker">
+                Provider connection
+              </span>
               <h2>{providerLabel}</h2>
-              <p>{setup?.description ?? "Provider-managed payment connection."}</p>
+              <p>
+                {setup?.description ?? "Provider-managed payment connection."}
+              </p>
             </div>
             <div className="provider-detail-badges">
               <span className={`badge badge-${connection.mode}`}>
@@ -114,7 +119,10 @@ export default async function ProviderDetailPage({
           {setup && setup.credentialFields.length > 0 ? (
             <div className="provider-credential-summary-list">
               {setup.credentialFields.map((field) => (
-                <div key={field.key} className="provider-credential-summary-row">
+                <div
+                  key={field.key}
+                  className="provider-credential-summary-row"
+                >
                   <div>
                     <strong>{field.label}</strong>
                     <span>{field.help}</span>
@@ -130,9 +138,9 @@ export default async function ProviderDetailPage({
           )}
 
           <div className="provider-secret-note">
-            Plaintext credentials are never returned by the console API. Reconfigure
-            replaces the complete encrypted credential set instead of revealing the
-            existing values.
+            Plaintext credentials are never returned by the console API.
+            Reconfigure replaces the complete encrypted credential set instead
+            of revealing the existing values.
           </div>
         </section>
       </div>
@@ -145,7 +153,8 @@ export default async function ProviderDetailPage({
           </div>
           {detail.capabilityRows.length > 0 && (
             <span className="provider-capability-count">
-              {detail.capabilityRows.filter((item) => item.supported).length} supported
+              {detail.capabilityRows.filter((item) => item.supported).length}{" "}
+              supported
             </span>
           )}
         </div>
@@ -184,10 +193,10 @@ export default async function ProviderDetailPage({
           <h2 className="card-title">{environmentLabel} only</h2>
         </div>
         <p>
-          This detail page and its management API are scoped to the selected project
-          and current console environment. Switching Sandbox / Production makes a
-          connection from the other mode resolve as not found rather than silently
-          crossing credential boundaries.
+          This detail page and its management API are scoped to the selected
+          project and current console environment. Switching Sandbox /
+          Production makes a connection from the other mode resolve as not found
+          rather than silently crossing credential boundaries.
         </p>
       </section>
     </PageContainer>

@@ -24,7 +24,8 @@ type ActionResponse = {
 async function requestAction(url: string, init: RequestInit) {
   const response = await fetch(url, init);
   const result = (await response.json()) as ActionResponse;
-  if (!response.ok) throw new Error(result.error ?? "Provider operation failed");
+  if (!response.ok)
+    throw new Error(result.error ?? "Provider operation failed");
   return result;
 }
 
@@ -221,7 +222,11 @@ export function ProviderConnectionActions({
               >
                 Cancel
               </button>
-              <button className="btn btn-primary" type="submit" disabled={pending}>
+              <button
+                className="btn btn-primary"
+                type="submit"
+                disabled={pending}
+              >
                 {pending ? "Saving…" : "Save changes"}
               </button>
             </div>
@@ -238,11 +243,14 @@ export function ProviderConnectionActions({
             role="dialog"
           >
             <div>
-              <span className="provider-action-kicker">Destructive operation</span>
+              <span className="provider-action-kicker">
+                Destructive operation
+              </span>
               <h2 id={revokeTitleId}>Revoke {providerLabel} connection?</h2>
               <p>
-                New runtime operations will stop using this connection. Historical
-                payments, subscriptions, and audit records remain intact.
+                New runtime operations will stop using this connection.
+                Historical payments, subscriptions, and audit records remain
+                intact.
               </p>
             </div>
 

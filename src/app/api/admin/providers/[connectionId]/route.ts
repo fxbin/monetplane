@@ -35,7 +35,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const { connectionId } = await params;
   const { context, connection } = await resolveScopedConnection(connectionId);
   if (!context.selectedApplication || !connection) {
-    return NextResponse.json({ error: "Provider connection not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Provider connection not found" },
+      { status: 404 },
+    );
   }
 
   const detail = await getConsoleProviderConnectionDetail(
@@ -44,7 +47,10 @@ export async function GET(_request: Request, { params }: RouteContext) {
     context.environment,
   );
   if (!detail) {
-    return NextResponse.json({ error: "Provider connection not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Provider connection not found" },
+      { status: 404 },
+    );
   }
 
   return NextResponse.json({ detail });
@@ -113,8 +119,11 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     return NextResponse.json({ connection: updated });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to update provider connection";
-    const status = message.includes("required") || message.includes("changes") ? 400 : 500;
+      error instanceof Error
+        ? error.message
+        : "Failed to update provider connection";
+    const status =
+      message.includes("required") || message.includes("changes") ? 400 : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }
@@ -127,7 +136,10 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   const { context, connection } = await resolveScopedConnection(connectionId);
   const application = context.selectedApplication;
   if (!application || !connection) {
-    return NextResponse.json({ error: "Provider connection not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Provider connection not found" },
+      { status: 404 },
+    );
   }
   if (connection.status === "revoked") {
     return NextResponse.json({ connection });
