@@ -131,7 +131,9 @@ export function ProviderDiagnostics({
               }}
             >
               <strong>Configuration</strong>
-              <span>Resolve adapter, decrypt credentials, inspect capabilities.</span>
+              <span>
+                Resolve adapter, decrypt credentials, inspect capabilities.
+              </span>
             </button>
             <button
               className={`provider-diagnostic-kind${kind === "payment" ? " is-selected" : ""}`}
@@ -191,7 +193,11 @@ export function ProviderDiagnostics({
                 The API refuses connections from the other console environment.
               </span>
             </div>
-            <button className="btn btn-secondary" type="submit" disabled={pending}>
+            <button
+              className="btn btn-secondary"
+              type="submit"
+              disabled={pending}
+            >
               {pending ? "Running…" : "Run diagnostic"}
             </button>
           </div>
@@ -206,7 +212,7 @@ export function ProviderDiagnostics({
       )}
 
       {result && (
-        <div className="provider-diagnostic-result is-success" role="status">
+        <output className="provider-diagnostic-result is-success">
           <div className="provider-diagnostic-result-heading">
             <div>
               <strong>Diagnostic passed</strong>
@@ -228,7 +234,7 @@ export function ProviderDiagnostics({
                 <dd className="cell-mono">{result.payment.providerPaymentId}</dd>
               </div>
               <div>
-                <dt>Amount</dt>
+                <dt>Amount (minor units)</dt>
                 <dd>
                   {result.payment.amountMinor} {result.payment.currency}
                 </dd>
@@ -277,7 +283,7 @@ export function ProviderDiagnostics({
               ))}
             </div>
           )}
-        </div>
+        </output>
       )}
     </section>
   );
