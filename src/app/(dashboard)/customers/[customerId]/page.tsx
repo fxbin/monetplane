@@ -39,7 +39,10 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
       customerId,
     );
   } catch (error) {
-    if (error instanceof Error && error.message.includes("Customer not found")) {
+    if (
+      error instanceof Error &&
+      error.message.includes("Customer not found")
+    ) {
       notFound();
     }
     throw error;
@@ -307,9 +310,7 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                           {payment.status}
                         </span>
                       </td>
-                      <td>
-                        {payment.providerName ?? payment.provider ?? "—"}
-                      </td>
+                      <td>{payment.providerName ?? payment.provider ?? "—"}</td>
                       <td className="cell-muted">
                         {formatDateTime(payment.createdAt)}
                       </td>
@@ -322,7 +323,8 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                           />
                         ) : payment.status === "failed" ? (
                           <span className="customer-action-unavailable">
-                            Retry is not available in the shared provider contract
+                            Retry is not available in the shared provider
+                            contract
                           </span>
                         ) : (
                           <span className="customer-action-unavailable">

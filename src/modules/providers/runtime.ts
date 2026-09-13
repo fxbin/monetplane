@@ -68,7 +68,9 @@ export async function getProviderCapabilities(
     connectionId,
     db,
   );
-  return resolveProviderAdapter(connection.provider).getCapabilities(connection);
+  return resolveProviderAdapter(connection.provider).getCapabilities(
+    connection,
+  );
 }
 
 export async function createProviderCheckout(
@@ -117,7 +119,10 @@ export async function getProviderPayment(
     connectionId,
     db,
   );
-  return resolveProviderAdapter(connection.provider).getPayment(connection, input);
+  return resolveProviderAdapter(connection.provider).getPayment(
+    connection,
+    input,
+  );
 }
 
 export async function getProviderSubscription(

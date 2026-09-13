@@ -1,7 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import { prices, productGrantConfigs, products } from "@/modules/catalog/schema";
+import {
+  prices,
+  productGrantConfigs,
+  products,
+} from "@/modules/catalog/schema";
 import {
   orderItems,
   orders,
@@ -16,12 +20,12 @@ import { grantCredits } from "@/modules/credits/service";
 import { applicationCustomers } from "@/modules/customers/schema";
 import { entitlementGrants } from "@/modules/entitlements/schema";
 import { revokeEntitlementsBySource } from "@/modules/entitlements/service";
-import { providerConnections } from "@/modules/providers/schema";
 import {
   cancelProviderSubscription,
   getProviderCapabilities,
   refundProviderPayment,
 } from "@/modules/providers/runtime";
+import { providerConnections } from "@/modules/providers/schema";
 
 export type CustomerListFilter = "all" | "subscribed" | "credits";
 
@@ -403,7 +407,7 @@ export async function getCustomerWorkspace(
 
   const enrichedPayments = paymentRows.map((row) => {
     const order = row.orderId
-      ? orderRows.find((candidate) => candidate.id === row.orderId) ?? null
+      ? (orderRows.find((candidate) => candidate.id === row.orderId) ?? null)
       : null;
     const orderProductIds = order
       ? (itemsByOrder.get(order.id) ?? []).map((item) => item.productId)
@@ -411,7 +415,7 @@ export async function getCustomerWorkspace(
     return {
       ...row,
       order,
-      orderItems: order ? itemsByOrder.get(order.id) ?? [] : [],
+      orderItems: order ? (itemsByOrder.get(order.id) ?? []) : [],
       refunds: refundsByPayment.get(row.id) ?? [],
       canRefundProvider: Boolean(
         capabilitiesByConnection.get(row.providerConnectionId)?.refund,
@@ -478,7 +482,8 @@ export async function cancelCustomerSubscription(
       ),
     )
     .limit(1);
-  if (!subscription) throw new Error("Subscription not found for this customer");
+  if (!subscription)
+    throw new Error("Subscription not found for this customer");
   if (["cancelled", "expired"].includes(subscription.status)) {
     throw new Error("Subscription is already in a terminal state");
   }
@@ -638,12 +643,7 @@ export async function refundCustomerPayment(
         .update(orders)
         .set({ status: "refunded", updatedAt: new Date() })
         .where(eq(orders.id, order.id));
-      await revokeEntitlementsBySource(
-        applicationId,
-        "order",
-        order.id,
-        tx,
-      );
+      await revokeEntitlementsBySource(applicationId, "order", order.id, tx);
     }
   });
 

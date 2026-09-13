@@ -137,7 +137,9 @@ export function GrantCreditsAction({ customerId }: { customerId: string }) {
           <input
             className="cell-mono"
             value={creditType}
-            onChange={(event) => setCreditType(event.target.value.toLowerCase())}
+            onChange={(event) =>
+              setCreditType(event.target.value.toLowerCase())
+            }
           />
         </label>
         <label className="field-group">

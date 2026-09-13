@@ -111,7 +111,8 @@ export default async function CustomersPage({
                         </strong>
                         {customer.credits.reserved > 0 && (
                           <span>
-                            {customer.credits.reserved.toLocaleString()} reserved
+                            {customer.credits.reserved.toLocaleString()}{" "}
+                            reserved
                           </span>
                         )}
                       </div>
