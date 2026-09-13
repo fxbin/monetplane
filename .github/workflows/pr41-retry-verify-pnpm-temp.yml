@@ -8,7 +8,8 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.12.0
-      - run: corepack enable
-      - run: pnpm install --no-frozen-lockfile
-      - run: pnpm lint
-      - run: pnpm typecheck
+      - run: npx --yes pnpm@10 install --no-frozen-lockfile
+      - run: npx --yes pnpm@10 run lint
+      - run: npx --yes pnpm@10 run typecheck
+      - run: npx --yes pnpm@10 run test
+      - run: npx --yes pnpm@10 run build
