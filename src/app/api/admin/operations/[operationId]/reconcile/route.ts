@@ -23,6 +23,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const operation = await reconcileBillingOperation(
       context.selectedApplication.id,
       operationId,
+      context.environment,
     );
     return NextResponse.json({ operation });
   } catch (error) {
