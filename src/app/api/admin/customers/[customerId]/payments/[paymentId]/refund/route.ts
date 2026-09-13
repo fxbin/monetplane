@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { refundPaymentWithJournal } from "@/server/control-plane/billing-operation-actions";
 import { getConsoleContext } from "@/server/control-plane/context";
-import { refundCustomerPayment } from "@/server/control-plane/customer-workspace";
+import { getCustomerWorkspace } from "@/server/control-plane/customer-workspace";
 
 type RouteContext = {
   params: Promise<{ customerId: string; paymentId: string }>;
@@ -23,12 +24,19 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
 
-    const refund = await refundCustomerPayment(
+    const workspace = await getCustomerWorkspace(
       context.selectedApplication.id,
       customerId,
+    );
+    if (!workspace.payments.some((payment) => payment.id === paymentId)) {
+      throw new Error("Payment not found for this customer");
+    }
+
+    const operation = await refundPaymentWithJournal(
+      context.selectedApplication.id,
       paymentId,
     );
-    return NextResponse.json({ refund });
+    return NextResponse.json({ operation });
   } catch (error) {
     console.error("[admin/customers/payments/refund] Error:", error);
     return NextResponse.json(
