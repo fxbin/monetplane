@@ -13,12 +13,6 @@
   min-width: 0;
 }
 
-.billing-filter-bar label > span {
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-}
-
 .billing-filter-bar input,
 .billing-filter-bar select {
   width: 100%;
@@ -247,6 +241,12 @@
 .billing-timeline-row small {
   color: var(--color-text-secondary);
   font-size: 12px;
+}
+
+.billing-filter-bar label > span {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .billing-danger-button {
