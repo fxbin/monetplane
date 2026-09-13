@@ -4,7 +4,11 @@ import { getDb } from "@/db/client";
 import { orders, payments, refunds, subscriptions } from "@/modules/commerce/schema";
 import { revokeEntitlementsBySource } from "@/modules/entitlements/service";
 import { billingOperations } from "@/modules/operations/schema";
-import type { ProviderMode } from "@/modules/providers/contract";
+import type {
+  NormalizedRefund,
+  NormalizedSubscription,
+  ProviderMode,
+} from "@/modules/providers/contract";
 import {
   cancelProviderSubscription,
   refundProviderPayment,
@@ -125,7 +129,9 @@ async function assertOperationEnvironment(
     )
     .limit(1);
   if (!connection) {
-    throw new Error("Billing operation does not belong to the selected environment");
+    throw new Error(
+      "Billing operation does not belong to the selected environment",
+    );
   }
 }
 
@@ -136,7 +142,8 @@ async function recordProviderFailure(
 ) {
   await updateOperation(applicationId, operationId, {
     status: "failed",
-    errorMessage: error instanceof Error ? error.message : "Provider operation failed",
+    errorMessage:
+      error instanceof Error ? error.message : "Provider operation failed",
   });
 }
 
@@ -171,13 +178,13 @@ function assertOperationCanProceed(
   }
   if (operation.status === "pending_provider") {
     throw new Error(
-      "This billing operation is already in progress or has an uncertain provider outcome. Reconcile it before retrying.",
+      "This billing operation has an uncertain provider outcome. Investigate provider state before taking further action.",
     );
   }
   throw new Error(
     operation.errorMessage
-      ? `The previous billing operation failed: ${operation.errorMessage}`
-      : "The previous billing operation failed. Inspect it before retrying.",
+      ? `The previous billing operation failed and is terminal in P1: ${operation.errorMessage}`
+      : "The previous billing operation failed and is terminal in P1. Inspect the provider error before taking further action.",
   );
 }
 
@@ -236,7 +243,7 @@ export async function refundPaymentWithJournal(
     return resumeExistingOperation(applicationId, operation, providerMode);
   }
 
-  let result;
+  let result: NormalizedRefund;
   try {
     result = await refundProviderPayment(
       applicationId,
@@ -298,7 +305,7 @@ export async function cancelSubscriptionWithJournal(
     return resumeExistingOperation(applicationId, operation, providerMode);
   }
 
-  let result;
+  let result: NormalizedSubscription;
   try {
     result = await cancelProviderSubscription(
       applicationId,
@@ -361,8 +368,10 @@ export async function reconcileBillingOperation(
           ),
         )
         .limit(1);
-      if (!payment) throw new Error("Payment disappeared before reconciliation");
-      if (!payment.orderId) throw new Error("Refunded payment has no order");
+      if (!payment) {
+        throw new Error("Payment disappeared before reconciliation");
+      }
+      const orderId = payment.orderId;
 
       await db.transaction(async (tx) => {
         await tx
@@ -370,7 +379,7 @@ export async function reconcileBillingOperation(
           .values({
             id: `ref_${randomUUID()}`,
             applicationId,
-            orderId: payment.orderId,
+            orderId,
             paymentId: payment.id,
             providerConnectionId: payment.providerConnectionId,
             providerRefundId,
@@ -391,16 +400,19 @@ export async function reconcileBillingOperation(
             .update(payments)
             .set({ status: "refunded", updatedAt: new Date() })
             .where(eq(payments.id, payment.id));
-          await tx
-            .update(orders)
-            .set({ status: "refunded", updatedAt: new Date() })
-            .where(eq(orders.id, payment.orderId));
-          await revokeEntitlementsBySource(
-            applicationId,
-            "order",
-            payment.orderId,
-            tx,
-          );
+
+          if (orderId) {
+            await tx
+              .update(orders)
+              .set({ status: "refunded", updatedAt: new Date() })
+              .where(eq(orders.id, orderId));
+            await revokeEntitlementsBySource(
+              applicationId,
+              "order",
+              orderId,
+              tx,
+            );
+          }
         }
 
         await tx
