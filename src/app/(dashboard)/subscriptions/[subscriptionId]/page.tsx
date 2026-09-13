@@ -29,6 +29,7 @@ export default async function SubscriptionPage({
     subscription = await getSubscriptionDetail(
       context.selectedApplication.id,
       subscriptionId,
+      context.environment,
     );
   } catch (error) {
     if (
@@ -118,7 +119,8 @@ export default async function SubscriptionPage({
             <div>
               <strong>Cancellation is available</strong>
               <p>
-                The connected provider declares subscription cancellation capability.
+                The connected provider declares subscription cancellation
+                capability.
               </p>
             </div>
             <CancelSubscriptionAction subscriptionId={subscription.id} />
@@ -150,7 +152,9 @@ export default async function SubscriptionPage({
                 key={`${item.subscriptionId}:${item.priceId}`}
               >
                 <div>
-                  <strong>{item.productName ?? item.productKey ?? item.productId}</strong>
+                  <strong>
+                    {item.productName ?? item.productKey ?? item.productId}
+                  </strong>
                   <code>{item.productId}</code>
                 </div>
                 <span>
@@ -175,7 +179,9 @@ export default async function SubscriptionPage({
             </div>
           </div>
           {subscription.operations.length === 0 ? (
-            <p className="card-empty-copy">No operator mutations have been recorded.</p>
+            <p className="card-empty-copy">
+              No operator mutations have been recorded.
+            </p>
           ) : (
             <div className="billing-operation-list">
               {subscription.operations.map((operation) => (
@@ -184,7 +190,9 @@ export default async function SubscriptionPage({
                     <strong>{operation.type.replace("_", " ")}</strong>
                     <code>{operation.id}</code>
                     <span>{formatDateTime(operation.createdAt)}</span>
-                    {operation.errorMessage && <small>{operation.errorMessage}</small>}
+                    {operation.errorMessage && (
+                      <small>{operation.errorMessage}</small>
+                    )}
                   </div>
                   <div className="billing-operation-row-action">
                     <span className={`badge badge-${operation.status}`}>
@@ -193,7 +201,9 @@ export default async function SubscriptionPage({
                     {["provider_succeeded", "needs_reconciliation"].includes(
                       operation.status,
                     ) && (
-                      <ReconcileBillingOperationAction operationId={operation.id} />
+                      <ReconcileBillingOperationAction
+                        operationId={operation.id}
+                      />
                     )}
                   </div>
                 </div>
@@ -210,7 +220,9 @@ export default async function SubscriptionPage({
             </div>
           </div>
           {subscription.events.length === 0 ? (
-            <p className="card-empty-copy">No related provider events were found.</p>
+            <p className="card-empty-copy">
+              No related provider events were found.
+            </p>
           ) : (
             <div className="billing-timeline">
               {subscription.events.map((event) => (
