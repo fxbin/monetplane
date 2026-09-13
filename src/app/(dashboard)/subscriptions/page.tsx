@@ -43,8 +43,11 @@ export default async function SubscriptionsPage({
   const applicationId = context.selectedApplication?.id;
   const [rows, providers] = applicationId
     ? await Promise.all([
-        getSubscriptionsList(applicationId, filter),
-        getProviderFilterOptions(applicationId),
+        getSubscriptionsList(applicationId, {
+          ...filter,
+          providerMode: context.environment,
+        }),
+        getProviderFilterOptions(applicationId, context.environment),
       ])
     : [[], []];
 
@@ -94,16 +97,22 @@ export default async function SubscriptionsPage({
                           <code>{subscription.id}</code>
                           <span>{subscription.providerSubscriptionId}</span>
                           {latestOperation?.status === "needs_reconciliation" && (
-                            <span className="badge badge-warning">Needs reconciliation</span>
+                            <span className="badge badge-warning">
+                              Needs reconciliation
+                            </span>
                           )}
                         </div>
                       </td>
                       <td>
-                        <Link href={`/customers/${subscription.applicationCustomerId}`}>
+                        <Link
+                          href={`/customers/${subscription.applicationCustomerId}`}
+                        >
                           {subscription.externalCustomerId ?? "Customer"}
                         </Link>
                         {subscription.customerEmail && (
-                          <div className="cell-muted">{subscription.customerEmail}</div>
+                          <div className="cell-muted">
+                            {subscription.customerEmail}
+                          </div>
                         )}
                       </td>
                       <td>
@@ -113,7 +122,9 @@ export default async function SubscriptionsPage({
                               {subscription.items
                                 .map(
                                   (item) =>
-                                    item.productName ?? item.productKey ?? item.productId,
+                                    item.productName ??
+                                    item.productKey ??
+                                    item.productId,
                                 )
                                 .join(", ")}
                             </strong>
@@ -143,7 +154,9 @@ export default async function SubscriptionsPage({
                           ? formatDateTime(subscription.currentPeriodEnd)
                           : "—"}
                       </td>
-                      <td>{subscription.providerName ?? subscription.provider ?? "—"}</td>
+                      <td>
+                        {subscription.providerName ?? subscription.provider ?? "—"}
+                      </td>
                       <td className="cell-muted">
                         {formatDateTime(subscription.updatedAt)}
                       </td>
