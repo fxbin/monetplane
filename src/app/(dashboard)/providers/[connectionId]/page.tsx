@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProviderConnectionActions } from "@/components/providers/ProviderConnectionActions";
+import { ProviderDiagnostics } from "@/components/providers/ProviderDiagnostics";
 import type { ProviderCapability } from "@/modules/providers/contract";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getConsoleProviderConnectionDetail } from "@/server/control-plane/providers";
@@ -186,6 +187,13 @@ export default async function ProviderDetailPage({
           </div>
         )}
       </section>
+
+      <ProviderDiagnostics
+        connectionId={connection.id}
+        providerLabel={providerLabel}
+        environment={connection.mode}
+        disabled={connection.status !== "active"}
+      />
 
       <section className="card provider-environment-boundary-card">
         <div>
