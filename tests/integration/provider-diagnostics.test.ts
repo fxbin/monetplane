@@ -12,10 +12,7 @@ import {
   createProviderConnection,
   revokeProviderConnection,
 } from "../../src/modules/providers/service";
-import {
-  ConsoleProviderDiagnosticError,
-  runConsoleProviderDiagnostic,
-} from "../../src/server/control-plane/providers";
+import { runConsoleProviderDiagnostic } from "../../src/server/control-plane/providers";
 
 const db = getDb();
 const encryptionKey = Buffer.from(
@@ -153,9 +150,7 @@ describe("provider diagnostics", () => {
       runConsoleProviderDiagnostic(app.id, connection.id, "live", {
         kind: "configuration",
       }),
-    ).rejects.toMatchObject<Partial<ConsoleProviderDiagnosticError>>({
-      code: "not_found",
-    });
+    ).rejects.toMatchObject({ code: "not_found" });
 
     await revokeProviderConnection(app.id, connection.id, db);
 
@@ -163,9 +158,7 @@ describe("provider diagnostics", () => {
       runConsoleProviderDiagnostic(app.id, connection.id, "test", {
         kind: "configuration",
       }),
-    ).rejects.toMatchObject<Partial<ConsoleProviderDiagnosticError>>({
-      code: "revoked",
-    });
+    ).rejects.toMatchObject({ code: "revoked" });
     expect(mutationCalls).toBe(0);
   });
 });
