@@ -80,7 +80,11 @@ it("reconciles a refunded payment without an order by syncing payment and refund
     errorMessage: "simulated local persistence interruption",
   });
 
-  const operation = await reconcileBillingOperation(app.id, operationId, "test");
+  const operation = await reconcileBillingOperation(
+    app.id,
+    operationId,
+    "test",
+  );
   expect(operation.status).toBe("completed");
 
   const [payment] = await db
