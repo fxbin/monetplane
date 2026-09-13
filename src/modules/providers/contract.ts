@@ -16,6 +16,7 @@ export type ProviderCapabilities = Readonly<
 >;
 
 export type ProviderMode = "test" | "live";
+export type ProviderOperationFailureKind = "rejected" | "outcome_uncertain";
 export type CheckoutBillingMode = "one_time" | "subscription";
 
 export type ProviderConnectionContext = {
@@ -170,6 +171,16 @@ export interface PaymentProviderAdapter {
   ): Promise<NormalizedProviderEvent>;
 }
 
+export class ProviderOperationError extends Error {
+  constructor(
+    message: string,
+    public readonly failureKind: ProviderOperationFailureKind,
+  ) {
+    super(message);
+    this.name = "ProviderOperationError";
+  }
+}
+
 export class UnsupportedProviderCapabilityError extends Error {
   constructor(
     public readonly provider: string,
@@ -192,4 +203,17 @@ export class ProviderApplicationMismatchError extends Error {
     super(message);
     this.name = "ProviderApplicationMismatchError";
   }
+}
+
+export function classifyProviderOperationFailure(
+  error: unknown,
+): ProviderOperationFailureKind {
+  if (error instanceof ProviderOperationError) return error.failureKind;
+  if (
+    error instanceof UnsupportedProviderCapabilityError ||
+    error instanceof ProviderApplicationMismatchError
+  ) {
+    return "rejected";
+  }
+  return "outcome_uncertain";
 }
