@@ -4,7 +4,11 @@ import { getDb, getSqlClient } from "../../src/db/client";
 import { applications } from "../../src/modules/applications/schema";
 import { createApplication } from "../../src/modules/applications/service";
 import { createPrice, createProduct } from "../../src/modules/catalog/service";
-import { orderItems, orders, payments } from "../../src/modules/commerce/schema";
+import {
+  orderItems,
+  orders,
+  payments,
+} from "../../src/modules/commerce/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 import { billingOperations } from "../../src/modules/operations/schema";
 import { mockProviderAdapter } from "../../src/modules/providers/adapters/mock";
@@ -147,13 +151,10 @@ describe("classified billing operation retries", () => {
     expect(first?.failureKind).toBe("rejected");
     expect(first?.attemptNumber).toBe(1);
     expect(first?.retryOfOperationId).toBeNull();
+    if (!first) throw new Error("Expected first billing operation");
 
     behavior = "success";
-    const retried = await retryBillingOperation(
-      seed.app.id,
-      first!.id,
-      "test",
-    );
+    const retried = await retryBillingOperation(seed.app.id, first.id, "test");
     expect(retried.status).toBe("completed");
     expect(refundCalls).toBe(2);
 
@@ -162,8 +163,8 @@ describe("classified billing operation retries", () => {
       .from(billingOperations)
       .where(eq(billingOperations.resourceId, seed.paymentId));
     expect(attempts).toHaveLength(2);
-    const second = attempts.find((operation) => operation.id !== first?.id);
-    expect(second?.retryOfOperationId).toBe(first?.id);
+    const second = attempts.find((operation) => operation.id !== first.id);
+    expect(second?.retryOfOperationId).toBe(first.id);
     expect(second?.attemptNumber).toBe(2);
     expect(second?.failureKind).toBeNull();
     expect(second?.status).toBe("completed");
@@ -183,9 +184,10 @@ describe("classified billing operation retries", () => {
       .where(eq(billingOperations.resourceId, seed.paymentId));
     expect(operation?.status).toBe("failed");
     expect(operation?.failureKind).toBe("outcome_uncertain");
+    if (!operation) throw new Error("Expected failed billing operation");
 
     await expect(
-      retryBillingOperation(seed.app.id, operation!.id, "test"),
+      retryBillingOperation(seed.app.id, operation.id, "test"),
     ).rejects.toThrow("outcome is uncertain");
     expect(refundCalls).toBe(1);
   });
