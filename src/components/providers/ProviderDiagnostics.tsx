@@ -180,8 +180,9 @@ export function ProviderDiagnostics({
                 required
               />
               <span className="form-help">
-                Use the provider-native ID. The probe performs a read-only lookup
-                through the same production runtime adapter used by MonetPlane.
+                Use the provider-native ID. The probe performs a read-only
+                lookup through the same production runtime adapter used by
+                MonetPlane.
               </span>
             </label>
           )}
@@ -231,7 +232,9 @@ export function ProviderDiagnostics({
               </div>
               <div>
                 <dt>Provider payment</dt>
-                <dd className="cell-mono">{result.payment.providerPaymentId}</dd>
+                <dd className="cell-mono">
+                  {result.payment.providerPaymentId}
+                </dd>
               </div>
               <div>
                 <dt>Amount (minor units)</dt>
@@ -262,7 +265,9 @@ export function ProviderDiagnostics({
               </div>
               <div>
                 <dt>Current period end</dt>
-                <dd>{result.subscription.currentPeriodEnd ?? "Not returned"}</dd>
+                <dd>
+                  {result.subscription.currentPeriodEnd ?? "Not returned"}
+                </dd>
               </div>
               <div>
                 <dt>Cancel at period end</dt>
