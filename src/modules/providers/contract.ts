@@ -28,15 +28,21 @@ export type ProviderConnectionContext = {
   credentials: Readonly<Record<string, string>>;
 };
 
+export type ProviderConnectionValidation = {
+  summary: string;
+};
+
 export type CreateCheckoutInput = {
   applicationId: string;
   monetplaneOrderId: string;
   monetplaneCustomerId: string;
+  customerEmail?: string;
   billingMode: CheckoutBillingMode;
   interval?: "month" | "year";
   currency: string;
   items: Array<{
     productId: string;
+    productName?: string;
     priceId: string;
     quantity: number;
     unitAmountMinor: number;
@@ -82,6 +88,7 @@ export type NormalizedSubscription = {
 export type RefundPaymentInput = {
   providerPaymentId: string;
   amountMinor?: number;
+  requestId?: string;
 };
 export type NormalizedRefund = {
   providerRefundId: string;
@@ -137,6 +144,9 @@ export type NormalizedProviderEvent = {
 export interface PaymentProviderAdapter {
   readonly provider: string;
   getCapabilities(connection: ProviderConnectionContext): ProviderCapabilities;
+  validateConnection?(
+    connection: ProviderConnectionContext,
+  ): Promise<ProviderConnectionValidation>;
   createCheckout(
     connection: ProviderConnectionContext,
     input: CreateCheckoutInput,
