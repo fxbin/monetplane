@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createWaffoProviderAdapter } from "../src/modules/providers/adapters/waffo";
 import {
   classifyProviderOperationFailure,
-  ProviderOperationError,
   type ProviderConnectionContext,
+  ProviderOperationError,
 } from "../src/modules/providers/contract";
 
 function success(data: Record<string, unknown>) {

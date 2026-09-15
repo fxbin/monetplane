@@ -104,7 +104,9 @@ function requiredCredential(
   return value;
 }
 
-function createSdkClient(connection: ProviderConnectionContext): WaffoClientLike {
+function createSdkClient(
+  connection: ProviderConnectionContext,
+): WaffoClientLike {
   return new Waffo({
     apiKey: requiredCredential(connection, "apiKey"),
     privateKey: requiredCredential(connection, "privateKey"),
@@ -128,7 +130,9 @@ function responseMethod<T>(
 ): (() => T) | undefined {
   if (!isRecord(response)) return undefined;
   const value = response[method];
-  return typeof value === "function" ? (value as () => T).bind(response) : undefined;
+  return typeof value === "function"
+    ? (value as () => T).bind(response)
+    : undefined;
 }
 
 function unwrapResponse(response: unknown, operation: string): JsonRecord {
@@ -172,7 +176,10 @@ function sdkErrorMessage(error: WaffoError | WaffoUnknownStatusError): string {
 function rethrowSdkError(error: unknown, mutation: boolean): never {
   if (error instanceof ProviderOperationError) throw error;
   if (error instanceof WaffoUnknownStatusError) {
-    throw new ProviderOperationError(sdkErrorMessage(error), "outcome_uncertain");
+    throw new ProviderOperationError(
+      sdkErrorMessage(error),
+      "outcome_uncertain",
+    );
   }
   if (error instanceof WaffoError) {
     const code = String(error.errorCode ?? "");
@@ -263,8 +270,6 @@ function mapRefundStatus(value: unknown): NormalizedRefund["status"] {
       return "succeeded";
     case "ORDER_REFUND_FAILED":
       return "failed";
-    case "REFUND_IN_PROGRESS":
-    case "ORDER_PARTIALLY_REFUNDED":
     default:
       return "pending";
   }
@@ -536,9 +541,13 @@ export function createWaffoProviderAdapter(
     async validateConnection(connection) {
       const client = clientFor(connection, options);
       const merchantId = requiredCredential(connection, "merchantId");
-      const response = await sdkCall(false, () =>
-        client.merchantConfig().inquiry?.({ merchantId }) ??
-        Promise.reject(new Error("Waffo merchant config inquiry is unavailable")),
+      const response = await sdkCall(
+        false,
+        () =>
+          client.merchantConfig().inquiry?.({ merchantId }) ??
+          Promise.reject(
+            new Error("Waffo merchant config inquiry is unavailable"),
+          ),
       );
       unwrapResponse(response, "merchant configuration inquiry");
       return {
@@ -581,39 +590,44 @@ export function createWaffoProviderAdapter(
       const requestedAt = new Date().toISOString();
 
       if (input.billingMode === "subscription") {
-        const response = await sdkCall(false, () =>
-          client.subscription().create?.({
-            subscriptionRequest: compactRequestId(
-              "sub",
-              input.monetplaneOrderId,
+        const response = await sdkCall(
+          false,
+          () =>
+            client.subscription().create?.({
+              subscriptionRequest: compactRequestId(
+                "sub",
+                input.monetplaneOrderId,
+              ),
+              merchantSubscriptionId: input.monetplaneOrderId,
+              currency: input.currency,
+              amount: amountString(totalMinor),
+              notifyUrl,
+              productInfo: {
+                description: productName,
+                periodType: "MONTHLY",
+                periodInterval: input.interval === "year" ? "12" : "1",
+              },
+              userInfo: {
+                userId: input.monetplaneCustomerId,
+                userEmail: customerEmail,
+              },
+              paymentInfo: { productName },
+              goodsInfo: {
+                goodsId: item.productId,
+                goodsName: productName,
+                goodsQuantity: item.quantity,
+              },
+              successRedirectUrl: input.successUrl,
+              cancelRedirectUrl: input.cancelUrl,
+              requestedAt,
+              extendInfo: JSON.stringify({
+                monetplaneApplicationId: input.applicationId,
+                monetplanePriceId: item.priceId,
+              }),
+            }) ??
+            Promise.reject(
+              new Error("Waffo subscription create is unavailable"),
             ),
-            merchantSubscriptionId: input.monetplaneOrderId,
-            currency: input.currency,
-            amount: amountString(totalMinor),
-            notifyUrl,
-            productInfo: {
-              description: productName,
-              periodType: "MONTHLY",
-              periodInterval: input.interval === "year" ? "12" : "1",
-            },
-            userInfo: {
-              userId: input.monetplaneCustomerId,
-              userEmail: customerEmail,
-            },
-            paymentInfo: { productName },
-            goodsInfo: {
-              goodsId: item.productId,
-              goodsName: productName,
-              goodsQuantity: item.quantity,
-            },
-            successRedirectUrl: input.successUrl,
-            cancelRedirectUrl: input.cancelUrl,
-            requestedAt,
-            extendInfo: JSON.stringify({
-              monetplaneApplicationId: input.applicationId,
-              monetplanePriceId: item.priceId,
-            }),
-          }) ?? Promise.reject(new Error("Waffo subscription create is unavailable")),
         );
         const data = unwrapResponse(response, "subscription create");
         const providerCheckoutId =
@@ -638,32 +652,34 @@ export function createWaffoProviderAdapter(
         };
       }
 
-      const response = await sdkCall(false, () =>
-        client.order().create?.({
-          paymentRequestId: compactRequestId("pay", input.monetplaneOrderId),
-          merchantOrderId: input.monetplaneOrderId,
-          orderCurrency: input.currency,
-          orderAmount: amountString(totalMinor),
-          orderDescription: productName,
-          notifyUrl,
-          userInfo: {
-            userId: input.monetplaneCustomerId,
-            userEmail: customerEmail,
-          },
-          paymentInfo: { productName },
-          goodsInfo: {
-            goodsId: item.productId,
-            goodsName: productName,
-            goodsQuantity: item.quantity,
-          },
-          successRedirectUrl: input.successUrl,
-          cancelRedirectUrl: input.cancelUrl,
-          orderRequestedAt: requestedAt,
-          extendInfo: JSON.stringify({
-            monetplaneApplicationId: input.applicationId,
-            monetplanePriceId: item.priceId,
-          }),
-        }) ?? Promise.reject(new Error("Waffo order create is unavailable")),
+      const response = await sdkCall(
+        false,
+        () =>
+          client.order().create?.({
+            paymentRequestId: compactRequestId("pay", input.monetplaneOrderId),
+            merchantOrderId: input.monetplaneOrderId,
+            orderCurrency: input.currency,
+            orderAmount: amountString(totalMinor),
+            orderDescription: productName,
+            notifyUrl,
+            userInfo: {
+              userId: input.monetplaneCustomerId,
+              userEmail: customerEmail,
+            },
+            paymentInfo: { productName },
+            goodsInfo: {
+              goodsId: item.productId,
+              goodsName: productName,
+              goodsQuantity: item.quantity,
+            },
+            successRedirectUrl: input.successUrl,
+            cancelRedirectUrl: input.cancelUrl,
+            orderRequestedAt: requestedAt,
+            extendInfo: JSON.stringify({
+              monetplaneApplicationId: input.applicationId,
+              monetplanePriceId: item.priceId,
+            }),
+          }) ?? Promise.reject(new Error("Waffo order create is unavailable")),
       );
       const data = unwrapResponse(response, "order create");
       const providerCheckoutId =
@@ -690,19 +706,28 @@ export function createWaffoProviderAdapter(
 
     async getPayment(connection, input): Promise<NormalizedPayment> {
       const client = clientFor(connection, options);
-      const response = await sdkCall(false, () =>
-        client.order().inquiry?.({ acquiringOrderId: input.providerPaymentId }) ??
-        Promise.reject(new Error("Waffo order inquiry is unavailable")),
+      const response = await sdkCall(
+        false,
+        () =>
+          client
+            .order()
+            .inquiry?.({ acquiringOrderId: input.providerPaymentId }) ??
+          Promise.reject(new Error("Waffo order inquiry is unavailable")),
       );
       return normalizePaymentObject(unwrapResponse(response, "order inquiry"));
     },
 
     async getSubscription(connection, input): Promise<NormalizedSubscription> {
       const client = clientFor(connection, options);
-      const response = await sdkCall(false, () =>
-        client.subscription().inquiry?.({
-          subscriptionId: input.providerSubscriptionId,
-        }) ?? Promise.reject(new Error("Waffo subscription inquiry is unavailable")),
+      const response = await sdkCall(
+        false,
+        () =>
+          client.subscription().inquiry?.({
+            subscriptionId: input.providerSubscriptionId,
+          }) ??
+          Promise.reject(
+            new Error("Waffo subscription inquiry is unavailable"),
+          ),
       );
       return normalizeSubscriptionObject(
         unwrapResponse(response, "subscription inquiry"),
@@ -715,12 +740,15 @@ export function createWaffoProviderAdapter(
     ): Promise<NormalizedSubscription> {
       const client = clientFor(connection, options);
       const merchantId = requiredCredential(connection, "merchantId");
-      const response = await sdkCall(true, () =>
-        client.subscription().cancel?.({
-          subscriptionId: input.providerSubscriptionId,
-          merchantId,
-          requestedAt: new Date().toISOString(),
-        }) ?? Promise.reject(new Error("Waffo subscription cancel is unavailable")),
+      const response = await sdkCall(
+        true,
+        () =>
+          client.subscription().cancel?.({
+            subscriptionId: input.providerSubscriptionId,
+            merchantId,
+            requestedAt: new Date().toISOString(),
+          }) ??
+          Promise.reject(new Error("Waffo subscription cancel is unavailable")),
       );
       unwrapResponse(response, "subscription cancel");
       return {
@@ -756,15 +784,17 @@ export function createWaffoProviderAdapter(
         "refund",
         input.requestId ?? `${input.providerPaymentId}:${input.amountMinor}`,
       );
-      const response = await sdkCall(true, () =>
-        client.order().refund?.({
-          refundRequestId,
-          acquiringOrderId: input.providerPaymentId,
-          merchantId,
-          refundAmount: amountString(input.amountMinor ?? 0),
-          refundReason: "MonetPlane operator full refund",
-          requestedAt: new Date().toISOString(),
-        }) ?? Promise.reject(new Error("Waffo order refund is unavailable")),
+      const response = await sdkCall(
+        true,
+        () =>
+          client.order().refund?.({
+            refundRequestId,
+            acquiringOrderId: input.providerPaymentId,
+            merchantId,
+            refundAmount: amountString(input.amountMinor ?? 0),
+            refundReason: "MonetPlane operator full refund",
+            requestedAt: new Date().toISOString(),
+          }) ?? Promise.reject(new Error("Waffo order refund is unavailable")),
       );
       const data = unwrapResponse(response, "order refund");
       const providerRefundId =
