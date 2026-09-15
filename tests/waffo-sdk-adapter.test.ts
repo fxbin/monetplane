@@ -24,6 +24,12 @@ function rejected(message: string) {
   };
 }
 
+function firstCall(calls: Array<Record<string, unknown>>, label: string) {
+  const call = calls.at(0);
+  if (!call) throw new Error(`${label} was not called`);
+  return call;
+}
+
 const connection: ProviderConnectionContext = {
   id: "pconn_waffo_sdk",
   applicationId: "app_waffo_sdk",
@@ -83,10 +89,8 @@ describe("Waffo official SDK adapter contract", () => {
       providerSubscriptionId: "sub_123",
     });
 
-    const refundParams = refundCalls[0];
-    const cancelParams = cancelCalls[0];
-    expect(refundParams).toBeDefined();
-    expect(cancelParams).toBeDefined();
+    const refundParams = firstCall(refundCalls, "Waffo refund");
+    const cancelParams = firstCall(cancelCalls, "Waffo cancellation");
 
     expect(refund.status).toBe("succeeded");
     expect(refund.providerRefundId).toBe("refund_waffo_1");
@@ -96,8 +100,8 @@ describe("Waffo official SDK adapter contract", () => {
       refundAmount: "25.99",
       refundReason: "MonetPlane operator full refund",
     });
-    expect(refundParams?.refundRequestId).toMatch(/^refund_/);
-    expect(refundParams?.requestedAt).toEqual(expect.any(String));
+    expect(refundParams.refundRequestId).toEqual(expect.any(String));
+    expect(refundParams.requestedAt).toEqual(expect.any(String));
 
     expect(cancellation).toMatchObject({
       providerSubscriptionId: "sub_123",
@@ -108,7 +112,7 @@ describe("Waffo official SDK adapter contract", () => {
       subscriptionId: "sub_123",
       merchantId: "merchant_123",
     });
-    expect(cancelParams?.requestedAt).toEqual(expect.any(String));
+    expect(cancelParams.requestedAt).toEqual(expect.any(String));
   });
 
   it("runs a read-only merchant configuration diagnostic", async () => {
