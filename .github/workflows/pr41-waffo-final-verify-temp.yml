@@ -54,5 +54,6 @@ jobs:
           tests/integration/provider-connection-management.test.ts
           tests/integration/provider-diagnostics.test.ts
           tests/integration/billing-operation-retry.test.ts
+          --config vitest.integration.config.ts
       - name: Build
         run: npx --yes pnpm@10 run build
