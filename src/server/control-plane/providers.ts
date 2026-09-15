@@ -9,6 +9,7 @@ import {
   getProviderCapabilities,
   getProviderPayment,
   getProviderSubscription,
+  validateProviderConnection,
 } from "@/modules/providers/runtime";
 import { getProviderConnection } from "@/modules/providers/service";
 import { getProviderSetup } from "@/modules/providers/setup";
@@ -97,11 +98,10 @@ export async function runConsoleProviderDiagnostic(
 
   try {
     if (input.kind === "configuration") {
-      const capabilities = await getProviderCapabilities(
-        applicationId,
-        connectionId,
-      );
-      const rows = capabilityRows(capabilities);
+      const [validation, capabilities] = await Promise.all([
+        validateProviderConnection(applicationId, connectionId),
+        getProviderCapabilities(applicationId, connectionId),
+      ]);
       return {
         kind: input.kind,
         status: "passed",
@@ -109,8 +109,8 @@ export async function runConsoleProviderDiagnostic(
         provider: connection.provider,
         connectionId,
         environment,
-        summary: `Runtime adapter resolved and encrypted credentials loaded. ${rows.filter((item) => item.supported).length} capabilities are enabled.`,
-        capabilities: rows,
+        summary: validation.summary,
+        capabilities: capabilityRows(capabilities),
       };
     }
 
@@ -211,6 +211,9 @@ export async function getConsoleProviderConnectionDetail(
             key: field.key,
             label: field.label,
             help: field.help,
+            placeholder: field.placeholder,
+            inputType: field.inputType,
+            secret: field.secret,
           })),
         }
       : null,
