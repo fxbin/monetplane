@@ -7,6 +7,9 @@ type CredentialField = {
   key: string;
   label: string;
   help: string;
+  placeholder: string;
+  inputType: "password" | "text" | "url";
+  secret: boolean;
 };
 
 type ProviderConnectionActionsProps = {
@@ -147,8 +150,8 @@ export function ProviderConnectionActions({
               <span className="provider-action-kicker">Provider settings</span>
               <h2 id={reconfigureTitleId}>Reconfigure {providerLabel}</h2>
               <p>
-                Rename this connection or replace its complete credential set.
-                Existing secret values are never revealed.
+                Rename this connection or replace its complete encrypted
+                connection configuration. Existing values are never revealed.
               </p>
             </div>
 
@@ -174,10 +177,10 @@ export function ProviderConnectionActions({
                   }}
                 />
                 <span>
-                  <strong>Replace credentials</strong>
+                  <strong>Replace connection config</strong>
                   <small>
                     Supply every required field. Leaving this off keeps the
-                    encrypted credential envelope unchanged.
+                    encrypted connection envelope unchanged.
                   </small>
                 </span>
               </label>
@@ -190,8 +193,9 @@ export function ProviderConnectionActions({
                     <span className="form-label">{field.label}</span>
                     <input
                       className="form-input cell-mono"
-                      type="password"
-                      autoComplete="new-password"
+                      type={field.inputType}
+                      autoComplete={field.secret ? "new-password" : "off"}
+                      placeholder={field.placeholder}
                       value={credentials[field.key] ?? ""}
                       onChange={(event) =>
                         setCredentials((current) => ({
