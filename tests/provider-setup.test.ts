@@ -24,13 +24,44 @@ describe("provider setup metadata", () => {
     });
   });
 
-  it("requires Waffo signing and webhook secrets", () => {
+  it("requires the current Waffo RSA credential contract", () => {
     expect(() =>
       validateProviderSetupCredentials("waffo", {
         apiKey: "waffo_key",
-        webhookSecret: "webhook_secret",
+        merchantId: "merchant_1",
+        privateKey: "private_key",
+        notifyUrl: "https://billing.example.com/waffo",
       }),
-    ).toThrow("Signing secret is required for Waffo");
+    ).toThrow("Waffo public key is required for Waffo");
+
+    expect(
+      validateProviderSetupCredentials("waffo", {
+        apiKey: " waffo_key ",
+        merchantId: " merchant_1 ",
+        privateKey: " private_key ",
+        waffoPublicKey: " public_key ",
+        notifyUrl: " https://billing.example.com/waffo ",
+        signingSecret: "legacy-value-must-not-be-stored",
+      }),
+    ).toEqual({
+      apiKey: "waffo_key",
+      merchantId: "merchant_1",
+      privateKey: "private_key",
+      waffoPublicKey: "public_key",
+      notifyUrl: "https://billing.example.com/waffo",
+    });
+  });
+
+  it("requires an HTTPS Waffo notification URL", () => {
+    expect(() =>
+      validateProviderSetupCredentials("waffo", {
+        apiKey: "waffo_key",
+        merchantId: "merchant_1",
+        privateKey: "private_key",
+        waffoPublicKey: "public_key",
+        notifyUrl: "http://localhost:3000/webhook",
+      }),
+    ).toThrow("must use HTTPS");
   });
 
   it("rejects unsupported provider names", () => {
