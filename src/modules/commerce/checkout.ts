@@ -206,6 +206,7 @@ export async function createCommerceCheckout(
         applicationId,
         monetplaneOrderId: orderId,
         monetplaneCustomerId: applicationCustomer.customerId,
+        customerEmail: applicationCustomer.email ?? undefined,
         billingMode,
         interval:
           billingMode === "subscription"
@@ -214,6 +215,7 @@ export async function createCommerceCheckout(
         currency,
         items: resolvedItems.map((item) => ({
           productId: item.product.id,
+          productName: item.product.name,
           priceId: item.price.id,
           quantity: item.quantity,
           unitAmountMinor: item.price.amountMinor,
