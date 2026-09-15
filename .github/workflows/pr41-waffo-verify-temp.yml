@@ -1,0 +1,51 @@
+name: Temporary PR41 Waffo Contract Verify
+
+on: push
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: monetplane
+          POSTGRES_PASSWORD: monetplane
+          POSTGRES_DB: monetplane_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U monetplane -d monetplane_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://monetplane:monetplane@localhost:5432/monetplane_test
+      MONETPLANE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.12.0
+      - name: Install
+        run: npx --yes pnpm@10 install --no-frozen-lockfile
+      - name: Lint
+        run: npx --yes pnpm@10 run lint
+      - name: Typecheck
+        run: npx --yes pnpm@10 run typecheck
+      - name: Unit tests
+        run: npx --yes pnpm@10 run test
+      - name: Migrate
+        run: |
+          npx --yes pnpm@10 run db:migrate
+          npx --yes pnpm@10 run db:migrate
+      - name: Provider console integration
+        run: npx --yes pnpm@10 exec vitest run tests/integration/provider-connection-management.test.ts tests/integration/provider-diagnostics.test.ts tests/integration/billing-operation-retry.test.ts --config vitest.integration.config.ts
+      - name: Build
+        run: npx --yes pnpm@10 run build
