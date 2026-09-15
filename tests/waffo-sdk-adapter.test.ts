@@ -41,14 +41,14 @@ const connection: ProviderConnectionContext = {
 
 describe("Waffo official SDK adapter contract", () => {
   it("sends the required full-refund and cancellation fields", async () => {
-    let refundParams: Record<string, unknown> | null = null;
-    let cancelParams: Record<string, unknown> | null = null;
+    const refundCalls: Array<Record<string, unknown>> = [];
+    const cancelCalls: Array<Record<string, unknown>> = [];
 
     const adapter = createWaffoProviderAdapter({
       clientFactory: () => ({
         order: () => ({
           refund: async (params) => {
-            refundParams = params;
+            refundCalls.push(params);
             return success({
               refundRequestId: params.refundRequestId,
               acquiringOrderId: params.acquiringOrderId,
@@ -60,7 +60,7 @@ describe("Waffo official SDK adapter contract", () => {
         }),
         subscription: () => ({
           cancel: async (params) => {
-            cancelParams = params;
+            cancelCalls.push(params);
             return success({
               subscriptionId: params.subscriptionId,
               orderStatus: "ORDER_SUCCESS",
@@ -82,6 +82,11 @@ describe("Waffo official SDK adapter contract", () => {
     const cancellation = await adapter.cancelSubscription(connection, {
       providerSubscriptionId: "sub_123",
     });
+
+    const refundParams = refundCalls[0];
+    const cancelParams = cancelCalls[0];
+    expect(refundParams).toBeDefined();
+    expect(cancelParams).toBeDefined();
 
     expect(refund.status).toBe("succeeded");
     expect(refund.providerRefundId).toBe("refund_waffo_1");
@@ -107,14 +112,14 @@ describe("Waffo official SDK adapter contract", () => {
   });
 
   it("runs a read-only merchant configuration diagnostic", async () => {
-    let merchantParams: Record<string, unknown> | null = null;
+    const merchantCalls: Array<Record<string, unknown>> = [];
     const adapter = createWaffoProviderAdapter({
       clientFactory: () => ({
         order: () => ({}),
         subscription: () => ({}),
         merchantConfig: () => ({
           inquiry: async (params) => {
-            merchantParams = params;
+            merchantCalls.push(params);
             return success({ merchantId: "merchant_123" });
           },
         }),
@@ -123,7 +128,7 @@ describe("Waffo official SDK adapter contract", () => {
     });
 
     const result = await adapter.validateConnection?.(connection);
-    expect(merchantParams).toEqual({ merchantId: "merchant_123" });
+    expect(merchantCalls[0]).toEqual({ merchantId: "merchant_123" });
     expect(result?.summary).toContain("RSA request/response verification");
   });
 
