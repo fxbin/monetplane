@@ -196,7 +196,7 @@ describe("developer tools integration", () => {
     await revokeDeveloperApiKey(app.id, original.id);
     await expect(
       authenticateApplicationCredential(original.secret, db),
-    ).rejects.toThrow();
+    ).resolves.toBeNull();
     await expect(
       authenticateApplicationCredential(replacement.secret, db),
     ).resolves.toMatchObject({
