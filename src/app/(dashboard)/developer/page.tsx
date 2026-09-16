@@ -58,7 +58,7 @@ export default async function DeveloperQuickstartPage() {
     {
       label: "Authenticated API request received",
       done: health.apiRequestReceived,
-      href: "/developer#sdk",
+      href: "/developer",
       action: "Run SDK call",
     },
     {
@@ -148,7 +148,7 @@ const credits = await monetplane.getCreditBalance(
         ))}
       </section>
 
-      <div className="developer-quickstart-layout" id="sdk">
+      <div className="developer-quickstart-layout">
         <section className="developer-panel developer-quickstart-main">
           <div className="developer-panel-heading">
             <div>
