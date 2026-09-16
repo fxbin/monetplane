@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
@@ -37,7 +37,7 @@ afterAll(async () => {
 });
 
 async function startReceiver(
-  handler: Parameters<typeof createServer>[0],
+  handler: RequestListener,
 ): Promise<{ url: string; close: () => Promise<void> }> {
   const server = createServer(handler);
   await new Promise<void>((resolve, reject) => {
