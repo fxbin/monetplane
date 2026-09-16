@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { getProviderList } from "@/modules/admin/queries";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -51,13 +52,21 @@ export default async function ProvidersPage() {
                   <th>Mode</th>
                   <th>Status</th>
                   <th>Created</th>
+                  <th aria-label="Actions" />
                 </tr>
               </thead>
               <tbody>
                 {providers.map((conn) => (
                   <tr key={conn.id}>
                     <td className="cell-mono">{conn.provider}</td>
-                    <td>{conn.name}</td>
+                    <td>
+                      <Link
+                        className="provider-connection-link"
+                        href={`/providers/${conn.id}`}
+                      >
+                        {conn.name}
+                      </Link>
+                    </td>
                     <td>
                       <span className={`badge badge-${conn.mode}`}>
                         {conn.mode}
@@ -70,6 +79,14 @@ export default async function ProvidersPage() {
                     </td>
                     <td className="cell-muted">
                       {new Date(conn.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="provider-table-action">
+                      <Link
+                        className="btn btn-secondary"
+                        href={`/providers/${conn.id}`}
+                      >
+                        Manage
+                      </Link>
                     </td>
                   </tr>
                 ))}

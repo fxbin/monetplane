@@ -154,3 +154,20 @@ export function ReconcileBillingOperationAction({
     />
   );
 }
+
+export function RetryBillingOperationAction({
+  operationId,
+}: {
+  operationId: string;
+}) {
+  return (
+    <ConfirmAction
+      danger
+      title="Retry rejected provider operation"
+      description="Create a new journal attempt and call the provider again. Retry is only available when the previous provider attempt was explicitly rejected, so uncertain outcomes cannot be duplicated accidentally."
+      triggerLabel="Retry"
+      confirmLabel="Create retry attempt"
+      endpoint={`/api/admin/operations/${encodeURIComponent(operationId)}/retry`}
+    />
+  );
+}

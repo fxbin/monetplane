@@ -167,10 +167,10 @@ export function ProviderConnectForm({
         <div className="project-form-heading">
           <span className="project-form-step">3</span>
           <div>
-            <h2>{setup.label} credentials</h2>
+            <h2>{setup.label} connection config</h2>
             <p>
-              Credentials are encrypted before storage and are never returned by
-              the provider list API.
+              Secrets and provider runtime configuration are encrypted before
+              storage and are never returned by the provider list API.
             </p>
           </div>
         </div>
@@ -181,8 +181,8 @@ export function ProviderConnectForm({
               <span className="form-label">{field.label}</span>
               <input
                 className="form-input cell-mono"
-                type="password"
-                autoComplete="new-password"
+                type={field.inputType}
+                autoComplete={field.secret ? "new-password" : "off"}
                 placeholder={field.placeholder}
                 value={credentials[field.key] ?? ""}
                 onChange={(event) =>
@@ -199,9 +199,8 @@ export function ProviderConnectForm({
         </div>
 
         <div className="provider-secret-note">
-          MonetPlane stores an encrypted credential envelope. After creation the
-          console only exposes connection metadata, never the plaintext secret
-          values.
+          MonetPlane stores an encrypted connection envelope. After creation the
+          console only exposes field metadata, never persisted values.
         </div>
       </section>
 

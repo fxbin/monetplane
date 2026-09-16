@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -27,6 +28,9 @@ export const billingOperations = pgTable(
     providerResourceId: text("provider_resource_id").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     status: text("status").default("pending_provider").notNull(),
+    failureKind: text("failure_kind"),
+    retryOfOperationId: text("retry_of_operation_id"),
+    attemptNumber: integer("attempt_number").default(1).notNull(),
     normalizedResult: jsonb("normalized_result")
       .$type<Record<string, unknown>>()
       .default(sql`'{}'::jsonb`)
@@ -54,6 +58,14 @@ export const billingOperations = pgTable(
     index("billing_operations_status_idx").on(
       table.applicationId,
       table.status,
+    ),
+    index("billing_operations_retry_idx").on(
+      table.applicationId,
+      table.retryOfOperationId,
+    ),
+    check(
+      "billing_operations_failure_kind_check",
+      sql`${table.failureKind} IS NULL OR ${table.failureKind} IN ('rejected', 'outcome_uncertain')`,
     ),
     check(
       "billing_operations_type_check",

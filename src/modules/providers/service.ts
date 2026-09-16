@@ -114,6 +114,51 @@ export async function listProviderConnections(
   return rows.map(toView);
 }
 
+export async function updateProviderConnection(
+  applicationId: string,
+  connectionId: string,
+  input: {
+    name?: string;
+    credentials?: Record<string, string>;
+  },
+  db: Database = getDb(),
+): Promise<ProviderConnectionView | null> {
+  const values: Partial<typeof providerConnections.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) throw new Error("Provider connection name is required");
+    values.name = name;
+  }
+
+  if (input.credentials !== undefined) {
+    if (Object.keys(input.credentials).length === 0) {
+      throw new Error("Provider credentials are required");
+    }
+    values.encryptedCredentials = encryptProviderCredentials(input.credentials);
+  }
+
+  if (input.name === undefined && input.credentials === undefined) {
+    throw new Error("No provider connection changes were supplied");
+  }
+
+  const [row] = await db
+    .update(providerConnections)
+    .set(values)
+    .where(
+      and(
+        eq(providerConnections.id, connectionId),
+        eq(providerConnections.applicationId, applicationId),
+        eq(providerConnections.status, "active"),
+      ),
+    )
+    .returning();
+
+  return row ? toView(row) : null;
+}
+
 export async function revokeProviderConnection(
   applicationId: string,
   connectionId: string,

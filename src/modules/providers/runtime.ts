@@ -73,6 +73,26 @@ export async function getProviderCapabilities(
   );
 }
 
+export async function validateProviderConnection(
+  applicationId: string,
+  connectionId: string,
+  db: Database = getDb(),
+) {
+  const connection = await loadProviderConnectionContext(
+    applicationId,
+    connectionId,
+    db,
+  );
+  const adapter = resolveProviderAdapter(connection.provider);
+  if (adapter.validateConnection) {
+    return adapter.validateConnection(connection);
+  }
+  const capabilities = adapter.getCapabilities(connection);
+  return {
+    summary: `Runtime adapter resolved and encrypted credentials loaded. ${Object.values(capabilities).filter(Boolean).length} capabilities are enabled.`,
+  };
+}
+
 export async function createProviderCheckout(
   applicationId: string,
   connectionId: string,

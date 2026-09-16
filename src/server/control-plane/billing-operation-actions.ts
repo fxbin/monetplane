@@ -14,6 +14,7 @@ import type {
   NormalizedSubscription,
   ProviderMode,
 } from "@/modules/providers/contract";
+import { classifyProviderOperationFailure } from "@/modules/providers/contract";
 import {
   cancelProviderSubscription,
   refundProviderPayment,
@@ -75,6 +76,8 @@ async function createOrGetOperation(input: {
   providerConnectionId: string;
   providerResourceId: string;
   idempotencyKey: string;
+  retryOfOperationId?: string | null;
+  attemptNumber?: number;
 }) {
   const db = getDb();
   const [inserted] = await db
@@ -152,6 +155,7 @@ async function recordProviderFailure(
 ) {
   await updateOperation(applicationId, operationId, {
     status: "failed",
+    failureKind: classifyProviderOperationFailure(error),
     errorMessage:
       error instanceof Error ? error.message : "Provider operation failed",
   });
@@ -191,10 +195,17 @@ function assertOperationCanProceed(
       "This billing operation has an uncertain provider outcome. Investigate provider state before taking further action.",
     );
   }
+  if (operation.failureKind === "rejected") {
+    throw new Error(
+      operation.errorMessage
+        ? `The provider rejected the previous attempt. Correct the input or provider configuration, then use the explicit retry action: ${operation.errorMessage}`
+        : "The provider rejected the previous attempt. Correct the input or provider configuration, then use the explicit retry action.",
+    );
+  }
   throw new Error(
     operation.errorMessage
-      ? `The previous billing operation failed and is terminal in P1: ${operation.errorMessage}`
-      : "The previous billing operation failed and is terminal in P1. Inspect the provider error before taking further action.",
+      ? `The previous provider outcome is uncertain and must not be retried automatically: ${operation.errorMessage}`
+      : "The previous provider outcome is uncertain and must not be retried automatically. Investigate provider state first.",
   );
 }
 
@@ -274,6 +285,7 @@ export async function refundPaymentWithJournal(
 
   await updateOperation(applicationId, operation.id, {
     status: "provider_succeeded",
+    failureKind: null,
     normalizedResult: { ...result },
     errorMessage: null,
   });
@@ -333,6 +345,149 @@ export async function cancelSubscriptionWithJournal(
 
   await updateOperation(applicationId, operation.id, {
     status: "provider_succeeded",
+    failureKind: null,
+    normalizedResult: { ...result },
+    errorMessage: null,
+  });
+  return reconcileBillingOperation(applicationId, operation.id, providerMode);
+}
+
+export async function retryBillingOperation(
+  applicationId: string,
+  operationId: string,
+  providerMode: ProviderMode,
+) {
+  const source = await getOperationById(applicationId, operationId);
+  await assertOperationEnvironment(
+    applicationId,
+    source.providerConnectionId,
+    providerMode,
+  );
+
+  if (source.status !== "failed") {
+    throw new Error("Only failed provider operations can be retried.");
+  }
+  if (source.failureKind !== "rejected") {
+    throw new Error(
+      "This provider outcome is uncertain. Do not retry it until provider state has been investigated.",
+    );
+  }
+
+  let type: "refund" | "cancel_subscription";
+  let resourceType: "payment" | "subscription";
+  let amountMinor: number | undefined;
+
+  if (source.type === "refund") {
+    if (source.resourceType !== "payment") {
+      throw new Error("Refund journal has an invalid resource type.");
+    }
+    type = "refund";
+    resourceType = "payment";
+    const payment = await getPaymentDetail(
+      applicationId,
+      source.resourceId,
+      providerMode,
+    );
+    if (!payment.refundEligibility.eligible) {
+      throw new Error(
+        payment.refundEligibility.reason ??
+          "This payment cannot be retried for refund.",
+      );
+    }
+    if (
+      payment.providerConnectionId !== source.providerConnectionId ||
+      payment.providerPaymentId !== source.providerResourceId
+    ) {
+      throw new Error(
+        "Payment provider routing changed after the failed attempt. Start a new operator review instead of retrying the old operation.",
+      );
+    }
+    amountMinor = payment.amountMinor;
+  } else if (source.type === "cancel_subscription") {
+    if (source.resourceType !== "subscription") {
+      throw new Error("Cancellation journal has an invalid resource type.");
+    }
+    type = "cancel_subscription";
+    resourceType = "subscription";
+    const subscription = await getSubscriptionDetail(
+      applicationId,
+      source.resourceId,
+      providerMode,
+    );
+    if (!subscription.cancellationEligibility.eligible) {
+      throw new Error(
+        subscription.cancellationEligibility.reason ??
+          "This subscription cannot be retried for cancellation.",
+      );
+    }
+    if (
+      subscription.providerConnectionId !== source.providerConnectionId ||
+      subscription.providerSubscriptionId !== source.providerResourceId
+    ) {
+      throw new Error(
+        "Subscription provider routing changed after the failed attempt. Start a new operator review instead of retrying the old operation.",
+      );
+    }
+  } else {
+    throw new Error(`Unsupported billing operation type: ${source.type}`);
+  }
+
+  const attemptNumber = source.attemptNumber + 1;
+  const { operation, created } = await createOrGetOperation({
+    applicationId,
+    type,
+    resourceType,
+    resourceId: source.resourceId,
+    providerConnectionId: source.providerConnectionId,
+    providerResourceId: source.providerResourceId,
+    idempotencyKey: `retry:${source.id}`,
+    retryOfOperationId: source.id,
+    attemptNumber,
+  });
+  if (!created) {
+    return resumeExistingOperation(applicationId, operation, providerMode);
+  }
+
+  if (type === "refund") {
+    let result: NormalizedRefund;
+    try {
+      result = await refundProviderPayment(
+        applicationId,
+        source.providerConnectionId,
+        {
+          providerPaymentId: source.providerResourceId,
+          amountMinor,
+        },
+      );
+    } catch (error) {
+      await recordProviderFailure(applicationId, operation.id, error);
+      throw error;
+    }
+
+    await updateOperation(applicationId, operation.id, {
+      status: "provider_succeeded",
+      failureKind: null,
+      normalizedResult: { ...result },
+      errorMessage: null,
+    });
+    return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  }
+
+  let result: NormalizedSubscription;
+  try {
+    result = await cancelProviderSubscription(
+      applicationId,
+      source.providerConnectionId,
+      { providerSubscriptionId: source.providerResourceId },
+    );
+  } catch (error) {
+    await recordProviderFailure(applicationId, operation.id, error);
+    throw error;
+  }
+
+  await updateOperation(applicationId, operation.id, {
+    status: "provider_succeeded",
+    failureKind: null,
     normalizedResult: { ...result },
     errorMessage: null,
   });
