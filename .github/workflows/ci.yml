@@ -33,38 +33,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.21.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 22.12.0
+          cache: pnpm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: npm run lint
+        run: pnpm lint
 
       - name: Typecheck
-        run: npm run typecheck
+        run: pnpm typecheck
 
       - name: Unit tests
-        run: npm test
+        run: pnpm test
 
       - name: Migrate fresh database
-        run: npm run db:migrate
+        run: pnpm db:migrate
 
       - name: Verify migration repeatability
-        run: npm run db:migrate
+        run: pnpm db:migrate
 
       - name: Integration tests
-        run: npm run test:integration
+        run: pnpm test:integration
 
       - name: Build
-        run: npm run build
+        run: pnpm build
 
       - name: Verify database-aware health endpoint
         run: |
-          npm run start -- --hostname 127.0.0.1 > /tmp/monetplane-next.log 2>&1 &
+          pnpm start -- --hostname 127.0.0.1 > /tmp/monetplane-next.log 2>&1 &
           server_pid=$!
           trap 'kill $server_pid || true' EXIT
           for attempt in {1..30}; do
