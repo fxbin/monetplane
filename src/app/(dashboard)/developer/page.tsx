@@ -114,7 +114,7 @@ redirect(checkout.checkoutUrl);`;
 
   const accessSnippet = `const access = await monetplane.checkEntitlement({
   externalCustomerId: "user_123",
-  entitlementKey: "pro_access",
+  featureKey: "pro_access",
 });
 
 const credits = await monetplane.getCreditBalance(
