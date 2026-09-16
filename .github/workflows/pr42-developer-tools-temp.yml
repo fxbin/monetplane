@@ -5,7 +5,7 @@ on:
     branches: [feat/p1-developer-tools]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -38,6 +38,17 @@ jobs:
           node-version: 22.12.0
       - name: Install
         run: npx --yes pnpm@10 install --no-frozen-lockfile
+      - name: Format generated changes
+        run: npx --yes pnpm@10 run lint:fix
+      - name: Commit formatting if needed
+        run: |
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add .
+            git commit -m "style: format developer tools"
+            git push
+          fi
       - name: Lint
         run: npx --yes pnpm@10 run lint
       - name: Typecheck
