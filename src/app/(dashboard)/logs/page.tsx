@@ -81,7 +81,7 @@ export default async function LogsPage({ searchParams }: { searchParams: SearchP
         <div className="developer-log-list">
           {logs.map((log) => (
             <article className="developer-log-row" key={log.id}>
-              <span className={`developer-log-level level-${log.level}`} aria-label={log.level} />
+              <span className={`developer-log-level level-${log.level}`} aria-hidden="true" />
               <div className="developer-log-copy">
                 <div className="developer-log-title">
                   <strong>{log.message}</strong>
