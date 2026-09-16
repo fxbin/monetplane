@@ -88,11 +88,15 @@ export function normalizeWebhookUrl(value: string, mode: WebhookMode): string {
 export function normalizeWebhookEventTypes(values?: string[]): string[] {
   const candidates = values?.length ? values : ["*"];
   const normalized = Array.from(
-    new Set(candidates.map((value) => value.trim().toLowerCase()).filter(Boolean)),
+    new Set(
+      candidates.map((value) => value.trim().toLowerCase()).filter(Boolean),
+    ),
   );
   if (normalized.length === 0) return ["*"];
   if (normalized.length > 50) {
-    throw new Error("A webhook endpoint can subscribe to at most 50 event types");
+    throw new Error(
+      "A webhook endpoint can subscribe to at most 50 event types",
+    );
   }
   for (const value of normalized) {
     if (value !== "*" && !/^[a-z0-9][a-z0-9._-]*$/.test(value)) {
@@ -283,7 +287,10 @@ export async function listWebhookDeliveries(
 
   const limit = Math.min(Math.max(filters.limit ?? 50, 1), 200);
   const rows = await db
-    .select({ delivery: webhookDeliveries, endpointName: webhookEndpoints.name })
+    .select({
+      delivery: webhookDeliveries,
+      endpointName: webhookEndpoints.name,
+    })
     .from(webhookDeliveries)
     .innerJoin(
       webhookEndpoints,
@@ -367,7 +374,9 @@ export async function deliverWebhookDelivery(
       .set({
         status: succeeded ? "succeeded" : "failed",
         responseStatus: response.status,
-        errorMessage: succeeded ? null : `Endpoint returned HTTP ${response.status}`,
+        errorMessage: succeeded
+          ? null
+          : `Endpoint returned HTTP ${response.status}`,
         deliveredAt: succeeded ? new Date() : null,
       })
       .where(eq(webhookDeliveries.id, deliveryId))
@@ -450,7 +459,9 @@ export async function retryWebhookDelivery(
 }
 
 function endpointAccepts(endpointEventTypes: string[], eventType: string) {
-  return endpointEventTypes.includes("*") || endpointEventTypes.includes(eventType);
+  return (
+    endpointEventTypes.includes("*") || endpointEventTypes.includes(eventType)
+  );
 }
 
 export async function dispatchWebhookEvent(
@@ -518,7 +529,8 @@ export async function dispatchWebhookEvent(
     matchedEndpoints: matching.length,
     attemptedDeliveries: deliveryIds.length,
     succeeded: settled.filter(
-      (result) => result.status === "fulfilled" && result.value.status === "succeeded",
+      (result) =>
+        result.status === "fulfilled" && result.value.status === "succeeded",
     ).length,
   };
 }

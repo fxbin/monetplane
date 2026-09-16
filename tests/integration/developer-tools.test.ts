@@ -64,7 +64,9 @@ describe("developer tools integration", () => {
         receivedBody += chunk;
       });
       request.on("end", () => {
-        receivedSignature = String(request.headers["x-monetplane-signature"] ?? "");
+        receivedSignature = String(
+          request.headers["x-monetplane-signature"] ?? "",
+        );
         response.statusCode = 204;
         response.end();
       });
@@ -180,16 +182,24 @@ describe("developer tools integration", () => {
 
     expect(replacement.secret).toMatch(/^mp_app_/);
     expect(replacement.previousKeyStillActive).toBe(true);
-    await expect(authenticateApplicationCredential(original.secret, db)).resolves.toMatchObject({
+    await expect(
+      authenticateApplicationCredential(original.secret, db),
+    ).resolves.toMatchObject({
       id: app.id,
     });
-    await expect(authenticateApplicationCredential(replacement.secret, db)).resolves.toMatchObject({
+    await expect(
+      authenticateApplicationCredential(replacement.secret, db),
+    ).resolves.toMatchObject({
       id: app.id,
     });
 
     await revokeDeveloperApiKey(app.id, original.id);
-    await expect(authenticateApplicationCredential(original.secret, db)).rejects.toThrow();
-    await expect(authenticateApplicationCredential(replacement.secret, db)).resolves.toMatchObject({
+    await expect(
+      authenticateApplicationCredential(original.secret, db),
+    ).rejects.toThrow();
+    await expect(
+      authenticateApplicationCredential(replacement.secret, db),
+    ).resolves.toMatchObject({
       id: app.id,
     });
   });

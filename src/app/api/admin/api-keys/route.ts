@@ -35,18 +35,23 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { name?: unknown };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
-      return NextResponse.json({ error: "API key name is required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "API key name is required" },
+        { status: 400 },
+      );
     }
     const key = await createDeveloperApiKey(application.id, name);
     return NextResponse.json(
       {
         key,
-        notice: "This secret is shown once. Store it in a server-side secret manager.",
+        notice:
+          "This secret is shown once. Store it in a server-side secret manager.",
       },
       { status: 201 },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to create API key";
+    const message =
+      error instanceof Error ? error.message : "Failed to create API key";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

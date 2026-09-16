@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export default async function WebhooksPage() {
   const context = await getConsoleContext();
   const application = context.selectedApplication;
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   return (
     <PageContainer
@@ -38,18 +39,26 @@ export default async function WebhooksPage() {
       ) : (
         <>
           <div className="context-notice">
-            <span className="context-notice-label">Current webhook environment</span>
+            <span className="context-notice-label">
+              Current webhook environment
+            </span>
             <strong>{environmentLabel}</strong>
             <span>
-              Endpoints and delivery history on this page are environment-scoped. API keys remain project-wide until the broader isolation model in #49 is implemented.
+              Endpoints and delivery history on this page are
+              environment-scoped. API keys remain project-wide until the broader
+              isolation model in #49 is implemented.
             </span>
           </div>
           <WebhookManager
             environmentLabel={environmentLabel}
-            endpoints={await listWebhookEndpoints(application.id, context.environment)}
-            deliveries={await listWebhookDeliveries(application.id, context.environment, {
-              limit: 50,
-            })}
+            endpoints={
+              await listWebhookEndpoints(application.id, context.environment)
+            }
+            deliveries={
+              await listWebhookDeliveries(application.id, context.environment, {
+                limit: 50,
+              })
+            }
           />
         </>
       )}

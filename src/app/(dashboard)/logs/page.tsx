@@ -7,24 +7,43 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-function value(params: Record<string, string | string[] | undefined>, key: string) {
+function value(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+) {
   const candidate = params[key];
   return typeof candidate === "string" ? candidate.trim() : "";
 }
 
-export default async function LogsPage({ searchParams }: { searchParams: SearchParams }) {
-  const [context, params] = await Promise.all([getConsoleContext(), searchParams]);
+export default async function LogsPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const [context, params] = await Promise.all([
+    getConsoleContext(),
+    searchParams,
+  ]);
   const application = context.selectedApplication;
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   if (!application) {
     return (
-      <PageContainer title="Logs" description="Operational logs will appear after you create a project.">
+      <PageContainer
+        title="Logs"
+        description="Operational logs will appear after you create a project."
+      >
         <div className="empty-state">
           <h2 className="empty-state-title">No project selected</h2>
-          <p className="empty-state-desc">Create a project to inspect billing operations and webhook delivery health.</p>
+          <p className="empty-state-desc">
+            Create a project to inspect billing operations and webhook delivery
+            health.
+          </p>
           <div className="empty-state-actions">
-            <Link className="btn btn-primary" href="/applications/new">Create project</Link>
+            <Link className="btn btn-primary" href="/applications/new">
+              Create project
+            </Link>
           </div>
         </div>
       </PageContainer>
@@ -38,7 +57,11 @@ export default async function LogsPage({ searchParams }: { searchParams: SearchP
     status: value(params, "status") || undefined,
     type: value(params, "type") || undefined,
   };
-  const logs = await getDeveloperLogs(application.id, context.environment, filters);
+  const logs = await getDeveloperLogs(
+    application.id,
+    context.environment,
+    filters,
+  );
 
   return (
     <PageContainer
@@ -48,15 +71,27 @@ export default async function LogsPage({ searchParams }: { searchParams: SearchP
       <form className="developer-filter-bar" method="get">
         <label>
           <span>Provider</span>
-          <input name="provider" defaultValue={filters.provider} placeholder="waffo or pc_…" />
+          <input
+            name="provider"
+            defaultValue={filters.provider}
+            placeholder="waffo or pc_…"
+          />
         </label>
         <label>
           <span>Customer</span>
-          <input name="customer" defaultValue={filters.customer} placeholder="user_123" />
+          <input
+            name="customer"
+            defaultValue={filters.customer}
+            placeholder="user_123"
+          />
         </label>
         <label>
           <span>Order</span>
-          <input name="order" defaultValue={filters.order} placeholder="ord_…" />
+          <input
+            name="order"
+            defaultValue={filters.order}
+            placeholder="ord_…"
+          />
         </label>
         <label>
           <span>Source</span>
@@ -69,11 +104,19 @@ export default async function LogsPage({ searchParams }: { searchParams: SearchP
         </label>
         <label>
           <span>Status</span>
-          <input name="status" defaultValue={filters.status} placeholder="failed, completed…" />
+          <input
+            name="status"
+            defaultValue={filters.status}
+            placeholder="failed, completed…"
+          />
         </label>
         <div className="developer-filter-actions">
-          <button className="btn btn-primary" type="submit">Filter</button>
-          <Link className="btn btn-secondary" href="/logs">Reset</Link>
+          <button className="btn btn-primary" type="submit">
+            Filter
+          </button>
+          <Link className="btn btn-secondary" href="/logs">
+            Reset
+          </Link>
         </div>
       </form>
 
@@ -81,18 +124,40 @@ export default async function LogsPage({ searchParams }: { searchParams: SearchP
         <div className="developer-log-list">
           {logs.map((log) => (
             <article className="developer-log-row" key={log.id}>
-              <span className={`developer-log-level level-${log.level}`} aria-hidden="true" />
+              <span
+                className={`developer-log-level level-${log.level}`}
+                aria-hidden="true"
+              />
               <div className="developer-log-copy">
                 <div className="developer-log-title">
                   <strong>{log.message}</strong>
-                  <span className="developer-log-source">{log.source.replaceAll("_", " ")}</span>
-                  <span className={`badge badge-${log.status}`}>{log.status}</span>
+                  <span className="developer-log-source">
+                    {log.source.replaceAll("_", " ")}
+                  </span>
+                  <span className={`badge badge-${log.status}`}>
+                    {log.status}
+                  </span>
                 </div>
                 <div className="developer-log-meta">
                   {log.provider && <span>provider {log.provider}</span>}
-                  {log.providerConnectionId && <span className="cell-mono">{log.providerConnectionId}</span>}
-                  {log.externalCustomerId && <span>customer <span className="cell-mono">{log.externalCustomerId}</span></span>}
-                  {log.orderId && <span>order <span className="cell-mono">{log.orderId}</span></span>}
+                  {log.providerConnectionId && (
+                    <span className="cell-mono">
+                      {log.providerConnectionId}
+                    </span>
+                  )}
+                  {log.externalCustomerId && (
+                    <span>
+                      customer{" "}
+                      <span className="cell-mono">
+                        {log.externalCustomerId}
+                      </span>
+                    </span>
+                  )}
+                  {log.orderId && (
+                    <span>
+                      order <span className="cell-mono">{log.orderId}</span>
+                    </span>
+                  )}
                 </div>
               </div>
               <time>{new Date(log.createdAt).toLocaleString()}</time>

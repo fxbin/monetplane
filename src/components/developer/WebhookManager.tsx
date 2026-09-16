@@ -54,7 +54,9 @@ export function WebhookManager({
     });
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
-      throw new Error(typeof body.error === "string" ? body.error : "Request failed");
+      throw new Error(
+        typeof body.error === "string" ? body.error : "Request failed",
+      );
     }
     return body;
   }
@@ -68,7 +70,10 @@ export function WebhookManager({
         body: JSON.stringify({
           name,
           url,
-          eventTypes: eventTypes.split(",").map((value) => value.trim()).filter(Boolean),
+          eventTypes: eventTypes
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean),
         }),
       });
       const endpoint = body.endpoint as { name: string; secret: string };
@@ -80,27 +85,39 @@ export function WebhookManager({
       setUrl("");
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to create webhook");
+      setError(
+        cause instanceof Error ? cause.message : "Failed to create webhook",
+      );
     } finally {
       setBusy(null);
     }
   }
 
-  async function act(label: string, path: string, action: "test" | "rotate" | "disable" | "retry") {
+  async function act(
+    label: string,
+    path: string,
+    action: "test" | "rotate" | "disable" | "retry",
+  ) {
     setBusy(label);
     try {
-      const body = await request(path, { method: action === "disable" ? "DELETE" : "POST" });
+      const body = await request(path, {
+        method: action === "disable" ? "DELETE" : "POST",
+      });
       if (action === "rotate") {
         const endpoint = body.endpoint as { name: string; secret: string };
         setRevealed({
           title: `${endpoint.name} rotated secret`,
           secret: endpoint.secret,
-          notice: String(body.notice ?? "Update the receiver before the next delivery."),
+          notice: String(
+            body.notice ?? "Update the receiver before the next delivery.",
+          ),
         });
       }
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Webhook action failed");
+      setError(
+        cause instanceof Error ? cause.message : "Webhook action failed",
+      );
     } finally {
       setBusy(null);
     }
@@ -113,14 +130,19 @@ export function WebhookManager({
           <div>
             <h2>Add {environmentLabel} endpoint</h2>
             <p>
-              MonetPlane signs each POST with HMAC-SHA256. Production endpoints must use HTTPS; Sandbox may use HTTP for local testing.
+              MonetPlane signs each POST with HMAC-SHA256. Production endpoints
+              must use HTTPS; Sandbox may use HTTP for local testing.
             </p>
           </div>
         </div>
         <form className="webhook-create-grid" onSubmit={createEndpoint}>
           <label>
             <span>Name</span>
-            <input value={name} onChange={(event) => setName(event.target.value)} required />
+            <input
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              required
+            />
           </label>
           <label className="webhook-url-field">
             <span>Endpoint URL</span>
@@ -140,7 +162,11 @@ export function WebhookManager({
               placeholder="*, payment.succeeded"
             />
           </label>
-          <button className="btn btn-primary" type="submit" disabled={busy === "create"}>
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={busy === "create"}
+          >
             {busy === "create" ? "Adding…" : "Add endpoint"}
           </button>
         </form>
@@ -161,20 +187,31 @@ export function WebhookManager({
             >
               Copy once
             </button>
-            <button className="btn btn-secondary" type="button" onClick={() => setRevealed(null)}>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => setRevealed(null)}
+            >
               I stored it
             </button>
           </div>
         </section>
       )}
 
-      {error && <div className="developer-error" role="alert">{error}</div>}
+      {error && (
+        <div className="developer-error" role="alert">
+          {error}
+        </div>
+      )}
 
       <section className="developer-panel">
         <div className="developer-panel-heading">
           <div>
             <h2>Endpoints</h2>
-            <p>Signing secrets are write-only after creation. Rotate only when the receiver can be updated immediately.</p>
+            <p>
+              Signing secrets are write-only after creation. Rotate only when
+              the receiver can be updated immediately.
+            </p>
           </div>
         </div>
         {endpoints.length ? (
@@ -184,11 +221,14 @@ export function WebhookManager({
                 <div>
                   <div className="webhook-endpoint-title">
                     <strong>{endpoint.name}</strong>
-                    <span className={`badge badge-${endpoint.status}`}>{endpoint.status}</span>
+                    <span className={`badge badge-${endpoint.status}`}>
+                      {endpoint.status}
+                    </span>
                   </div>
                   <code>{endpoint.url}</code>
                   <div className="webhook-endpoint-meta">
-                    secret {endpoint.secretPrefix}… · {endpoint.eventTypes.join(", ")}
+                    secret {endpoint.secretPrefix}… ·{" "}
+                    {endpoint.eventTypes.join(", ")}
                   </div>
                 </div>
                 {endpoint.status === "active" && (
@@ -242,7 +282,9 @@ export function WebhookManager({
             ))}
           </div>
         ) : (
-          <div className="developer-empty">No endpoint configured for this environment.</div>
+          <div className="developer-empty">
+            No endpoint configured for this environment.
+          </div>
         )}
       </section>
 
@@ -250,7 +292,10 @@ export function WebhookManager({
         <div className="developer-panel-heading">
           <div>
             <h2>Recent deliveries</h2>
-            <p>Failures retain status, HTTP code, and a bounded error message. Response bodies are not stored.</p>
+            <p>
+              Failures retain status, HTTP code, and a bounded error message.
+              Response bodies are not stored.
+            </p>
           </div>
         </div>
         {deliveries.length ? (
@@ -276,14 +321,20 @@ export function WebhookManager({
                     </td>
                     <td>{delivery.endpointName ?? delivery.endpointId}</td>
                     <td>
-                      <span className={`badge badge-${delivery.status}`}>{delivery.status}</span>
+                      <span className={`badge badge-${delivery.status}`}>
+                        {delivery.status}
+                      </span>
                       {delivery.errorMessage && (
-                        <div className="delivery-error-message">{delivery.errorMessage}</div>
+                        <div className="delivery-error-message">
+                          {delivery.errorMessage}
+                        </div>
                       )}
                     </td>
                     <td>{delivery.attemptCount}</td>
                     <td>{delivery.responseStatus ?? "—"}</td>
-                    <td className="cell-muted">{new Date(delivery.createdAt).toLocaleString()}</td>
+                    <td className="cell-muted">
+                      {new Date(delivery.createdAt).toLocaleString()}
+                    </td>
                     <td>
                       {delivery.status === "failed" && (
                         <button
@@ -308,7 +359,9 @@ export function WebhookManager({
             </table>
           </div>
         ) : (
-          <div className="developer-empty">No deliveries yet. Send a test to verify the receiver.</div>
+          <div className="developer-empty">
+            No deliveries yet. Send a test to verify the receiver.
+          </div>
         )}
       </section>
     </div>

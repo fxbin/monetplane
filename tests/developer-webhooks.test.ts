@@ -24,7 +24,9 @@ describe("developer webhook contract", () => {
     expect(generated.secret).toMatch(/^mp_whsec_/);
     expect(generated.secretPrefix).toMatch(/^mp_whsec_/);
     expect(generated.secretCiphertext).not.toContain(generated.secret);
-    expect(decryptWebhookSecret(generated.secretCiphertext)).toBe(generated.secret);
+    expect(decryptWebhookSecret(generated.secretCiphertext)).toBe(
+      generated.secret,
+    );
   });
 
   it("produces a deterministic versioned HMAC signature", () => {
@@ -57,9 +59,9 @@ describe("developer webhook contract", () => {
     expect(normalizeWebhookUrl("https://api.example.com/hook", "live")).toBe(
       "https://api.example.com/hook",
     );
-    expect(() => normalizeWebhookUrl("http://localhost:3001/hook", "live")).toThrow(
-      "must use https",
-    );
+    expect(() =>
+      normalizeWebhookUrl("http://localhost:3001/hook", "live"),
+    ).toThrow("must use https");
     expect(normalizeWebhookUrl("http://localhost:3001/hook", "test")).toBe(
       "http://localhost:3001/hook",
     );

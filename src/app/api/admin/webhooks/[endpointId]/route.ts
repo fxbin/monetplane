@@ -16,7 +16,10 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     ]);
     const application = context.selectedApplication;
     if (!application) {
-      return NextResponse.json({ error: "No project selected" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No project selected" },
+        { status: 400 },
+      );
     }
     const endpoint = await disableWebhookEndpoint(
       application.id,
@@ -25,7 +28,8 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     );
     return NextResponse.json({ endpoint });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to disable webhook";
+    const message =
+      error instanceof Error ? error.message : "Failed to disable webhook";
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

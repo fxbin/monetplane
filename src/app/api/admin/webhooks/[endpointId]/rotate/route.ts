@@ -16,7 +16,10 @@ export async function POST(_request: Request, { params }: RouteContext) {
     ]);
     const application = context.selectedApplication;
     if (!application) {
-      return NextResponse.json({ error: "No project selected" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No project selected" },
+        { status: 400 },
+      );
     }
     const endpoint = await rotateWebhookEndpointSecret(
       application.id,
@@ -25,10 +28,14 @@ export async function POST(_request: Request, { params }: RouteContext) {
     );
     return NextResponse.json({
       endpoint,
-      notice: "The new signing secret is shown once and replaces the previous secret immediately.",
+      notice:
+        "The new signing secret is shown once and replaces the previous secret immediately.",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to rotate webhook secret";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to rotate webhook secret";
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

@@ -16,7 +16,10 @@ export async function POST(_request: Request, { params }: RouteContext) {
     ]);
     const application = context.selectedApplication;
     if (!application) {
-      return NextResponse.json({ error: "No project selected" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No project selected" },
+        { status: 400 },
+      );
     }
     const key = await rotateDeveloperApiKey(application.id, credentialId);
     return NextResponse.json({
@@ -25,7 +28,8 @@ export async function POST(_request: Request, { params }: RouteContext) {
         "The replacement secret is shown once. The previous key remains active until you explicitly revoke it after deployment.",
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to rotate API key";
+    const message =
+      error instanceof Error ? error.message : "Failed to rotate API key";
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

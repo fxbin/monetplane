@@ -16,12 +16,16 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     ]);
     const application = context.selectedApplication;
     if (!application) {
-      return NextResponse.json({ error: "No project selected" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No project selected" },
+        { status: 400 },
+      );
     }
     const result = await revokeDeveloperApiKey(application.id, credentialId);
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to revoke API key";
+    const message =
+      error instanceof Error ? error.message : "Failed to revoke API key";
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

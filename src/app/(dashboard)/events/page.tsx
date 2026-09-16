@@ -7,24 +7,43 @@ export const dynamic = "force-dynamic";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
-function value(params: Record<string, string | string[] | undefined>, key: string) {
+function value(
+  params: Record<string, string | string[] | undefined>,
+  key: string,
+) {
   const candidate = params[key];
   return typeof candidate === "string" ? candidate.trim() : "";
 }
 
-export default async function EventsPage({ searchParams }: { searchParams: SearchParams }) {
-  const [context, params] = await Promise.all([getConsoleContext(), searchParams]);
+export default async function EventsPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const [context, params] = await Promise.all([
+    getConsoleContext(),
+    searchParams,
+  ]);
   const application = context.selectedApplication;
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   if (!application) {
     return (
-      <PageContainer title="Events" description="Provider events will appear after you create a project.">
+      <PageContainer
+        title="Events"
+        description="Provider events will appear after you create a project."
+      >
         <div className="empty-state">
           <h2 className="empty-state-title">No project selected</h2>
-          <p className="empty-state-desc">Create a project to inspect normalized payment and subscription events.</p>
+          <p className="empty-state-desc">
+            Create a project to inspect normalized payment and subscription
+            events.
+          </p>
           <div className="empty-state-actions">
-            <Link className="btn btn-primary" href="/applications/new">Create project</Link>
+            <Link className="btn btn-primary" href="/applications/new">
+              Create project
+            </Link>
           </div>
         </div>
       </PageContainer>
@@ -38,7 +57,11 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
     status: value(params, "status") || undefined,
     type: value(params, "type") || undefined,
   };
-  const events = await getDeveloperEvents(application.id, context.environment, filters);
+  const events = await getDeveloperEvents(
+    application.id,
+    context.environment,
+    filters,
+  );
 
   return (
     <PageContainer
@@ -48,21 +71,36 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
       <div className="context-notice">
         <span className="context-notice-label">Privacy boundary</span>
         <strong>Normalized events only</strong>
-        <span>Raw provider webhook bodies are retained for processing but are not exposed in this developer console.</span>
+        <span>
+          Raw provider webhook bodies are retained for processing but are not
+          exposed in this developer console.
+        </span>
       </div>
 
       <form className="developer-filter-bar" method="get">
         <label>
           <span>Provider</span>
-          <input name="provider" defaultValue={filters.provider} placeholder="waffo or pc_…" />
+          <input
+            name="provider"
+            defaultValue={filters.provider}
+            placeholder="waffo or pc_…"
+          />
         </label>
         <label>
           <span>Customer</span>
-          <input name="customer" defaultValue={filters.customer} placeholder="external or internal id" />
+          <input
+            name="customer"
+            defaultValue={filters.customer}
+            placeholder="external or internal id"
+          />
         </label>
         <label>
           <span>Order</span>
-          <input name="order" defaultValue={filters.order} placeholder="ord_…" />
+          <input
+            name="order"
+            defaultValue={filters.order}
+            placeholder="ord_…"
+          />
         </label>
         <label>
           <span>Status</span>
@@ -76,11 +114,19 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
         </label>
         <label>
           <span>Type</span>
-          <input name="type" defaultValue={filters.type} placeholder="payment.succeeded" />
+          <input
+            name="type"
+            defaultValue={filters.type}
+            placeholder="payment.succeeded"
+          />
         </label>
         <div className="developer-filter-actions">
-          <button className="btn btn-primary" type="submit">Filter</button>
-          <Link className="btn btn-secondary" href="/events">Reset</Link>
+          <button className="btn btn-primary" type="submit">
+            Filter
+          </button>
+          <Link className="btn btn-secondary" href="/events">
+            Reset
+          </Link>
         </div>
       </form>
 
@@ -102,22 +148,38 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
                   <tr key={event.id}>
                     <td>
                       <strong>{event.type}</strong>
-                      <div className="cell-muted cell-mono">{event.providerEventId}</div>
-                      <div className="cell-muted">{event.providerEventName}</div>
+                      <div className="cell-muted cell-mono">
+                        {event.providerEventId}
+                      </div>
+                      <div className="cell-muted">
+                        {event.providerEventName}
+                      </div>
                     </td>
                     <td>
                       <div>{event.provider}</div>
-                      <div className="cell-muted cell-mono">{event.providerConnectionId}</div>
+                      <div className="cell-muted cell-mono">
+                        {event.providerConnectionId}
+                      </div>
                     </td>
                     <td>
                       <div className="cell-mono">{event.orderId ?? "—"}</div>
-                      <div className="cell-muted cell-mono">{event.customerId ?? "—"}</div>
+                      <div className="cell-muted cell-mono">
+                        {event.customerId ?? "—"}
+                      </div>
                     </td>
                     <td>
-                      <span className={`badge badge-${event.status}`}>{event.status}</span>
-                      {event.errorMessage && <div className="delivery-error-message">{event.errorMessage}</div>}
+                      <span className={`badge badge-${event.status}`}>
+                        {event.status}
+                      </span>
+                      {event.errorMessage && (
+                        <div className="delivery-error-message">
+                          {event.errorMessage}
+                        </div>
+                      )}
                     </td>
-                    <td className="cell-muted">{new Date(event.occurredAt).toLocaleString()}</td>
+                    <td className="cell-muted">
+                      {new Date(event.occurredAt).toLocaleString()}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -126,7 +188,8 @@ export default async function EventsPage({ searchParams }: { searchParams: Searc
         </div>
       ) : (
         <div className="developer-empty developer-empty-large">
-          No events match this {environmentLabel} view yet. Provider-signed webhook events will appear here after normalization.
+          No events match this {environmentLabel} view yet. Provider-signed
+          webhook events will appear here after normalization.
         </div>
       )}
     </PageContainer>

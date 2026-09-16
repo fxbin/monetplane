@@ -19,7 +19,8 @@ function CodeBlock({ children }: { children: string }) {
 export default async function DeveloperQuickstartPage() {
   const context = await getConsoleContext();
   const application = context.selectedApplication;
-  const environmentLabel = context.environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    context.environment === "test" ? "Sandbox" : "Production";
 
   if (!application) {
     return (
@@ -30,7 +31,8 @@ export default async function DeveloperQuickstartPage() {
         <div className="empty-state">
           <h2 className="empty-state-title">Start with a project</h2>
           <p className="empty-state-desc">
-            A project owns your catalog, customers, API credentials, and provider connections.
+            A project owns your catalog, customers, API credentials, and
+            provider connections.
           </p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">
@@ -126,24 +128,37 @@ const credits = await monetplane.getCreditBalance(
       description={`Connect ${application.name} to MonetPlane in about 10 minutes.`}
     >
       <div className="context-notice">
-        <span className="context-notice-label">Current provider environment</span>
+        <span className="context-notice-label">
+          Current provider environment
+        </span>
         <strong>{environmentLabel}</strong>
         <span>
-          Provider connection IDs and webhook endpoints follow this environment. Server API keys are project-wide today.
+          Provider connection IDs and webhook endpoints follow this environment.
+          Server API keys are project-wide today.
         </span>
       </div>
 
-      <section className="developer-health-grid" aria-label="Integration health">
+      <section
+        className="developer-health-grid"
+        aria-label="Integration health"
+      >
         {checks.map((check) => (
-          <article className={`developer-health-card ${check.done ? "is-done" : ""}`} key={check.label}>
+          <article
+            className={`developer-health-card ${check.done ? "is-done" : ""}`}
+            key={check.label}
+          >
             <span className="developer-health-icon" aria-hidden="true">
               {check.done ? "✓" : "○"}
             </span>
             <div>
               <strong>{check.label}</strong>
-              <p>{check.done ? "Observed by MonetPlane" : "Not observed yet"}</p>
+              <p>
+                {check.done ? "Observed by MonetPlane" : "Not observed yet"}
+              </p>
             </div>
-            <Link href={check.href}>{check.done ? "Inspect" : check.action}</Link>
+            <Link href={check.href}>
+              {check.done ? "Inspect" : check.action}
+            </Link>
           </article>
         ))}
       </section>
@@ -155,7 +170,9 @@ const credits = await monetplane.getCreditBalance(
               <span className="developer-step">01</span>
               <h2>Keep the secret on your server</h2>
               <p>
-                Create an API key, put it in your server secret manager, and never expose it through browser bundles, public environment variables, or client-side code.
+                Create an API key, put it in your server secret manager, and
+                never expose it through browser bundles, public environment
+                variables, or client-side code.
               </p>
             </div>
             <Link className="btn btn-secondary" href="/api-keys">
@@ -167,7 +184,11 @@ const credits = await monetplane.getCreditBalance(
           <div className="developer-sdk-distribution-note">
             <strong>SDK distribution status</strong>
             <span>
-              This repository currently keeps the SDK under <code>src/sdk</code> and the root package is private. A public package publish step is not configured yet. The code below uses the exact current server SDK contract rather than pretending a package is already published.
+              This repository currently keeps the SDK under <code>src/sdk</code>{" "}
+              and the root package is private. A public package publish step is
+              not configured yet. The code below uses the exact current server
+              SDK contract rather than pretending a package is already
+              published.
             </span>
           </div>
 
@@ -192,7 +213,8 @@ const credits = await monetplane.getCreditBalance(
               <span className="developer-step">04</span>
               <h2>Create checkout</h2>
               <p>
-                The example uses the first active {environmentLabel} provider and first active project price when available.
+                The example uses the first active {environmentLabel} provider
+                and first active project price when available.
               </p>
             </div>
           </div>
@@ -220,11 +242,15 @@ const credits = await monetplane.getCreditBalance(
             </div>
             <div>
               <dt>Provider</dt>
-              <dd className="cell-mono">{quickstart.provider?.id ?? "Not connected"}</dd>
+              <dd className="cell-mono">
+                {quickstart.provider?.id ?? "Not connected"}
+              </dd>
             </div>
             <div>
               <dt>Price</dt>
-              <dd className="cell-mono">{quickstart.catalog?.priceId ?? "No active price"}</dd>
+              <dd className="cell-mono">
+                {quickstart.catalog?.priceId ?? "No active price"}
+              </dd>
             </div>
           </dl>
           {!quickstart.provider && (

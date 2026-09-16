@@ -33,7 +33,9 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
     });
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
-      throw new Error(typeof body.error === "string" ? body.error : "Request failed");
+      throw new Error(
+        typeof body.error === "string" ? body.error : "Request failed",
+      );
     }
     return body;
   }
@@ -54,7 +56,9 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
       });
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to create API key");
+      setError(
+        cause instanceof Error ? cause.message : "Failed to create API key",
+      );
     } finally {
       setBusy(null);
     }
@@ -70,18 +74,26 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
       setRevealed({
         title: `${replacement.name} replacement created`,
         secret: replacement.secret,
-        notice: String(body.notice ?? "Deploy the replacement before revoking the old key."),
+        notice: String(
+          body.notice ?? "Deploy the replacement before revoking the old key.",
+        ),
       });
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to rotate API key");
+      setError(
+        cause instanceof Error ? cause.message : "Failed to rotate API key",
+      );
     } finally {
       setBusy(null);
     }
   }
 
   async function revokeKey(key: ApiKey) {
-    if (!window.confirm(`Revoke ${key.name}? Requests using this secret will stop working.`)) {
+    if (
+      !window.confirm(
+        `Revoke ${key.name}? Requests using this secret will stop working.`,
+      )
+    ) {
       return;
     }
     setBusy(`revoke:${key.id}`);
@@ -89,7 +101,9 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
       await request(`/api/admin/api-keys/${key.id}`, { method: "DELETE" });
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed to revoke API key");
+      setError(
+        cause instanceof Error ? cause.message : "Failed to revoke API key",
+      );
     } finally {
       setBusy(null);
     }
@@ -102,7 +116,9 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
           <div>
             <h2>Create server key</h2>
             <p>
-              Keys authenticate server-to-server SDK calls. They are project-wide today and are not separated by Sandbox / Production until environment isolation is expanded.
+              Keys authenticate server-to-server SDK calls. They are
+              project-wide today and are not separated by Sandbox / Production
+              until environment isolation is expanded.
             </p>
           </div>
         </div>
@@ -117,7 +133,11 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
               required
             />
           </label>
-          <button className="btn btn-primary" type="submit" disabled={busy === "create"}>
+          <button
+            className="btn btn-primary"
+            type="submit"
+            disabled={busy === "create"}
+          >
             {busy === "create" ? "Creating…" : "Create API key"}
           </button>
         </form>
@@ -138,20 +158,30 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
             >
               Copy once
             </button>
-            <button className="btn btn-secondary" type="button" onClick={() => setRevealed(null)}>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              onClick={() => setRevealed(null)}
+            >
               I stored it
             </button>
           </div>
         </section>
       )}
 
-      {error && <div className="developer-error" role="alert">{error}</div>}
+      {error && (
+        <div className="developer-error" role="alert">
+          {error}
+        </div>
+      )}
 
       <section className="developer-panel">
         <div className="developer-panel-heading">
           <div>
             <h2>Server keys</h2>
-            <p>Only the prefix and usage metadata remain visible after creation.</p>
+            <p>
+              Only the prefix and usage metadata remain visible after creation.
+            </p>
           </div>
         </div>
         {keys.length ? (
@@ -174,10 +204,14 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
                       <td>{key.name}</td>
                       <td className="cell-mono">{key.secretPrefix}…</td>
                       <td className="cell-muted">
-                        {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleString() : "Never"}
+                        {key.lastUsedAt
+                          ? new Date(key.lastUsedAt).toLocaleString()
+                          : "Never"}
                       </td>
                       <td>
-                        <span className={`badge badge-${revoked ? "revoked" : "active"}`}>
+                        <span
+                          className={`badge badge-${revoked ? "revoked" : "active"}`}
+                        >
                           {revoked ? "revoked" : "active"}
                         </span>
                       </td>
@@ -210,7 +244,9 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
             </table>
           </div>
         ) : (
-          <div className="developer-empty">No API keys yet. Create one for your backend.</div>
+          <div className="developer-empty">
+            No API keys yet. Create one for your backend.
+          </div>
         )}
       </section>
     </div>

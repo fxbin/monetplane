@@ -16,7 +16,10 @@ export async function POST(_request: Request, { params }: RouteContext) {
     ]);
     const application = context.selectedApplication;
     if (!application) {
-      return NextResponse.json({ error: "No project selected" }, { status: 400 });
+      return NextResponse.json(
+        { error: "No project selected" },
+        { status: 400 },
+      );
     }
     const delivery = await createTestWebhookDelivery(
       application.id,
@@ -25,7 +28,8 @@ export async function POST(_request: Request, { params }: RouteContext) {
     );
     return NextResponse.json({ delivery });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Failed to test webhook";
+    const message =
+      error instanceof Error ? error.message : "Failed to test webhook";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

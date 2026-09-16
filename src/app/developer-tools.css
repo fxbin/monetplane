@@ -52,7 +52,10 @@
 }
 
 .webhook-create-grid {
-  grid-template-columns: minmax(150px, 0.7fr) minmax(280px, 1.8fr) minmax(180px, 1fr) auto;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(280px, 1.8fr) minmax(
+      180px,
+      1fr
+    ) auto;
   align-items: end;
 }
 

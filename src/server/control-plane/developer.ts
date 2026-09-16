@@ -59,7 +59,10 @@ export async function rotateDeveloperApiKey(
 ) {
   const db = getDb();
   const [existing] = await db
-    .select({ id: applicationCredentials.id, name: applicationCredentials.name })
+    .select({
+      id: applicationCredentials.id,
+      name: applicationCredentials.name,
+    })
     .from(applicationCredentials)
     .where(
       and(
@@ -87,7 +90,10 @@ export async function revokeDeveloperApiKey(
   applicationId: string,
   credentialId: string,
 ) {
-  const revoked = await revokeApplicationCredential(applicationId, credentialId);
+  const revoked = await revokeApplicationCredential(
+    applicationId,
+    credentialId,
+  );
   if (!revoked) throw new Error("API key not found");
   return { id: credentialId, revoked: true };
 }
@@ -193,7 +199,9 @@ export async function getDeveloperHealth(
         .limit(1),
     ]);
 
-  const activeEndpoints = endpoints.filter((endpoint) => endpoint.status === "active");
+  const activeEndpoints = endpoints.filter(
+    (endpoint) => endpoint.status === "active",
+  );
   return {
     apiKeyCreated: keys.length > 0,
     apiRequestReceived: keys.some((key) => key.lastUsedAt !== null),
@@ -246,7 +254,10 @@ export async function getDeveloperEvents(
             customer.customerId === filters.customer ||
             customer.externalCustomerId === filters.customer,
         )
-        .flatMap((customer) => [customer.customerId, customer.externalCustomerId]),
+        .flatMap((customer) => [
+          customer.customerId,
+          customer.externalCustomerId,
+        ]),
     );
   }
 
@@ -263,15 +274,17 @@ export async function getDeveloperEvents(
     ) {
       return false;
     }
-    if (filters.customer && (!customer || !customerIds?.has(customer))) return false;
+    if (filters.customer && (!customer || !customerIds?.has(customer)))
+      return false;
     if (filters.order && order !== filters.order) return false;
     if (filters.status && row.event.status !== filters.status) return false;
     if (filters.type && row.event.normalizedType !== filters.type) return false;
     return true;
   });
 
-  return selected.slice(0, Math.min(Math.max(filters.limit ?? 100, 1), 200)).map(
-    (row) => ({
+  return selected
+    .slice(0, Math.min(Math.max(filters.limit ?? 100, 1), 200))
+    .map((row) => ({
       id: row.event.id,
       provider: row.provider,
       providerConnectionId: row.event.providerConnectionId,
@@ -285,8 +298,7 @@ export async function getDeveloperEvents(
       occurredAt: row.event.occurredAt,
       receivedAt: row.event.receivedAt,
       processedAt: row.event.processedAt,
-    }),
-  );
+    }));
 }
 
 export type DeveloperLogEntry = {
@@ -308,72 +320,88 @@ export async function getDeveloperLogs(
   filters: DeveloperFilters = {},
 ): Promise<DeveloperLogEntry[]> {
   const db = getDb();
-  const [eventRows, operationRows, deliveryRows, customerRows, paymentRows, subRows] =
-    await Promise.all([
-      db
-        .select({ event: webhookEvents, provider: providerConnections.provider })
-        .from(webhookEvents)
-        .innerJoin(
-          providerConnections,
-          eq(providerConnections.id, webhookEvents.providerConnectionId),
-        )
-        .where(
-          and(
-            eq(webhookEvents.applicationId, applicationId),
-            eq(providerConnections.mode, environment),
-          ),
-        )
-        .orderBy(desc(webhookEvents.receivedAt))
-        .limit(150),
-      db
-        .select({ operation: billingOperations, provider: providerConnections.provider })
-        .from(billingOperations)
-        .innerJoin(
-          providerConnections,
-          eq(providerConnections.id, billingOperations.providerConnectionId),
-        )
-        .where(
-          and(
-            eq(billingOperations.applicationId, applicationId),
-            eq(providerConnections.mode, environment),
-          ),
-        )
-        .orderBy(desc(billingOperations.createdAt))
-        .limit(150),
-      listWebhookDeliveries(applicationId, environment, { limit: 150 }, db),
-      db
-        .select({
-          id: applicationCustomers.id,
-          customerId: applicationCustomers.customerId,
-          externalCustomerId: applicationCustomers.externalCustomerId,
-        })
-        .from(applicationCustomers)
-        .where(eq(applicationCustomers.applicationId, applicationId)),
-      db
-        .select({
-          id: payments.id,
-          orderId: payments.orderId,
-          customerId: payments.customerId,
-        })
-        .from(payments)
-        .where(eq(payments.applicationId, applicationId)),
-      db
-        .select({
-          id: subscriptions.id,
-          applicationCustomerId: subscriptions.applicationCustomerId,
-        })
-        .from(subscriptions)
-        .where(eq(subscriptions.applicationId, applicationId)),
-    ]);
+  const [
+    eventRows,
+    operationRows,
+    deliveryRows,
+    customerRows,
+    paymentRows,
+    subRows,
+  ] = await Promise.all([
+    db
+      .select({ event: webhookEvents, provider: providerConnections.provider })
+      .from(webhookEvents)
+      .innerJoin(
+        providerConnections,
+        eq(providerConnections.id, webhookEvents.providerConnectionId),
+      )
+      .where(
+        and(
+          eq(webhookEvents.applicationId, applicationId),
+          eq(providerConnections.mode, environment),
+        ),
+      )
+      .orderBy(desc(webhookEvents.receivedAt))
+      .limit(150),
+    db
+      .select({
+        operation: billingOperations,
+        provider: providerConnections.provider,
+      })
+      .from(billingOperations)
+      .innerJoin(
+        providerConnections,
+        eq(providerConnections.id, billingOperations.providerConnectionId),
+      )
+      .where(
+        and(
+          eq(billingOperations.applicationId, applicationId),
+          eq(providerConnections.mode, environment),
+        ),
+      )
+      .orderBy(desc(billingOperations.createdAt))
+      .limit(150),
+    listWebhookDeliveries(applicationId, environment, { limit: 150 }, db),
+    db
+      .select({
+        id: applicationCustomers.id,
+        customerId: applicationCustomers.customerId,
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(applicationCustomers)
+      .where(eq(applicationCustomers.applicationId, applicationId)),
+    db
+      .select({
+        id: payments.id,
+        orderId: payments.orderId,
+        customerId: payments.customerId,
+      })
+      .from(payments)
+      .where(eq(payments.applicationId, applicationId)),
+    db
+      .select({
+        id: subscriptions.id,
+        applicationCustomerId: subscriptions.applicationCustomerId,
+      })
+      .from(subscriptions)
+      .where(eq(subscriptions.applicationId, applicationId)),
+  ]);
 
   const externalByCustomer = new Map(
-    customerRows.map((customer) => [customer.customerId, customer.externalCustomerId]),
+    customerRows.map((customer) => [
+      customer.customerId,
+      customer.externalCustomerId,
+    ]),
   );
   const externalByApplicationCustomer = new Map(
     customerRows.map((customer) => [customer.id, customer.externalCustomerId]),
   );
-  const paymentById = new Map(paymentRows.map((payment) => [payment.id, payment]));
-  const subscriptionById = new Map(subRows.map((subscription) => [subscription.id, subscription]));
+  const paymentById = new Map(
+    paymentRows.map((payment) => [payment.id, payment]),
+  );
+  const subscriptionById = new Map(
+    subRows.map((subscription) => [subscription.id, subscription]),
+  );
 
   const logs: DeveloperLogEntry[] = [];
   for (const row of eventRows) {
@@ -388,7 +416,7 @@ export async function getDeveloperLogs(
       providerConnectionId: row.event.providerConnectionId,
       provider: row.provider,
       externalCustomerId: globalCustomerId
-        ? externalByCustomer.get(globalCustomerId) ?? globalCustomerId
+        ? (externalByCustomer.get(globalCustomerId) ?? globalCustomerId)
         : null,
       orderId: stringValue(normalized.monetplaneOrderId),
       createdAt: row.event.receivedAt,
@@ -402,12 +430,14 @@ export async function getDeveloperLogs(
       const payment = paymentById.get(row.operation.resourceId);
       orderId = payment?.orderId ?? null;
       externalCustomerId = payment?.customerId
-        ? externalByCustomer.get(payment.customerId) ?? null
+        ? (externalByCustomer.get(payment.customerId) ?? null)
         : null;
     } else if (row.operation.resourceType === "subscription") {
       const subscription = subscriptionById.get(row.operation.resourceId);
       externalCustomerId = subscription
-        ? externalByApplicationCustomer.get(subscription.applicationCustomerId) ?? null
+        ? (externalByApplicationCustomer.get(
+            subscription.applicationCustomerId,
+          ) ?? null)
         : null;
     }
     logs.push({
@@ -430,15 +460,23 @@ export async function getDeveloperLogs(
   }
 
   const providerIds = Array.from(
-    new Set(deliveryRows.map((delivery) => delivery.providerConnectionId).filter(Boolean)),
+    new Set(
+      deliveryRows
+        .map((delivery) => delivery.providerConnectionId)
+        .filter(Boolean),
+    ),
   ) as string[];
   const providerNames = new Map<string, string>();
   if (providerIds.length > 0) {
     const providers = await db
-      .select({ id: providerConnections.id, provider: providerConnections.provider })
+      .select({
+        id: providerConnections.id,
+        provider: providerConnections.provider,
+      })
       .from(providerConnections)
       .where(eq(providerConnections.applicationId, applicationId));
-    for (const provider of providers) providerNames.set(provider.id, provider.provider);
+    for (const provider of providers)
+      providerNames.set(provider.id, provider.provider);
   }
   for (const delivery of deliveryRows) {
     logs.push({
@@ -449,7 +487,7 @@ export async function getDeveloperLogs(
       status: delivery.status,
       providerConnectionId: delivery.providerConnectionId,
       provider: delivery.providerConnectionId
-        ? providerNames.get(delivery.providerConnectionId) ?? null
+        ? (providerNames.get(delivery.providerConnectionId) ?? null)
         : null,
       externalCustomerId: delivery.externalCustomerId,
       orderId: delivery.orderId,
@@ -466,7 +504,8 @@ export async function getDeveloperLogs(
       ) {
         return false;
       }
-      if (filters.customer && log.externalCustomerId !== filters.customer) return false;
+      if (filters.customer && log.externalCustomerId !== filters.customer)
+        return false;
       if (filters.order && log.orderId !== filters.order) return false;
       if (filters.status && log.status !== filters.status) return false;
       if (filters.type && log.source !== filters.type) return false;

@@ -23,7 +23,8 @@ export default async function ApiKeysPage() {
         <div className="empty-state">
           <h2 className="empty-state-title">No project selected</h2>
           <p className="empty-state-desc">
-            API keys authenticate the MonetPlane server SDK. Create a project first.
+            API keys authenticate the MonetPlane server SDK. Create a project
+            first.
           </p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">
