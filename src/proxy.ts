@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 
 /**
- * NextAuth middleware — protects dashboard routes.
+ * NextAuth proxy (Next.js 16 convention, formerly middleware) — protects
+ * dashboard routes.
  *
  * Routes that require admin session:
  * - /overview, /products, /providers, /customers (dashboard pages)
