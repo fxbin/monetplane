@@ -1,5 +1,9 @@
 # MonetPlane P0 Architecture
 
+> Environment isolation: see [adr-environment-isolation.md](./adr-environment-isolation.md)
+> (decision for #49, implemented by #74). Console layering:
+> [p1-console-architecture.md](./p1-console-architecture.md).
+
 ## 1. Product boundary
 
 MonetPlane is a **multi-application monetization control plane**. It centralizes payment orchestration, subscriptions, entitlements, credits, and provider integrations while leaving authentication and product-specific data inside each application.
