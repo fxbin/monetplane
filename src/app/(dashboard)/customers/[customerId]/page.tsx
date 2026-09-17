@@ -38,6 +38,7 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
     workspace = await getCustomerWorkspace(
       context.selectedApplication.id,
       customerId,
+      context.environment,
     );
   } catch (error) {
     if (

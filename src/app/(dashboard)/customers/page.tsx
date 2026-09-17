@@ -28,10 +28,14 @@ export default async function CustomersPage({
   const search = params.q?.trim() ?? "";
   const filter = normalizeFilter(params.filter);
   const customers = context.selectedApplication
-    ? await getCustomerWorkspaceList(context.selectedApplication.id, {
-        search,
-        filter,
-      })
+    ? await getCustomerWorkspaceList(
+        context.selectedApplication.id,
+        {
+          search,
+          filter,
+        },
+        context.environment,
+      )
     : [];
 
   return (

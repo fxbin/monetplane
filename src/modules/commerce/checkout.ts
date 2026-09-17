@@ -36,7 +36,18 @@ export type CreateCommerceCheckoutInput = {
   items: Array<{ priceId: string; quantity: number }>;
   successUrl: string;
   cancelUrl: string;
+  /** Optional explicit environment; must match the provider connection mode. */
+  environment?: "test" | "live";
 };
+
+export class CommerceEnvironmentMismatchError extends Error {
+  constructor(
+    message = "Provider connection does not belong to the requested environment",
+  ) {
+    super(message);
+    this.name = "CommerceEnvironmentMismatchError";
+  }
+}
 
 export async function createCommerceCheckout(
   applicationId: string,
@@ -57,6 +68,13 @@ export async function createCommerceCheckout(
   );
   if (!providerConnection || providerConnection.status !== "active") {
     throw new CommerceProviderConnectionError();
+  }
+
+  // Environment is captured from the provider connection (fail closed when
+  // the caller requests a different plane).
+  const environment = providerConnection.mode;
+  if (input.environment && input.environment !== environment) {
+    throw new CommerceEnvironmentMismatchError();
   }
 
   const successUrl = await assertAllowedCallbackUrl(
@@ -174,6 +192,7 @@ export async function createCommerceCheckout(
       applicationCustomerId: applicationCustomer.id,
       billingMode,
       currency,
+      environment,
       totalAmountMinor,
     });
 
@@ -193,6 +212,7 @@ export async function createCommerceCheckout(
       applicationId,
       orderId,
       providerConnectionId: providerConnection.id,
+      environment,
       successUrl,
       cancelUrl,
     });

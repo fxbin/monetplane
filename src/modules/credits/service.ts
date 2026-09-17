@@ -25,6 +25,25 @@ type CreditAccountRow = typeof creditAccounts.$inferSelect;
 type CreditTransactionRow = typeof creditTransactions.$inferSelect;
 type CreditReservationRow = typeof creditReservations.$inferSelect;
 
+export type CreditEnvironment = "test" | "live";
+
+/**
+ * Environment resolution per the isolation ADR: credit accounts, transactions,
+ * and reservations are isolated per environment. Omitted environment defaults
+ * to 'test' during the SDK deprecation window with an explicit warning.
+ */
+export function resolveCreditEnvironment(
+  value: CreditEnvironment | undefined,
+): CreditEnvironment {
+  if (value === "live") return "live";
+  if (value === undefined) {
+    console.warn(
+      "[monetplane] credits: environment not specified, defaulting to 'test' (deprecated — pass environment explicitly)",
+    );
+  }
+  return "test";
+}
+
 export class CreditCustomerNotFoundError extends Error {
   constructor(message = "Application customer not found for credits") {
     super(message);
@@ -86,10 +105,11 @@ function assertPositiveAmount(amount: number, label = "Credit amount"): void {
 
 async function lockIdempotency(
   applicationId: string,
+  environment: CreditEnvironment,
   idempotencyKey: string,
   db: CreditStore,
 ): Promise<void> {
-  const scope = `${applicationId}:${idempotencyKey}`;
+  const scope = `${applicationId}:${environment}:${idempotencyKey}`;
   await db.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${scope}, 0))`,
   );
@@ -97,6 +117,7 @@ async function lockIdempotency(
 
 async function findTransaction(
   applicationId: string,
+  environment: CreditEnvironment,
   idempotencyKey: string,
   db: CreditStore,
 ): Promise<CreditTransactionRow | undefined> {
@@ -106,6 +127,7 @@ async function findTransaction(
     .where(
       and(
         eq(creditTransactions.applicationId, applicationId),
+        eq(creditTransactions.environment, environment),
         eq(creditTransactions.idempotencyKey, idempotencyKey),
       ),
     )
@@ -162,6 +184,7 @@ async function findAccount(
   applicationCustomerId: string,
   creditType: string,
   db: CreditStore,
+  environment: CreditEnvironment = "test",
 ): Promise<CreditAccountRow | undefined> {
   const [account] = await db
     .select()
@@ -171,6 +194,7 @@ async function findAccount(
         eq(creditAccounts.applicationId, applicationId),
         eq(creditAccounts.applicationCustomerId, applicationCustomerId),
         eq(creditAccounts.creditType, creditType),
+        eq(creditAccounts.environment, environment),
       ),
     )
     .limit(1);
@@ -182,6 +206,7 @@ async function ensureAccount(
   applicationCustomerId: string,
   creditType: string,
   db: CreditStore,
+  environment: CreditEnvironment = "test",
 ): Promise<CreditAccountRow> {
   await db
     .insert(creditAccounts)
@@ -190,12 +215,14 @@ async function ensureAccount(
       applicationId,
       applicationCustomerId,
       creditType,
+      environment,
     })
     .onConflictDoNothing({
       target: [
         creditAccounts.applicationId,
         creditAccounts.applicationCustomerId,
         creditAccounts.creditType,
+        creditAccounts.environment,
       ],
     });
 
@@ -204,6 +231,7 @@ async function ensureAccount(
     applicationCustomerId,
     creditType,
     db,
+    environment,
   );
   if (!account) throw new Error("Failed to create or resolve credit account");
   return account;
@@ -221,6 +249,7 @@ async function appendTransaction(
     sourceType: string;
     sourceId: string;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: CreditStore,
@@ -238,6 +267,7 @@ async function appendTransaction(
       reservedAfter: input.reservedAfter,
       sourceType: input.sourceType,
       sourceId: input.sourceId,
+      environment: resolveCreditEnvironment(input.environment),
       idempotencyKey: input.idempotencyKey,
       metadata: input.metadata ?? {},
     })
@@ -251,6 +281,7 @@ export async function getCreditBalanceForApplicationCustomer(
   applicationCustomerId: string,
   creditTypeInput: string,
   db: CreditStore = getDb(),
+  environment: CreditEnvironment = "test",
 ) {
   const creditType = normalizeCreditType(creditTypeInput);
   const account = await findAccount(
@@ -258,6 +289,7 @@ export async function getCreditBalanceForApplicationCustomer(
     applicationCustomerId,
     creditType,
     db,
+    environment,
   );
   return {
     creditType,
@@ -271,6 +303,7 @@ export async function getCreditBalance(
   externalCustomerId: string,
   creditType: string,
   db: CreditStore = getDb(),
+  environment: CreditEnvironment = "test",
 ) {
   const applicationCustomerId = await resolveApplicationCustomerId(
     applicationId,
@@ -282,6 +315,7 @@ export async function getCreditBalance(
     applicationCustomerId,
     creditType,
     db,
+    environment,
   );
 }
 
@@ -300,6 +334,7 @@ export async function grantCreditsInTransaction(
     sourceType: string;
     sourceId: string;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: CreditStore,
@@ -313,9 +348,11 @@ export async function grantCreditsInTransaction(
     "Credit idempotency key",
   );
 
-  await lockIdempotency(input.applicationId, idempotencyKey, db);
+  const environment = resolveCreditEnvironment(input.environment);
+  await lockIdempotency(input.applicationId, environment, idempotencyKey, db);
   const existing = await findTransaction(
     input.applicationId,
+    environment,
     idempotencyKey,
     db,
   );
@@ -335,6 +372,7 @@ export async function grantCreditsInTransaction(
     input.applicationCustomerId,
     creditType,
     db,
+    environment,
   );
   const [updated] = await db
     .update(creditAccounts)
@@ -358,6 +396,7 @@ export async function grantCreditsInTransaction(
       reservedAfter: updated.reservedBalance,
       sourceType,
       sourceId,
+      environment,
       idempotencyKey,
       metadata: input.metadata,
     },
@@ -382,6 +421,7 @@ async function debitCreditsForApplicationCustomerInTransaction(
     sourceType: string;
     sourceId: string;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: CreditStore,
@@ -395,9 +435,11 @@ async function debitCreditsForApplicationCustomerInTransaction(
     "Credit idempotency key",
   );
 
-  await lockIdempotency(input.applicationId, idempotencyKey, db);
+  const environment = resolveCreditEnvironment(input.environment);
+  await lockIdempotency(input.applicationId, environment, idempotencyKey, db);
   const existing = await findTransaction(
     input.applicationId,
+    environment,
     idempotencyKey,
     db,
   );
@@ -417,6 +459,7 @@ async function debitCreditsForApplicationCustomerInTransaction(
     input.applicationCustomerId,
     creditType,
     db,
+    environment,
   );
   if (!account) throw new InsufficientCreditsError();
 
@@ -447,6 +490,7 @@ async function debitCreditsForApplicationCustomerInTransaction(
       reservedAfter: updated.reservedBalance,
       sourceType,
       sourceId,
+      environment,
       idempotencyKey,
       metadata: input.metadata,
     },
@@ -464,6 +508,7 @@ export async function debitCredits(
     sourceType: string;
     sourceId: string;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: Database = getDb(),
@@ -490,6 +535,7 @@ export async function refundCredits(
     sourceType: string;
     sourceId: string;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: Database = getDb(),
@@ -527,6 +573,7 @@ export async function reserveCredits(
     referenceId: string;
     idempotencyKey: string;
     expiresAt?: Date | null;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: Database = getDb(),
@@ -552,13 +599,15 @@ export async function reserveCredits(
       tx,
     );
 
-    await lockIdempotency(input.applicationId, idempotencyKey, tx);
+    const environment = resolveCreditEnvironment(input.environment);
+    await lockIdempotency(input.applicationId, environment, idempotencyKey, tx);
     const [existingReservation] = await tx
       .select()
       .from(creditReservations)
       .where(
         and(
           eq(creditReservations.applicationId, input.applicationId),
+          eq(creditReservations.environment, environment),
           eq(creditReservations.idempotencyKey, idempotencyKey),
         ),
       )
@@ -580,6 +629,7 @@ export async function reserveCredits(
       applicationCustomerId,
       creditType,
       tx,
+      environment,
     );
     if (!account) throw new InsufficientCreditsError();
 
@@ -610,6 +660,7 @@ export async function reserveCredits(
         reservedAmount: input.amount,
         referenceType,
         referenceId,
+        environment,
         idempotencyKey,
         expiresAt: input.expiresAt ?? null,
       })
@@ -627,6 +678,7 @@ export async function reserveCredits(
         reservedAfter: updated.reservedBalance,
         sourceType: "reservation",
         sourceId: reservation.id,
+        environment,
         idempotencyKey,
         metadata: {
           referenceType,
@@ -667,6 +719,7 @@ export async function captureReservation(
     reservationId: string;
     amount: number;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: Database = getDb(),
@@ -677,10 +730,12 @@ export async function captureReservation(
       input.idempotencyKey,
       "Credit idempotency key",
     );
-    await lockIdempotency(input.applicationId, idempotencyKey, tx);
+    const environment = resolveCreditEnvironment(input.environment);
+    await lockIdempotency(input.applicationId, environment, idempotencyKey, tx);
 
     const existing = await findTransaction(
       input.applicationId,
+      environment,
       idempotencyKey,
       tx,
     );
@@ -752,6 +807,7 @@ export async function captureReservation(
         reservedAfter: account.reservedBalance,
         sourceType: "reservation",
         sourceId: reservation.id,
+        environment,
         idempotencyKey,
         metadata: {
           reservedAmount: reservation.reservedAmount,
@@ -775,6 +831,7 @@ export async function releaseReservation(
     applicationId: string;
     reservationId: string;
     idempotencyKey: string;
+    environment?: CreditEnvironment;
     metadata?: Record<string, unknown>;
   },
   db: Database = getDb(),
@@ -784,10 +841,12 @@ export async function releaseReservation(
       input.idempotencyKey,
       "Credit idempotency key",
     );
-    await lockIdempotency(input.applicationId, idempotencyKey, tx);
+    const environment = resolveCreditEnvironment(input.environment);
+    await lockIdempotency(input.applicationId, environment, idempotencyKey, tx);
 
     const existing = await findTransaction(
       input.applicationId,
+      environment,
       idempotencyKey,
       tx,
     );
@@ -850,6 +909,7 @@ export async function releaseReservation(
         reservedAfter: account.reservedBalance,
         sourceType: "reservation",
         sourceId: reservation.id,
+        environment,
         idempotencyKey,
         metadata: input.metadata,
       },

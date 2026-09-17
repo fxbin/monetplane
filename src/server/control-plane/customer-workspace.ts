@@ -51,6 +51,7 @@ async function requireApplicationCustomer(
 export async function getCustomerWorkspaceList(
   applicationId: string,
   options: { search?: string; filter?: CustomerListFilter } = {},
+  environment: "test" | "live" = "test",
 ) {
   const db = getDb();
   const search = options.search?.trim() ?? "";
@@ -105,6 +106,7 @@ export async function getCustomerWorkspaceList(
       .where(
         and(
           eq(creditAccounts.applicationId, applicationId),
+          eq(creditAccounts.environment, environment),
           inArray(creditAccounts.applicationCustomerId, customerIds),
         ),
       ),
@@ -157,6 +159,7 @@ export async function getCustomerWorkspaceList(
 export async function getCustomerWorkspace(
   applicationId: string,
   applicationCustomerId: string,
+  environment: "test" | "live" = "test",
 ) {
   const db = getDb();
   const customer = await requireApplicationCustomer(
@@ -179,6 +182,7 @@ export async function getCustomerWorkspace(
       .where(
         and(
           eq(creditAccounts.applicationId, applicationId),
+          eq(creditAccounts.environment, environment),
           eq(creditAccounts.applicationCustomerId, applicationCustomerId),
         ),
       )
@@ -189,6 +193,7 @@ export async function getCustomerWorkspace(
       .where(
         and(
           eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
           eq(creditTransactions.applicationCustomerId, applicationCustomerId),
         ),
       )
@@ -200,6 +205,7 @@ export async function getCustomerWorkspace(
       .where(
         and(
           eq(entitlementGrants.applicationId, applicationId),
+          eq(entitlementGrants.environment, environment),
           eq(entitlementGrants.applicationCustomerId, applicationCustomerId),
         ),
       )
@@ -444,6 +450,7 @@ export async function grantCustomerCredits(
   applicationId: string,
   applicationCustomerId: string,
   input: { creditType: string; amount: number; note?: string },
+  environment: "test" | "live" = "test",
 ) {
   await requireApplicationCustomer(applicationId, applicationCustomerId);
   if (!Number.isSafeInteger(input.amount) || input.amount <= 0) {
@@ -459,6 +466,7 @@ export async function grantCustomerCredits(
     transactionType: "adjustment.admin",
     sourceType: "admin",
     sourceId,
+    environment,
     idempotencyKey: `admin-credit:${sourceId}`,
     metadata: { note: input.note?.trim() || undefined },
   });

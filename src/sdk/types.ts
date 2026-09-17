@@ -5,12 +5,20 @@
  * to interact with MonetPlane—never provider-specific objects.
  */
 
+/**
+ * Billing environment plane. Runtime operations are isolated per the
+ * environment ADR; omitted environment defaults to "test" during the
+ * deprecation window.
+ */
+export type Environment = "test" | "live";
+
 export type CheckoutInput = {
   externalCustomerId: string;
   items: Array<{ priceId: string; quantity: number }>;
   providerConnectionId: string;
   successUrl: string;
   cancelUrl: string;
+  environment?: Environment;
 };
 
 export type CheckoutResult = {
@@ -50,6 +58,7 @@ export type DebitCreditsInput = {
   sourceId: string;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
+  environment?: Environment;
 };
 
 export type DebitCreditsResult = {
@@ -67,6 +76,7 @@ export type ReserveCreditsInput = {
   idempotencyKey: string;
   expiresAt?: Date | null;
   metadata?: Record<string, unknown>;
+  environment?: Environment;
 };
 
 export type ReserveCreditsResult = {
@@ -79,6 +89,7 @@ export type CaptureReservationInput = {
   amount: number;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
+  environment?: Environment;
 };
 
 export type CaptureReservationResult = {
@@ -91,6 +102,7 @@ export type ReleaseReservationInput = {
   reservationId: string;
   idempotencyKey: string;
   metadata?: Record<string, unknown>;
+  environment?: Environment;
 };
 
 export type ReleaseReservationResult = {
@@ -102,6 +114,7 @@ export type EntitlementCheckInput = {
   externalCustomerId: string;
   featureKey: string;
   at?: Date;
+  environment?: Environment;
 };
 
 export type EntitlementCheckResult = {

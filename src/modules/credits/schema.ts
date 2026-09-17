@@ -24,6 +24,7 @@ export const creditAccounts = pgTable(
       .notNull()
       .references(() => applicationCustomers.id, { onDelete: "no action" }),
     creditType: text("credit_type").notNull(),
+    environment: text("environment").default("test").notNull(),
     availableBalance: bigint("available_balance", { mode: "number" })
       .default(0)
       .notNull(),
@@ -43,6 +44,7 @@ export const creditAccounts = pgTable(
       table.applicationId,
       table.applicationCustomerId,
       table.creditType,
+      table.environment,
     ),
     index("credit_accounts_customer_idx").on(
       table.applicationId,
@@ -79,6 +81,7 @@ export const creditTransactions = pgTable(
     sourceType: text("source_type").notNull(),
     sourceId: text("source_id").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
+    environment: text("environment").default("test").notNull(),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
       .default({})
@@ -90,6 +93,7 @@ export const creditTransactions = pgTable(
   (table) => [
     uniqueIndex("credit_transactions_application_idempotency_unique").on(
       table.applicationId,
+      table.environment,
       table.idempotencyKey,
     ),
     index("credit_transactions_account_idx").on(
@@ -134,6 +138,7 @@ export const creditReservations = pgTable(
       .notNull()
       .references(() => creditAccounts.id, { onDelete: "no action" }),
     reservedAmount: bigint("reserved_amount", { mode: "number" }).notNull(),
+    environment: text("environment").default("test").notNull(),
     capturedAmount: bigint("captured_amount", { mode: "number" })
       .default(0)
       .notNull(),
@@ -152,6 +157,7 @@ export const creditReservations = pgTable(
   (table) => [
     uniqueIndex("credit_reservations_application_idempotency_unique").on(
       table.applicationId,
+      table.environment,
       table.idempotencyKey,
     ),
     index("credit_reservations_account_idx").on(

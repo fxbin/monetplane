@@ -27,6 +27,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const workspace = await getCustomerWorkspace(
       context.selectedApplication.id,
       customerId,
+      context.environment,
     );
     if (!workspace.payments.some((payment) => payment.id === paymentId)) {
       throw new Error("Payment not found for this customer");

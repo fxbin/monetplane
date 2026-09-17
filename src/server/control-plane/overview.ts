@@ -409,7 +409,10 @@ export async function getRevenueAnalytics(
   };
 }
 
-export async function getUsageAnalytics(applicationId: string) {
+export async function getUsageAnalytics(
+  applicationId: string,
+  environment: ConsoleEnvironment = "test",
+) {
   const db = getDb();
 
   const since = monthStart(monthsBack(12)[0]);
@@ -427,7 +430,12 @@ export async function getUsageAnalytics(applicationId: string) {
         sql`credit_accounts account`,
         sql`account.id = ${creditTransactions.creditAccountId}`,
       )
-      .where(eq(creditTransactions.applicationId, applicationId))
+      .where(
+        and(
+          eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
+        ),
+      )
       .groupBy(sql`account.credit_type`)
       .orderBy(
         desc(
@@ -443,6 +451,7 @@ export async function getUsageAnalytics(applicationId: string) {
       .where(
         and(
           eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
           gte(creditTransactions.createdAt, since),
         ),
       )
@@ -460,7 +469,12 @@ export async function getUsageAnalytics(applicationId: string) {
         applicationCustomers,
         eq(applicationCustomers.id, creditTransactions.applicationCustomerId),
       )
-      .where(eq(creditTransactions.applicationId, applicationId))
+      .where(
+        and(
+          eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
+        ),
+      )
       .groupBy(
         applicationCustomers.id,
         applicationCustomers.externalCustomerId,

@@ -2,6 +2,15 @@ import { NextResponse } from "next/server";
 import { resolveApplicationContext } from "@/modules/applications";
 import { reserveCredits } from "@/modules/credits/service";
 
+function parseEnvironment(
+  body: Record<string, unknown>,
+): "test" | "live" | undefined {
+  if (body.environment === "live") return "live";
+  if (body.environment === "test") return "test";
+  if (body.environment === undefined) return undefined;
+  throw new Error("environment must be 'test' or 'live'");
+}
+
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
   try {
@@ -57,6 +66,7 @@ export async function POST(request: Request) {
 
     const result = await reserveCredits({
       applicationId: context.application.id,
+      environment: parseEnvironment(body),
       externalCustomerId,
       creditType,
       amount,

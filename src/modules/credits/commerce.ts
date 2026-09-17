@@ -18,6 +18,7 @@ export async function grantConfiguredCreditsInTransaction(
     sourceId: string;
     periodKey: string;
     sourceEventId?: string | null;
+    environment?: "test" | "live";
   },
   db: CommerceCreditDb,
 ) {
@@ -83,6 +84,7 @@ export async function grantConfiguredCreditsInTransaction(
           transactionType: input.transactionType,
           sourceType: input.sourceType,
           sourceId: input.sourceId,
+          environment: input.environment,
           idempotencyKey: `grant:${input.sourceType}:${input.sourceId}:${input.periodKey}:${creditType}`,
           metadata: input.sourceEventId
             ? { sourceEventId: input.sourceEventId }

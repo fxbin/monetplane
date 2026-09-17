@@ -51,8 +51,8 @@ export default async function ProductsPage() {
             </div>
             <p>
               Provider column shows the routing preference for{" "}
-              {environmentLabel}. Catalog and benefit definitions remain
-              project-scoped.
+              {environmentLabel}. Product definitions are shared across
+              environments; billing runtime data is environment-isolated.
             </p>
           </div>
 

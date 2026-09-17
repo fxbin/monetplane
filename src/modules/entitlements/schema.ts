@@ -22,6 +22,7 @@ export const entitlementGrants = pgTable(
       .notNull()
       .references(() => applicationCustomers.id, { onDelete: "no action" }),
     featureKey: text("feature_key").notNull(),
+    environment: text("environment").default("test").notNull(),
     status: text("status").default("active").notNull(),
     sourceType: text("source_type").notNull(),
     sourceId: text("source_id").notNull(),
@@ -43,6 +44,7 @@ export const entitlementGrants = pgTable(
   (table) => [
     uniqueIndex("entitlement_grants_application_idempotency_unique").on(
       table.applicationId,
+      table.environment,
       table.idempotencyKey,
     ),
     index("entitlement_grants_access_idx").on(

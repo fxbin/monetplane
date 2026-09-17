@@ -118,8 +118,8 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
             <h2>Create server key</h2>
             <p>
               Keys authenticate server-to-server SDK calls. They are
-              project-wide today and are not separated by Sandbox / Production
-              until environment isolation is expanded.
+              project-wide by design; each request selects its billing
+              environment explicitly.
             </p>
           </div>
         </div>
