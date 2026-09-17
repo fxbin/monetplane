@@ -42,7 +42,11 @@ function wrapWithFailingLedgerInsert<T extends object>(target: T): T {
           callback: (tx: T) => Promise<unknown>,
         ) => Promise<unknown>;
         return ((callback: (tx: T) => Promise<unknown>) => {
-          return original((tx: T) => callback(wrapWithFailingLedgerInsert(tx)));
+          // Drizzle's `transaction` lives on the prototype and dereferences
+          // `this.session`, so the receiver must be preserved.
+          return original.call(t, (tx: T) =>
+            callback(wrapWithFailingLedgerInsert(tx)),
+          );
         }) as typeof original;
       }
 
