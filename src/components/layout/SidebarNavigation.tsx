@@ -61,8 +61,8 @@ const navSections: Array<{ label?: string; items: NavItem[] }> = [
   {
     label: "Analytics",
     items: [
-      { label: "Revenue", icon: "revenue", comingSoon: true },
-      { label: "Usage", icon: "usage", comingSoon: true },
+      { label: "Revenue", href: "/revenue", icon: "revenue" },
+      { label: "Usage", href: "/usage", icon: "usage" },
     ],
   },
   {
