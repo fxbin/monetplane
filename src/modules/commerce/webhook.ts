@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
+import { prices } from "../catalog/schema";
 import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
 import { applicationCustomers } from "../customers/schema";
 import {
@@ -494,8 +495,17 @@ export async function processProviderWebhook(
 
         if (!existingSubscription && order) {
           const items = await tx
-            .select()
+            .select({
+              productId: orderItems.productId,
+              priceId: orderItems.priceId,
+              quantity: orderItems.quantity,
+              unitAmountMinor: orderItems.unitAmountMinor,
+              currency: prices.currency,
+              recurringInterval: prices.recurringInterval,
+              trialPeriodDays: prices.trialPeriodDays,
+            })
             .from(orderItems)
+            .innerJoin(prices, eq(prices.id, orderItems.priceId))
             .where(eq(orderItems.orderId, order.id));
           if (items.length > 0) {
             await tx
@@ -507,6 +517,10 @@ export async function processProviderWebhook(
                   productId: item.productId,
                   priceId: item.priceId,
                   quantity: item.quantity,
+                  unitAmountMinor: item.unitAmountMinor,
+                  currency: item.currency,
+                  recurringInterval: item.recurringInterval,
+                  trialPeriodDays: item.trialPeriodDays ?? null,
                 })),
               )
               .onConflictDoNothing();

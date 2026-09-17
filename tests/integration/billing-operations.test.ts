@@ -304,6 +304,8 @@ describe("billing operations console", () => {
       productId: product.id,
       priceId: price.id,
       quantity: 1,
+      unitAmountMinor: 1900,
+      currency: "USD",
     });
     await grantEntitlement(
       {

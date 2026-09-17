@@ -106,9 +106,9 @@ export function ProductBuilderWizard({
   const [description, setDescription] = useState("");
   const [currency, setCurrency] = useState("USD");
   const [amount, setAmount] = useState("");
-  const [recurringInterval, setRecurringInterval] = useState<"month" | "year">(
-    "month",
-  );
+  const [recurringInterval, setRecurringInterval] = useState<
+    "week" | "month" | "year"
+  >("month");
   const [credits, setCredits] = useState<CreditDraft[]>([]);
   const [features, setFeatures] = useState<FeatureDraft[]>([]);
   const [providerConnectionId, setProviderConnectionId] = useState(
@@ -125,6 +125,12 @@ export function ProductBuilderWizard({
   const selectedProvider = providers.find(
     (provider) => provider.id === providerConnectionId,
   );
+  const weeklySupported =
+    (
+      selectedProvider as
+        | { capabilities?: { weeklyInterval?: boolean } }
+        | undefined
+    )?.capabilities?.weeklyInterval ?? false;
   const amountMinor = parseAmountMinor(amount);
 
   const typeDefinition = useMemo(
@@ -398,7 +404,7 @@ export function ProductBuilderWizard({
               <h2>Set the primary price</h2>
               <p>
                 {isRecurring
-                  ? "This product renews automatically. The current catalog contract supports monthly and annual intervals."
+                  ? "This product renews automatically. Weekly, monthly, and annual intervals are supported where the provider allows."
                   : "This product is charged once and does not renew."}
               </p>
             </div>
@@ -431,6 +437,28 @@ export function ProductBuilderWizard({
               {isRecurring && (
                 <fieldset className="interval-choice">
                   <legend>Billing interval</legend>
+                  <label
+                    className={`interval-option${recurringInterval === "week" ? " is-selected" : ""}${weeklySupported ? "" : " interval-option-disabled"}`}
+                    title={
+                      weeklySupported
+                        ? undefined
+                        : "The selected provider does not support weekly billing"
+                    }
+                  >
+                    <input
+                      type="radio"
+                      name="interval"
+                      checked={recurringInterval === "week"}
+                      disabled={!weeklySupported}
+                      onChange={() => setRecurringInterval("week")}
+                    />
+                    <strong>Weekly</strong>
+                    <span>
+                      {weeklySupported
+                        ? "Renews every week"
+                        : "Not supported by this provider"}
+                    </span>
+                  </label>
                   <label
                     className={
                       recurringInterval === "month" ? "is-selected" : undefined
@@ -467,7 +495,7 @@ export function ProductBuilderWizard({
                 <strong>{formatPreviewAmount(amount || "0", currency)}</strong>
                 <small>
                   {isRecurring
-                    ? `per ${recurringInterval === "month" ? "month" : "year"}`
+                    ? `per ${recurringInterval === "week" ? "week" : recurringInterval === "month" ? "month" : "year"}`
                     : "one time"}
                 </small>
               </div>

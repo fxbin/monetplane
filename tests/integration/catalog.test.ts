@@ -112,7 +112,7 @@ describe("product and price catalog", () => {
         },
         db,
       ),
-    ).rejects.toThrow("month or year");
+    ).rejects.toThrow("week, month, or year");
 
     await expect(
       createPrice(

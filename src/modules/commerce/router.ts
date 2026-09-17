@@ -86,6 +86,8 @@ async function assertConnectionUsable(
   billingMode: CheckoutBillingMode,
   activeIds: Set<string>,
   db: Database,
+  recurringInterval?: "week" | "month" | "year",
+  trialPeriodDays?: number | null,
 ): Promise<ResolvedProviderRoute> {
   const [connection] = await db
     .select({
@@ -136,6 +138,8 @@ export async function resolveCheckoutProviderRoute(
     environment: RoutingEnvironment;
     billingMode: CheckoutBillingMode;
     productIds: string[];
+    recurringInterval?: "week" | "month" | "year";
+    trialPeriodDays?: number | null;
   },
   db: Database = getDb(),
 ): Promise<ResolvedProviderRoute> {
@@ -183,6 +187,8 @@ export async function resolveCheckoutProviderRoute(
       input.billingMode,
       activeIds,
       db,
+      input.recurringInterval,
+      input.trialPeriodDays,
     );
   }
 
@@ -199,6 +205,8 @@ export async function resolveCheckoutProviderRoute(
       input.billingMode,
       activeIds,
       db,
+      input.recurringInterval,
+      input.trialPeriodDays,
     );
     return { ...route, source: "default" };
   }
