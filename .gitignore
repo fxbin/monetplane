@@ -10,6 +10,4 @@ coverage/
 .vercel/
 
 # Local test/build verification artifacts
-pnpm-lock.yaml
-pnpm-workspace.yaml
 tsconfig.tsbuildinfo
