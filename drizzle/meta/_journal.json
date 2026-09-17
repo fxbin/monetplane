@@ -92,6 +92,13 @@
       "when": 1789756000000,
       "tag": "0012_usage_metering",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789842000000,
+      "tag": "0013_credit_buckets",
+      "breakpoints": true
     }
   ]
 }
