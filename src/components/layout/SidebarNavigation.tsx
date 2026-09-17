@@ -25,6 +25,7 @@ type NavItem = {
     | "usage"
     | "providers"
     | "webhooks"
+    | "quickstart"
     | "keys"
     | "events"
     | "logs"
@@ -68,15 +69,16 @@ const navSections: Array<{ label?: string; items: NavItem[] }> = [
     label: "Integrations",
     items: [
       { label: "Payment Providers", href: "/providers", icon: "providers" },
-      { label: "Webhooks", icon: "webhooks", comingSoon: true },
+      { label: "Webhooks", href: "/webhooks", icon: "webhooks" },
     ],
   },
   {
     label: "Developer",
     items: [
-      { label: "API Keys", icon: "keys", comingSoon: true },
-      { label: "Events", icon: "events", comingSoon: true },
-      { label: "Logs", icon: "logs", comingSoon: true },
+      { label: "Quickstart", href: "/developer", icon: "quickstart" },
+      { label: "API Keys", href: "/api-keys", icon: "keys" },
+      { label: "Events", href: "/events", icon: "events" },
+      { label: "Logs", href: "/logs", icon: "logs" },
     ],
   },
 ];
@@ -101,6 +103,7 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
     webhooks: (
       <path d="M12 6a4 4 0 1 1-4 4M6 18a4 4 0 1 1 4-4M18 18a4 4 0 1 1-4-4" />
     ),
+    quickstart: <path d="m5 19 5-5M14 4h6v6M20 4l-9 9M5 5h5M5 5v5" />,
     keys: (
       <path d="M21 2 13.6 9.4M15 6l3 3M9 15a4 4 0 1 1-5.7 5.7A4 4 0 0 1 9 15Z" />
     ),
