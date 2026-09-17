@@ -8,10 +8,12 @@ import { applicationCustomers } from "@/modules/customers/schema";
 import { providerConnections } from "@/modules/providers/schema";
 
 /**
- * Admin dashboard queries.
+ * Console-facing read queries (dashboard lists and counters).
  *
- * All functions return plain data objects suitable for JSON serialization.
- * These are read-only queries — no mutations.
+ * These are UI/application-layer reads served to console pages and
+ * /api/admin routes; billing-domain writes and contracts stay in
+ * src/modules/*. All functions return plain data objects suitable for
+ * JSON serialization and perform no mutations.
  */
 
 export async function getOverviewStats(

@@ -6,6 +6,7 @@ import {
   RefundPaymentAction,
 } from "@/components/customers/CustomerActions";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getCustomerWorkspace } from "@/server/control-plane/customer-workspace";
@@ -92,9 +93,10 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
             <>
               <strong>{subscriptionLabel(currentSubscription)}</strong>
               <div>
-                <span className={`badge badge-${currentSubscription.status}`}>
-                  {currentSubscription.status.replace("_", " ")}
-                </span>
+                <StatusBadge
+                  status={currentSubscription.status}
+                  label={currentSubscription.status.replace("_", " ")}
+                />
                 {currentSubscription.cancelAtPeriodEnd && (
                   <span className="customer-inline-note">
                     Cancels at period end
@@ -153,9 +155,10 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                     <strong>{subscriptionLabel(subscription)}</strong>
                     <code>{subscription.id}</code>
                   </div>
-                  <span className={`badge badge-${subscription.status}`}>
-                    {subscription.status.replace("_", " ")}
-                  </span>
+                  <StatusBadge
+                    status={subscription.status}
+                    label={subscription.status.replace("_", " ")}
+                  />
                 </div>
                 <div className="customer-subscription-meta">
                   <span>
@@ -243,9 +246,7 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                       {entitlement.sourceType} · {entitlement.sourceId}
                     </span>
                   </div>
-                  <span className={`badge badge-${entitlement.status}`}>
-                    {entitlement.status}
-                  </span>
+                  <StatusBadge status={entitlement.status} />
                 </div>
               ))}
             </div>
@@ -306,9 +307,7 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                       </td>
                       <td>{amountLabel}</td>
                       <td>
-                        <span className={`badge badge-${payment.status}`}>
-                          {payment.status}
-                        </span>
+                        <StatusBadge status={payment.status} />
                       </td>
                       <td>{payment.providerName ?? payment.provider ?? "—"}</td>
                       <td className="cell-muted">
@@ -401,9 +400,7 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                     <span>{event.providerEventName}</span>
                     <small>{formatDateTime(event.occurredAt)}</small>
                   </div>
-                  <span className={`badge badge-${event.status}`}>
-                    {event.status}
-                  </span>
+                  <StatusBadge status={event.status} />
                 </div>
               ))}
             </div>

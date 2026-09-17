@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
   type CustomerListFilter,
@@ -95,11 +96,12 @@ export default async function CustomersPage({
                     </td>
                     <td>
                       {customer.subscriptions.active > 0 ? (
-                        <span className="badge badge-active">
-                          {customer.subscriptions.active} active
-                        </span>
+                        <StatusBadge
+                          status="active"
+                          label="{customer.subscriptions.active} active"
+                        />
                       ) : customer.subscriptions.attention > 0 ? (
-                        <span className="badge badge-past_due">Past due</span>
+                        <StatusBadge status="past_due" />
                       ) : (
                         <span className="cell-muted">None</span>
                       )}

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { EmptyState, StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
@@ -127,9 +128,7 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                         : "—"}
                     </td>
                     <td>
-                      <span className={`badge badge-${refund.status}`}>
-                        {refund.status}
-                      </span>
+                      <StatusBadge status={refund.status} />
                     </td>
                     <td>{refund.providerName ?? refund.provider ?? "—"}</td>
                     <td className="cell-muted">
@@ -150,18 +149,16 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
           </div>
         </div>
       ) : (
-        <div className="empty-state">
-          <h2 className="empty-state-title">
-            {applicationId
-              ? "No refunds match this view"
-              : "No project selected"}
-          </h2>
-          <p className="empty-state-desc">
-            {applicationId
+        <EmptyState
+          title={
+            applicationId ? "No refunds match this view" : "No project selected"
+          }
+          description={
+            applicationId
               ? "Adjust the filters or wait for refund activity."
-              : "Select or create a project before inspecting refunds."}
-          </p>
-        </div>
+              : "Select or create a project before inspecting refunds."
+          }
+        />
       )}
     </PageContainer>
   );

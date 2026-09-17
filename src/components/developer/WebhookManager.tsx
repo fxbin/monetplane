@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { StatusBadge } from "@/components/ui/console";
 
 type Endpoint = {
   id: string;
@@ -221,9 +222,7 @@ export function WebhookManager({
                 <div>
                   <div className="webhook-endpoint-title">
                     <strong>{endpoint.name}</strong>
-                    <span className={`badge badge-${endpoint.status}`}>
-                      {endpoint.status}
-                    </span>
+                    <StatusBadge status={endpoint.status} />
                   </div>
                   <code>{endpoint.url}</code>
                   <div className="webhook-endpoint-meta">
@@ -321,9 +320,7 @@ export function WebhookManager({
                     </td>
                     <td>{delivery.endpointName ?? delivery.endpointId}</td>
                     <td>
-                      <span className={`badge badge-${delivery.status}`}>
-                        {delivery.status}
-                      </span>
+                      <StatusBadge status={delivery.status} />
                       {delivery.errorMessage && (
                         <div className="delivery-error-message">
                           {delivery.errorMessage}

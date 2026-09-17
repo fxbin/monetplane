@@ -6,6 +6,7 @@ import {
   RetryBillingOperationAction,
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getPaymentDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -53,9 +54,7 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
             <span>{formatDateTime(payment.createdAt)}</span>
           </div>
         </div>
-        <span className={`badge badge-${payment.status}`}>
-          {payment.status}
-        </span>
+        <StatusBadge status={payment.status} />
       </section>
 
       <div className="billing-summary-grid">
@@ -191,9 +190,10 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     )}
                   </div>
                   <div className="billing-operation-row-action">
-                    <span className={`badge badge-${operation.status}`}>
-                      {operation.status.replaceAll("_", " ")}
-                    </span>
+                    <StatusBadge
+                      status={operation.status}
+                      label={operation.status.replaceAll("_", " ")}
+                    />
                     {["provider_succeeded", "needs_reconciliation"].includes(
                       operation.status,
                     ) && (
@@ -240,9 +240,7 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     </strong>
                     <code>{refund.providerRefundId}</code>
                   </div>
-                  <span className={`badge badge-${refund.status}`}>
-                    {refund.status}
-                  </span>
+                  <StatusBadge status={refund.status} />
                 </Link>
               ))}
             </div>
@@ -272,9 +270,7 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                   <span>{event.providerEventName}</span>
                   <small>{formatDateTime(event.occurredAt)}</small>
                 </div>
-                <span className={`badge badge-${event.status}`}>
-                  {event.status}
-                </span>
+                <StatusBadge status={event.status} />
               </div>
             ))}
           </div>

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProviderConnectionActions } from "@/components/providers/ProviderConnectionActions";
 import { ProviderDiagnostics } from "@/components/providers/ProviderDiagnostics";
+import { StatusBadge } from "@/components/ui/console";
 import type { ProviderCapability } from "@/modules/providers/contract";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getConsoleProviderConnectionDetail } from "@/server/control-plane/providers";
@@ -65,12 +66,8 @@ export default async function ProviderDetailPage({
               </p>
             </div>
             <div className="provider-detail-badges">
-              <span className={`badge badge-${connection.mode}`}>
-                {environmentLabel}
-              </span>
-              <span className={`badge badge-${connection.status}`}>
-                {connection.status}
-              </span>
+              <StatusBadge status={connection.mode} label={environmentLabel} />
+              <StatusBadge status={connection.status} />
             </div>
           </div>
 
@@ -114,7 +111,7 @@ export default async function ProviderDetailPage({
               <span className="provider-detail-kicker">Security</span>
               <h2 className="card-title">Credentials</h2>
             </div>
-            <span className="badge badge-active">Write-only</span>
+            <StatusBadge status="active" label="Write-only" />
           </div>
 
           {setup && setup.credentialFields.length > 0 ? (

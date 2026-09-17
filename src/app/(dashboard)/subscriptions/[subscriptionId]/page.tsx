@@ -6,6 +6,7 @@ import {
   RetryBillingOperationAction,
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getSubscriptionDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -62,9 +63,10 @@ export default async function SubscriptionPage({
             <span>Updated {formatDateTime(subscription.updatedAt)}</span>
           </div>
         </div>
-        <span className={`badge badge-${subscription.status}`}>
-          {subscription.status.replace("_", " ")}
-        </span>
+        <StatusBadge
+          status={subscription.status}
+          label={subscription.status.replace("_", " ")}
+        />
       </section>
 
       <div className="billing-summary-grid">
@@ -207,9 +209,10 @@ export default async function SubscriptionPage({
                     )}
                   </div>
                   <div className="billing-operation-row-action">
-                    <span className={`badge badge-${operation.status}`}>
-                      {operation.status.replaceAll("_", " ")}
-                    </span>
+                    <StatusBadge
+                      status={operation.status}
+                      label={operation.status.replaceAll("_", " ")}
+                    />
                     {["provider_succeeded", "needs_reconciliation"].includes(
                       operation.status,
                     ) && (
@@ -251,9 +254,7 @@ export default async function SubscriptionPage({
                     <span>{event.providerEventName}</span>
                     <small>{formatDateTime(event.occurredAt)}</small>
                   </div>
-                  <span className={`badge badge-${event.status}`}>
-                    {event.status}
-                  </span>
+                  <StatusBadge status={event.status} />
                 </div>
               ))}
             </div>

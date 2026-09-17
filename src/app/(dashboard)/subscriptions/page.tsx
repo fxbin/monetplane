@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { EmptyState, StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
@@ -98,9 +99,10 @@ export default async function SubscriptionsPage({
                           <span>{subscription.providerSubscriptionId}</span>
                           {latestOperation?.status ===
                             "needs_reconciliation" && (
-                            <span className="badge badge-warning">
-                              Needs reconciliation
-                            </span>
+                            <StatusBadge
+                              status="warning"
+                              label="Needs reconciliation"
+                            />
                           )}
                         </div>
                       </td>
@@ -149,9 +151,10 @@ export default async function SubscriptionsPage({
                         )}
                       </td>
                       <td>
-                        <span className={`badge badge-${subscription.status}`}>
-                          {subscription.status.replace("_", " ")}
-                        </span>
+                        <StatusBadge
+                          status={subscription.status}
+                          label={subscription.status.replace("_", " ")}
+                        />
                       </td>
                       <td className="cell-muted">
                         {subscription.currentPeriodEnd
@@ -182,18 +185,18 @@ export default async function SubscriptionsPage({
           </div>
         </div>
       ) : (
-        <div className="empty-state">
-          <h2 className="empty-state-title">
-            {applicationId
+        <EmptyState
+          title={
+            applicationId
               ? "No subscriptions match this view"
-              : "No project selected"}
-          </h2>
-          <p className="empty-state-desc">
-            {applicationId
+              : "No project selected"
+          }
+          description={
+            applicationId
               ? "Adjust the filters or wait for recurring checkout activity."
-              : "Select or create a project before inspecting subscriptions."}
-          </p>
-        </div>
+              : "Select or create a project before inspecting subscriptions."
+          }
+        />
       )}
     </PageContainer>
   );

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getProductBuilderList } from "@/server/control-plane/products";
@@ -144,11 +145,7 @@ export default async function ProductsPage() {
                           )}
                         </td>
                         <td>
-                          <span
-                            className={`badge badge-${item.product.status}`}
-                          >
-                            {item.product.status}
-                          </span>
+                          <StatusBadge status={item.product.status} />
                         </td>
                       </tr>
                     );

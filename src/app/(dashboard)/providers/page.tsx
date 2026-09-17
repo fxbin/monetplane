@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { getProviderList } from "@/modules/admin/queries";
+import { StatusBadge } from "@/components/ui/console";
+import { getProviderList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export const dynamic = "force-dynamic";
@@ -68,14 +69,10 @@ export default async function ProvidersPage() {
                       </Link>
                     </td>
                     <td>
-                      <span className={`badge badge-${conn.mode}`}>
-                        {conn.mode}
-                      </span>
+                      <StatusBadge status={conn.mode} />
                     </td>
                     <td>
-                      <span className={`badge badge-${conn.status}`}>
-                        {conn.status}
-                      </span>
+                      <StatusBadge status={conn.status} />
                     </td>
                     <td className="cell-muted">
                       {new Date(conn.createdAt).toLocaleDateString()}
