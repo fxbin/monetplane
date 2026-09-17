@@ -45,8 +45,8 @@ export default async function WebhooksPage() {
             <strong>{environmentLabel}</strong>
             <span>
               Endpoints and delivery history on this page are
-              environment-scoped. API keys remain project-wide until the broader
-              isolation model in #49 is implemented.
+              environment-scoped. API keys are shared across environments in
+              this release.
             </span>
           </div>
           <WebhookManager

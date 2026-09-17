@@ -133,9 +133,11 @@ export function ProductBuilderWizard({
   );
 
   function addCredit() {
+    // No implicit defaults: every grant row starts empty so users never
+    // accidentally commit a hidden "credits / 100" business value.
     setCredits((current) => [
       ...current,
-      { id: nextDraftId, referenceKey: "credits", quantity: "100" },
+      { id: nextDraftId, referenceKey: "", quantity: "" },
     ]);
     setNextDraftId((value) => value + 1);
   }
@@ -339,13 +341,6 @@ export function ProductBuilderWizard({
                     checked={productType === type.value}
                     onChange={() => {
                       setProductType(type.value);
-                      if (
-                        (type.value === "credit_pack" ||
-                          type.value === "usage_based") &&
-                        credits.length === 0
-                      ) {
-                        addCredit();
-                      }
                     }}
                   />
                   <span className="product-type-eyebrow">{type.eyebrow}</span>
@@ -504,14 +499,20 @@ export function ProductBuilderWizard({
                 </div>
                 <button
                   type="button"
-                  className="btn btn-secondary"
+                  className={`btn ${requiresCredits && credits.length === 0 ? "btn-primary" : "btn-secondary"}`}
                   onClick={addCredit}
                 >
-                  Add credit grant
+                  {requiresCredits && credits.length === 0
+                    ? "Add required credit grant"
+                    : "Add credit grant"}
                 </button>
               </div>
               {credits.length === 0 ? (
-                <div className="benefit-empty">No credits included.</div>
+                <div className="benefit-empty">
+                  {requiresCredits
+                    ? "A credit grant is required for this product model. Add one to continue."
+                    : "No credits included."}
+                </div>
               ) : (
                 <div className="benefit-rows">
                   {credits.map((credit) => (
@@ -692,8 +693,8 @@ export function ProductBuilderWizard({
 
             <div className="builder-note">
               Provider routing is stored per environment in product metadata.
-              Catalog, credits, and customer state remain project-scoped until
-              #49 defines full Sandbox/Production data isolation.
+              Catalog, credits, and customer state are shared across
+              environments in this release.
             </div>
           </section>
         )}
