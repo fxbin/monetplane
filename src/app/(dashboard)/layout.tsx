@@ -10,6 +10,7 @@ import "../provider-diagnostics.css";
 import "../customer-workspace.css";
 import "../billing-operations.css";
 import "../developer-tools.css";
+import "../overview-analytics.css";
 
 export default function DashboardLayout({
   children,
