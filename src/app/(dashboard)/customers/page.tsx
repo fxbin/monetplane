@@ -98,7 +98,7 @@ export default async function CustomersPage({
                       {customer.subscriptions.active > 0 ? (
                         <StatusBadge
                           status="active"
-                          label="{customer.subscriptions.active} active"
+                          label={`${customer.subscriptions.active} active`}
                         />
                       ) : customer.subscriptions.attention > 0 ? (
                         <StatusBadge status="past_due" />
