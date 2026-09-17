@@ -70,7 +70,7 @@ jobs:
 
       - name: Verify database-aware health endpoint
         run: |
-          pnpm start -- --hostname 127.0.0.1 > /tmp/monetplane-next.log 2>&1 &
+          pnpm exec next start --hostname 127.0.0.1 > /tmp/monetplane-next.log 2>&1 &
           server_pid=$!
           trap 'kill $server_pid || true' EXIT
           for attempt in {1..30}; do
