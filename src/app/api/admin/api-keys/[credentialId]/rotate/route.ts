@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { rotateDeveloperApiKey } from "@/server/control-plane/developer";
 
@@ -22,6 +23,14 @@ export async function POST(_request: Request, { params }: RouteContext) {
       );
     }
     const key = await rotateDeveloperApiKey(application.id, credentialId);
+    await recordAuditEntry({
+      applicationId: application.id,
+      action: "api_key.rotated",
+      resourceType: "application_credential",
+      resourceId: key.id,
+      metadata: { secretPrefix: key.secretPrefix },
+      request: _request,
+    });
     return NextResponse.json({
       key,
       notice:

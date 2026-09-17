@@ -5,6 +5,7 @@ import {
   getProviderSetup,
   validateProviderSetupCredentials,
 } from "@/modules/providers/setup";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getProviderList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -95,6 +96,15 @@ export async function POST(request: Request) {
       },
     });
 
+    await recordAuditEntry({
+      applicationId: application.id,
+      environment: context.environment,
+      action: "provider.connected",
+      resourceType: "provider_connection",
+      resourceId: connection.id,
+      metadata: { provider: setup.provider, name, mode: context.environment },
+      request,
+    });
     return NextResponse.json(
       {
         connection,

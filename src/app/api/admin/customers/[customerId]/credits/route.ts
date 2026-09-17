@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { grantCustomerCredits } from "@/server/control-plane/customer-workspace";
 
@@ -46,6 +47,15 @@ export async function POST(request: Request, { params }: RouteContext) {
       { creditType, amount, note },
       context.environment,
     );
+    await recordAuditEntry({
+      applicationId: context.selectedApplication?.id ?? null,
+      environment: context.environment,
+      action: "credits.granted",
+      resourceType: "credit_transaction",
+      resourceId: result.transaction.id,
+      metadata: { customerId, amount, creditType },
+      request: request,
+    });
     return NextResponse.json({ transaction: result.transaction });
   } catch (error) {
     console.error("[admin/customers/credits] Error:", error);

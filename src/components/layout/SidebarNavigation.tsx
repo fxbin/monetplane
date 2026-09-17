@@ -79,6 +79,7 @@ const navSections: Array<{ label?: string; items: NavItem[] }> = [
       { label: "API Keys", href: "/api-keys", icon: "keys" },
       { label: "Events", href: "/events", icon: "events" },
       { label: "Logs", href: "/logs", icon: "logs" },
+      { label: "Audit Log", href: "/audit", icon: "logs" },
     ],
   },
 ];
