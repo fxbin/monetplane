@@ -26,16 +26,10 @@ export async function POST(request: Request) {
     const cancelUrl =
       typeof body.cancelUrl === "string" ? body.cancelUrl.trim() : "";
 
-    if (
-      !externalCustomerId ||
-      !providerConnectionId ||
-      !successUrl ||
-      !cancelUrl
-    ) {
+    if (!externalCustomerId || !successUrl || !cancelUrl) {
       return NextResponse.json(
         {
-          error:
-            "externalCustomerId, providerConnectionId, successUrl, and cancelUrl are required",
+          error: "externalCustomerId, successUrl, and cancelUrl are required",
         },
         { status: 400 },
       );
@@ -95,6 +89,18 @@ export async function POST(request: Request) {
           code: "unauthorized",
         },
         { status: 401 },
+      );
+    }
+    if (name === "NoProviderRouteError") {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "No payment provider route",
+          code: "no_provider_route",
+        },
+        { status: 409 },
       );
     }
     if (name === "CommerceEnvironmentMismatchError") {

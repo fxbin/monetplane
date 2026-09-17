@@ -15,7 +15,12 @@ export type Environment = "test" | "live";
 export type CheckoutInput = {
   externalCustomerId: string;
   items: Array<{ priceId: string; quantity: number }>;
-  providerConnectionId: string;
+  /**
+   * Optional explicit provider override for internal/debug use. Normal
+   * checkouts omit this; MonetPlane routes the provider from product and
+   * environment configuration.
+   */
+  providerConnectionId?: string;
   successUrl: string;
   cancelUrl: string;
   environment?: Environment;
