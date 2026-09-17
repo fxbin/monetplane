@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
-import { getProviderList } from "@/modules/admin/queries";
 import { createProviderConnection } from "@/modules/providers/service";
 import {
   getProviderSetup,
   validateProviderSetupCredentials,
 } from "@/modules/providers/setup";
+import { getProviderList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export async function GET() {

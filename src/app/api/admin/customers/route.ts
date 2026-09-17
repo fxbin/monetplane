@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
-import { getCustomerList } from "@/modules/admin/queries";
+import { getCustomerList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export async function GET() {

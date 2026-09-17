@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProductProviderRouteEditor } from "@/components/products/ProductProviderRouteEditor";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
@@ -76,9 +77,7 @@ export default async function ProductDetailPage({
           <span className="builder-kicker">{typeLabel}</span>
           <div className="product-detail-title-row">
             <h2>{detail.product.name}</h2>
-            <span className={`badge badge-${detail.product.status}`}>
-              {detail.product.status}
-            </span>
+            <StatusBadge status={detail.product.status} />
           </div>
           <code>{detail.product.key}</code>
           <p>
@@ -160,9 +159,12 @@ export default async function ProductDetailPage({
                 <span>{detail.provider.provider}</span>
                 <code>{detail.provider.id}</code>
               </div>
-              <span className={`badge badge-${detail.provider.mode}`}>
-                {detail.provider.mode === "test" ? "Sandbox" : "Production"}
-              </span>
+              <StatusBadge
+                status={detail.provider.mode}
+                label={
+                  detail.provider.mode === "test" ? "Sandbox" : "Production"
+                }
+              />
             </div>
           ) : (
             <div className="provider-missing-route">

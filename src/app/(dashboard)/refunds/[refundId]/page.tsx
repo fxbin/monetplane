@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getRefundDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -52,7 +53,7 @@ export default async function RefundPage({ params }: RefundPageProps) {
             <span>{formatDateTime(refund.createdAt)}</span>
           </div>
         </div>
-        <span className={`badge badge-${refund.status}`}>{refund.status}</span>
+        <StatusBadge status={refund.status} />
       </section>
 
       <div className="billing-summary-grid">
@@ -139,9 +140,7 @@ export default async function RefundPage({ params }: RefundPageProps) {
                   <span>{event.providerEventName}</span>
                   <small>{formatDateTime(event.occurredAt)}</small>
                 </div>
-                <span className={`badge badge-${event.status}`}>
-                  {event.status}
-                </span>
+                <StatusBadge status={event.status} />
               </div>
             ))}
           </div>

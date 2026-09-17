@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { StatusBadge } from "@/components/ui/console";
 
 type ApiKey = {
   id: string;
@@ -209,11 +210,7 @@ export function ApiKeyManager({ keys }: { keys: ApiKey[] }) {
                           : "Never"}
                       </td>
                       <td>
-                        <span
-                          className={`badge badge-${revoked ? "revoked" : "active"}`}
-                        >
-                          {revoked ? "revoked" : "active"}
-                        </span>
+                        <StatusBadge status={revoked ? "revoked" : "active"} />
                       </td>
                       <td>
                         {!revoked && (

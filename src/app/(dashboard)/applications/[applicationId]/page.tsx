@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { getConsoleApplicationDetail } from "@/server/control-plane/applications";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -64,12 +65,8 @@ export default async function ApplicationDetailPage({
               <h2>{detail.application.name}</h2>
             </div>
             <div className="project-detail-badges">
-              {isCurrent && (
-                <span className="badge badge-current">Current</span>
-              )}
-              <span className={`badge badge-${detail.application.status}`}>
-                {detail.application.status}
-              </span>
+              {isCurrent && <StatusBadge status="current" />}
+              <StatusBadge status={detail.application.status} />
             </div>
           </div>
           <dl className="project-summary-list">
@@ -143,7 +140,7 @@ export default async function ApplicationDetailPage({
                     <span>{domain.kind}</span>
                   </div>
                   {domain.isPrimary && (
-                    <span className="badge badge-current">Primary</span>
+                    <StatusBadge status="current" label="Primary" />
                   )}
                 </div>
               ))}

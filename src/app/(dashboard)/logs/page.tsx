@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getDeveloperLogs } from "@/server/control-plane/developer";
 
@@ -134,9 +135,7 @@ export default async function LogsPage({
                   <span className="developer-log-source">
                     {log.source.replaceAll("_", " ")}
                   </span>
-                  <span className={`badge badge-${log.status}`}>
-                    {log.status}
-                  </span>
+                  <StatusBadge status={log.status} />
                 </div>
                 <div className="developer-log-meta">
                   {log.provider && <span>provider {log.provider}</span>}

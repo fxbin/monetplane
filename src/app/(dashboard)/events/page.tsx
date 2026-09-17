@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getDeveloperEvents } from "@/server/control-plane/developer";
 
@@ -168,9 +169,7 @@ export default async function EventsPage({
                       </div>
                     </td>
                     <td>
-                      <span className={`badge badge-${event.status}`}>
-                        {event.status}
-                      </span>
+                      <StatusBadge status={event.status} />
                       {event.errorMessage && (
                         <div className="delivery-error-message">
                           {event.errorMessage}

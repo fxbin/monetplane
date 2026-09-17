@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { EmptyState, StatusBadge } from "@/components/ui/console";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
@@ -97,9 +98,10 @@ export default async function PaymentsPage({
                           <span>{payment.providerPaymentId}</span>
                           {latestOperation?.status ===
                             "needs_reconciliation" && (
-                            <span className="badge badge-warning">
-                              Needs reconciliation
-                            </span>
+                            <StatusBadge
+                              status="warning"
+                              label="Needs reconciliation"
+                            />
                           )}
                         </div>
                       </td>
@@ -135,9 +137,7 @@ export default async function PaymentsPage({
                         {formatAmount(payment.amountMinor, payment.currency)}
                       </td>
                       <td>
-                        <span className={`badge badge-${payment.status}`}>
-                          {payment.status}
-                        </span>
+                        <StatusBadge status={payment.status} />
                       </td>
                       <td>{payment.providerName ?? payment.provider ?? "—"}</td>
                       <td className="cell-muted">
@@ -159,18 +159,18 @@ export default async function PaymentsPage({
           </div>
         </div>
       ) : (
-        <div className="empty-state">
-          <h2 className="empty-state-title">
-            {applicationId
+        <EmptyState
+          title={
+            applicationId
               ? "No payments match this view"
-              : "No project selected"}
-          </h2>
-          <p className="empty-state-desc">
-            {applicationId
+              : "No project selected"
+          }
+          description={
+            applicationId
               ? "Adjust the filters or wait for checkout activity to arrive."
-              : "Select or create a project before inspecting payment operations."}
-          </p>
-        </div>
+              : "Select or create a project before inspecting payment operations."
+          }
+        />
       )}
     </PageContainer>
   );

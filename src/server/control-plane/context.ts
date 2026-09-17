@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { getApplicationList } from "@/modules/admin/queries";
+import { getApplicationList } from "@/server/control-plane/console-queries";
 
 export const CONSOLE_APPLICATION_COOKIE = "monetplane_console_application";
 export const CONSOLE_ENVIRONMENT_COOKIE = "monetplane_console_environment";

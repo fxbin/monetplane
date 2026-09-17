@@ -1,4 +1,5 @@
 import { PageContainer } from "@/components/layout/PageContainer";
+import { StatusBadge } from "@/components/ui/console";
 import { formatAmount } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getOverviewCommandCenter } from "@/server/control-plane/overview";
@@ -144,9 +145,7 @@ export default async function OverviewPage() {
                     <td>{provider.provider}</td>
                     <td>{provider.name}</td>
                     <td>
-                      <span className={`badge badge-${provider.status}`}>
-                        {provider.status}
-                      </span>
+                      <StatusBadge status={provider.status} />
                     </td>
                   </tr>
                 ))}
@@ -215,9 +214,7 @@ export default async function OverviewPage() {
                       </td>
                       <td>{payment.provider}</td>
                       <td>
-                        <span className={`badge badge-${payment.status}`}>
-                          {payment.status}
-                        </span>
+                        <StatusBadge status={payment.status} />
                       </td>
                       <td>
                         {formatAmount(payment.amountMinor, payment.currency)}

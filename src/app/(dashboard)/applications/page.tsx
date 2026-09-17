@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
-import { getApplicationList } from "@/modules/admin/queries";
+import { StatusBadge } from "@/components/ui/console";
+import { getApplicationList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export const dynamic = "force-dynamic";
@@ -42,15 +43,11 @@ export default async function ApplicationsPage() {
                         >
                           {application.name}
                         </Link>
-                        {selected && (
-                          <span className="badge badge-current">Current</span>
-                        )}
+                        {selected && <StatusBadge status="current" />}
                       </td>
                       <td className="cell-mono">{application.slug}</td>
                       <td>
-                        <span className={`badge badge-${application.status}`}>
-                          {application.status}
-                        </span>
+                        <StatusBadge status={application.status} />
                       </td>
                       <td className="cell-muted">
                         {new Date(application.createdAt).toLocaleDateString()}
