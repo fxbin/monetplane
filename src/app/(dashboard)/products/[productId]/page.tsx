@@ -189,10 +189,10 @@ export default async function ProductDetailPage({
           />
 
           <p className="product-routing-note">
-            The P0 checkout contract still accepts an explicit provider
-            connection ID. This routing preference keeps the intended provider
-            visible and copyable without pretending full environment routing
-            exists before #49 is resolved.
+            The checkout contract still accepts an explicit provider connection
+            ID. This routing preference keeps the intended provider visible and
+            copyable without implying full environment-scoped routing is
+            available in this release.
           </p>
         </section>
       </div>
