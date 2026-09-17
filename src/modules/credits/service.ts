@@ -4,6 +4,11 @@ import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { applicationCustomers } from "../customers/schema";
 import {
+  bucketSourceForTransactionType,
+  consumeBuckets,
+  createBucketForGrant,
+} from "./buckets";
+import {
   creditAccounts,
   creditReservations,
   creditTransactions,
@@ -335,6 +340,7 @@ export async function grantCreditsInTransaction(
     sourceId: string;
     idempotencyKey: string;
     environment?: CreditEnvironment;
+    expiresAt?: Date | null;
     metadata?: Record<string, unknown>;
   },
   db: CreditStore,
@@ -402,6 +408,21 @@ export async function grantCreditsInTransaction(
     },
     db,
   );
+  await createBucketForGrant(
+    {
+      applicationId: input.applicationId,
+      environment,
+      applicationCustomerId: input.applicationCustomerId,
+      creditAccountId: updated.id,
+      creditType,
+      sourceType: bucketSourceForTransactionType(input.transactionType),
+      sourceId,
+      transactionId: transaction.id,
+      amount: input.amount,
+      expiresAt: input.expiresAt ?? null,
+    },
+    db,
+  );
   return { transaction, duplicate: false };
 }
 
@@ -422,6 +443,7 @@ async function debitCreditsForApplicationCustomerInTransaction(
     sourceId: string;
     idempotencyKey: string;
     environment?: CreditEnvironment;
+    expiresAt?: Date | null;
     metadata?: Record<string, unknown>;
   },
   db: CreditStore,
@@ -478,6 +500,8 @@ async function debitCreditsForApplicationCustomerInTransaction(
     )
     .returning();
   if (!updated) throw new InsufficientCreditsError();
+
+  await consumeBuckets(updated.id, input.amount, db);
 
   const transaction = await appendTransaction(
     {
@@ -795,6 +819,8 @@ export async function captureReservation(
       .where(eq(creditReservations.id, reservation.id))
       .returning();
     if (!updatedReservation) throw new Error("Failed to capture reservation");
+
+    await consumeBuckets(reservation.creditAccountId, input.amount, tx);
 
     const transaction = await appendTransaction(
       {

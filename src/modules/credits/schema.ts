@@ -107,7 +107,7 @@ export const creditTransactions = pgTable(
     ),
     check(
       "credit_transactions_type_check",
-      sql`${table.type} IN ('grant.purchase', 'grant.subscription', 'grant.promotion', 'debit.usage', 'reserve.usage', 'capture.usage', 'release.usage', 'refund.usage', 'adjustment.admin')`,
+      sql`${table.type} IN ('grant.purchase', 'grant.subscription', 'grant.promotion', 'debit.usage', 'reserve.usage', 'capture.usage', 'release.usage', 'refund.usage', 'adjustment.admin', 'grant.expired')`,
     ),
     check(
       "credit_transactions_amount_nonzero_check",
@@ -180,6 +180,61 @@ export const creditReservations = pgTable(
     check(
       "credit_reservations_captured_range_check",
       sql`${table.capturedAmount} >= 0 AND ${table.capturedAmount} <= ${table.reservedAmount}`,
+    ),
+  ],
+);
+
+export const creditBuckets = pgTable(
+  "credit_buckets",
+  {
+    id: text("id").primaryKey(),
+    applicationId: text("application_id")
+      .notNull()
+      .references(() => applications.id, { onDelete: "cascade" }),
+    environment: text("environment").default("test").notNull(),
+    applicationCustomerId: text("application_customer_id")
+      .notNull()
+      .references(() => applicationCustomers.id, { onDelete: "cascade" }),
+    creditAccountId: text("credit_account_id")
+      .notNull()
+      .references(() => creditAccounts.id, { onDelete: "cascade" }),
+    creditType: text("credit_type").notNull(),
+    sourceType: text("source_type").notNull(),
+    sourceId: text("source_id").notNull(),
+    transactionId: text("transaction_id").notNull(),
+    grantedAmount: bigint("granted_amount", { mode: "number" }).notNull(),
+    remainingAmount: bigint("remaining_amount", { mode: "number" }).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    status: text("status").default("active").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    index("credit_buckets_account_idx").on(
+      table.creditAccountId,
+      table.status,
+      table.expiresAt,
+    ),
+    uniqueIndex("credit_buckets_transaction_unique").on(table.transactionId),
+    check(
+      "credit_buckets_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
+    ),
+    check(
+      "credit_buckets_source_check",
+      sql`${table.sourceType} IN ('purchase', 'subscription', 'promotion', 'admin', 'refund')`,
+    ),
+    check(
+      "credit_buckets_status_check",
+      sql`${table.status} IN ('active', 'consumed', 'expired', 'reversed')`,
+    ),
+    check(
+      "credit_buckets_amount_check",
+      sql`${table.grantedAmount} > 0 AND ${table.remainingAmount} >= 0 AND ${table.remainingAmount} <= ${table.grantedAmount}`,
     ),
   ],
 );
