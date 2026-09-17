@@ -136,3 +136,20 @@ export type MonetPlaneClientOptions = {
   /** Optional request timeout in milliseconds (defaults to 30000). */
   timeoutMs?: number;
 };
+
+export type ReportUsageInput = {
+  externalCustomerId: string;
+  meterKey: string;
+  quantity: number;
+  sourceType: string;
+  sourceId: string;
+  idempotencyKey: string;
+  environment?: Environment;
+};
+
+export type ReportUsageResult = {
+  eventId: string;
+  duplicate: boolean;
+  quantity: number;
+  occurredAt: string;
+};

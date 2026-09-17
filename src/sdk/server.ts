@@ -40,6 +40,8 @@ import type {
   MonetPlaneClientOptions,
   ReleaseReservationInput,
   ReleaseReservationResult,
+  ReportUsageInput,
+  ReportUsageResult,
   ReserveCreditsInput,
   ReserveCreditsResult,
 } from "./types";
@@ -63,6 +65,7 @@ type Client = {
   checkEntitlement(
     input: EntitlementCheckInput,
   ): Promise<EntitlementCheckResult>;
+  reportUsage(input: ReportUsageInput): Promise<ReportUsageResult>;
 };
 
 function normalizeBaseUrl(url: string): string {
@@ -197,6 +200,10 @@ export function createMonetPlaneClient(
       return data as ReleaseReservationResult;
     },
 
+    async reportUsage(input: ReportUsageInput): Promise<ReportUsageResult> {
+      const data = await call("/api/usage/report", input);
+      return data as ReportUsageResult;
+    },
     async checkEntitlement(
       input: EntitlementCheckInput,
     ): Promise<EntitlementCheckResult> {
