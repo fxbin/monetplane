@@ -104,12 +104,14 @@ const monetplane = createMonetPlaneClient({
 
   const checkoutSnippet = `const checkout = await monetplane.createCheckout({
   externalCustomerId: "user_123",
-  providerConnectionId: "${providerId}",
   items: [{ priceId: "${priceId}", quantity: 1 }],
+  environment: "${context.environment}",
   successUrl: "https://app.example.com/billing/success",
   cancelUrl: "https://app.example.com/billing/cancel",
 });
 
+// MonetPlane routes the payment provider from your product and
+// environment configuration — no providerConnectionId needed.
 redirect(checkout.checkoutUrl);`;
 
   const accessSnippet = `const access = await monetplane.checkEntitlement({

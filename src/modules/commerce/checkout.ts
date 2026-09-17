@@ -7,6 +7,7 @@ import { prices, products } from "../catalog/schema";
 import { findApplicationCustomer } from "../customers/service";
 import { createProviderCheckout } from "../providers/runtime";
 import { getProviderConnection } from "../providers/service";
+import { resolveCheckoutProviderRoute } from "./router";
 import { checkoutSessions, orderItems, orders } from "./schema";
 
 export class CommerceCustomerNotFoundError extends Error {
@@ -32,7 +33,12 @@ export class CommerceProviderConnectionError extends Error {
 
 export type CreateCommerceCheckoutInput = {
   externalCustomerId: string;
-  providerConnectionId: string;
+  /**
+   * Explicit provider override for trusted internal/admin/debug paths.
+   * Normal product checkouts omit this and let the payment router resolve
+   * the connection from product + environment configuration (#60).
+   */
+  providerConnectionId?: string;
   items: Array<{ priceId: string; quantity: number }>;
   successUrl: string;
   cancelUrl: string;
@@ -60,22 +66,6 @@ export async function createCommerceCheckout(
     db,
   );
   if (!applicationCustomer) throw new CommerceCustomerNotFoundError();
-
-  const providerConnection = await getProviderConnection(
-    applicationId,
-    input.providerConnectionId,
-    db,
-  );
-  if (!providerConnection || providerConnection.status !== "active") {
-    throw new CommerceProviderConnectionError();
-  }
-
-  // Environment is captured from the provider connection (fail closed when
-  // the caller requests a different plane).
-  const environment = providerConnection.mode;
-  if (input.environment && input.environment !== environment) {
-    throw new CommerceEnvironmentMismatchError();
-  }
 
   const successUrl = await assertAllowedCallbackUrl(
     applicationId,
@@ -143,6 +133,49 @@ export async function createCommerceCheckout(
 
   const billingType = resolvedItems[0]?.price.billingType;
   const billingMode = billingType === "recurring" ? "subscription" : "one_time";
+
+  // Provider resolution (#60 Payment Router): explicit override only for
+  // trusted internal paths; otherwise route from product + environment
+  // configuration. Environment is captured from the resolved connection
+  // and fails closed when the caller requests a different plane.
+  let providerConnectionId: string;
+  let routingSource: "product" | "default" | "explicit";
+  if (input.providerConnectionId) {
+    const explicitConnection = await getProviderConnection(
+      applicationId,
+      input.providerConnectionId,
+      db,
+    );
+    if (!explicitConnection || explicitConnection.status !== "active") {
+      throw new CommerceProviderConnectionError();
+    }
+    providerConnectionId = explicitConnection.id;
+    routingSource = "explicit";
+  } else {
+    const route = await resolveCheckoutProviderRoute(
+      {
+        applicationId,
+        environment: input.environment ?? "test",
+        billingMode,
+        productIds: resolvedItems.map((item) => item.product.id),
+      },
+      db,
+    );
+    providerConnectionId = route.providerConnectionId;
+    routingSource = route.source;
+  }
+  const providerConnection = await getProviderConnection(
+    applicationId,
+    providerConnectionId,
+    db,
+  );
+  if (!providerConnection || providerConnection.status !== "active") {
+    throw new CommerceProviderConnectionError();
+  }
+  const environment = providerConnection.mode;
+  if (input.environment && input.environment !== environment) {
+    throw new CommerceEnvironmentMismatchError();
+  }
   const recurringIntervals = new Set(
     resolvedItems
       .map((item) => item.price.recurringInterval)
@@ -268,6 +301,12 @@ export async function createCommerceCheckout(
       orderStatus: "pending" as const,
       checkoutUrl: providerCheckout.checkoutUrl,
       providerCheckoutId: providerCheckout.providerCheckoutId,
+      routing: {
+        source: routingSource,
+        provider: providerConnection.provider,
+        connectionId: providerConnection.id,
+        environment,
+      },
       session,
     };
   } catch (error) {
