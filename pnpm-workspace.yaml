@@ -1,5 +1,9 @@
 # Settings home for pnpm >= 11 (package.json "pnpm" field is no longer read).
-# This repo is a single package; this file only carries settings, no workspace packages.
+# Settings + workspace packages for pnpm >= 11.
+packages:
+  - .
+  - packages/*
+  - examples/*
 allowBuilds:
   esbuild: true
 onlyBuiltDependencies:

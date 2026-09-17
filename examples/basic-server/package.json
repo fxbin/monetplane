@@ -1,0 +1,15 @@
+{
+  "name": "@monetplane/example-basic-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@monetplane/sdk": "file:../../packages/sdk"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^24.9.1"
+  }
+}

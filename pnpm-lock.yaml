@@ -55,6 +55,34 @@ importers:
         specifier: ^4.1.0
         version: 4.1.11(@types/node@24.13.3)(vite@8.2.2(@types/node@24.13.3)(esbuild@0.28.2)(tsx@4.23.12))
 
+  examples/basic-server:
+    dependencies:
+      '@monetplane/sdk':
+        specifier: file:../../packages/sdk
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^24.9.1
+        version: 24.13.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  examples/credits-usage-demo:
+    dependencies:
+      '@monetplane/sdk':
+        specifier: file:../../packages/sdk
+        version: link:../../packages/sdk
+    devDependencies:
+      '@types/node':
+        specifier: ^24.9.1
+        version: 24.13.3
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  packages/sdk: {}
+
 packages:
 
   '@auth/core@0.41.3':

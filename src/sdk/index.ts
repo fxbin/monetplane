@@ -11,7 +11,10 @@ export {
   InvalidStateError,
   MonetPlaneError,
   NetworkError,
+  NoProviderRouteError,
   UnsupportedCapabilityError,
+  UsageMeterNotFoundError,
+  ValidationError,
 } from "./errors";
 export { createMonetPlaneClient } from "./server";
 export type {
