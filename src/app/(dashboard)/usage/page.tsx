@@ -29,7 +29,10 @@ export default async function UsagePage() {
     );
   }
 
-  const analytics = await getUsageAnalytics(application.id);
+  const analytics = await getUsageAnalytics(
+    application.id,
+    context.environment,
+  );
   const hasUsage =
     analytics.byCreditType.length > 0 || analytics.topCustomers.length > 0;
   const maxDebited = Math.max(
@@ -40,7 +43,7 @@ export default async function UsagePage() {
   return (
     <PageContainer
       title="Usage"
-      description={`${application.name} · credit consumption. Credits are project-wide and not split by environment.`}
+      description={`${application.name} · credit consumption in ${context.environment === "test" ? "Sandbox" : "Production"}.`}
     >
       <div className="card">
         <h2 className="card-title">Credits used by month</h2>

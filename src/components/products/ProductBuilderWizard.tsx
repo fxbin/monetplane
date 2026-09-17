@@ -693,8 +693,9 @@ export function ProductBuilderWizard({
 
             <div className="builder-note">
               Provider routing is stored per environment in product metadata.
-              Catalog, credits, and customer state are shared across
-              environments in this release.
+              Product definitions are shared across environments; billing
+              runtime data (orders, payments, credits, entitlements) is isolated
+              per environment.
             </div>
           </section>
         )}

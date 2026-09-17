@@ -39,6 +39,25 @@ function normalizeFeatureKey(value: string): string {
   return featureKey;
 }
 
+export type EntitlementEnvironment = "test" | "live";
+
+/**
+ * Environment resolution per the isolation ADR: entitlements are isolated per
+ * environment. Omitted environment defaults to 'test' during the SDK
+ * deprecation window with an explicit warning.
+ */
+export function resolveEntitlementEnvironment(
+  value: "test" | "live" | undefined,
+): EntitlementEnvironment {
+  if (value === "live") return "live";
+  if (value === undefined) {
+    console.warn(
+      "[monetplane] entitlements: environment not specified, defaulting to 'test' (deprecated — pass environment explicitly)",
+    );
+  }
+  return "test";
+}
+
 function assertValidWindow(validFrom: Date, validUntil: Date | null): void {
   if (Number.isNaN(validFrom.getTime())) {
     throw new Error("Entitlement validFrom must be a valid date");
@@ -64,6 +83,7 @@ export async function grantEntitlement(
     sourceType: EntitlementSourceType;
     sourceId: string;
     sourceEventId?: string | null;
+    environment?: EntitlementEnvironment;
     idempotencyKey: string;
     validFrom: Date;
     validUntil?: Date | null;
@@ -75,6 +95,7 @@ export async function grantEntitlement(
   const sourceId = input.sourceId.trim();
   const idempotencyKey = input.idempotencyKey.trim();
   const validUntil = input.validUntil ?? null;
+  const environment = resolveEntitlementEnvironment(input.environment);
 
   if (!sourceId) throw new Error("Entitlement sourceId is required");
   if (!idempotencyKey)
@@ -91,6 +112,7 @@ export async function grantEntitlement(
       sourceType: input.sourceType,
       sourceId,
       sourceEventId: input.sourceEventId?.trim() || null,
+      environment,
       idempotencyKey,
       validFrom: input.validFrom,
       validUntil,
@@ -99,6 +121,7 @@ export async function grantEntitlement(
     .onConflictDoNothing({
       target: [
         entitlementGrants.applicationId,
+        entitlementGrants.environment,
         entitlementGrants.idempotencyKey,
       ],
     })
@@ -112,6 +135,7 @@ export async function grantEntitlement(
     .where(
       and(
         eq(entitlementGrants.applicationId, input.applicationId),
+        eq(entitlementGrants.environment, environment),
         eq(entitlementGrants.idempotencyKey, idempotencyKey),
       ),
     )
@@ -148,6 +172,7 @@ export async function grantConfiguredEntitlements(
     validFrom: Date;
     validUntil?: Date | null;
     periodKey: string;
+    environment?: EntitlementEnvironment;
   },
   db: EntitlementDb = getDb(),
 ) {
@@ -177,6 +202,7 @@ export async function grantConfiguredEntitlements(
           sourceType: input.sourceType,
           sourceId: input.sourceId,
           sourceEventId: input.sourceEventId,
+          environment: input.environment,
           idempotencyKey: `${input.sourceType}:${input.sourceId}:${input.periodKey}:${featureKey}`,
           validFrom: input.validFrom,
           validUntil: input.validUntil,
@@ -235,6 +261,9 @@ export async function hasEntitlementForApplicationCustomer(
   featureKey: string,
   at: Date = new Date(),
   db: EntitlementDb = getDb(),
+  environment: EntitlementEnvironment = resolveEntitlementEnvironment(
+    undefined,
+  ),
 ): Promise<boolean> {
   const normalizedFeatureKey = normalizeFeatureKey(featureKey);
   if (Number.isNaN(at.getTime()))
@@ -246,6 +275,7 @@ export async function hasEntitlementForApplicationCustomer(
     .where(
       and(
         eq(entitlementGrants.applicationId, applicationId),
+        eq(entitlementGrants.environment, environment),
         eq(entitlementGrants.applicationCustomerId, applicationCustomerId),
         eq(entitlementGrants.featureKey, normalizedFeatureKey),
         eq(entitlementGrants.status, "active"),
@@ -267,6 +297,7 @@ export async function hasEntitlement(
   featureKey: string,
   at: Date = new Date(),
   db: EntitlementDb = getDb(),
+  environment: EntitlementEnvironment = "test",
 ): Promise<boolean> {
   const [mapping] = await db
     .select({ id: applicationCustomers.id })
@@ -286,5 +317,6 @@ export async function hasEntitlement(
     featureKey,
     at,
     db,
+    environment,
   );
 }

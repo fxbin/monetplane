@@ -136,6 +136,7 @@ export async function getPaymentsList(
       provider: providerConnections.provider,
       providerName: providerConnections.name,
       providerMode: providerConnections.mode,
+      environment: payments.environment,
     })
     .from(payments)
     .leftJoin(orders, eq(payments.orderId, orders.id))
@@ -389,6 +390,7 @@ export async function getSubscriptionsList(
       provider: providerConnections.provider,
       providerName: providerConnections.name,
       providerMode: providerConnections.mode,
+      environment: subscriptions.environment,
     })
     .from(subscriptions)
     .leftJoin(
@@ -582,6 +584,7 @@ export async function getRefundsList(
       provider: providerConnections.provider,
       providerName: providerConnections.name,
       providerMode: providerConnections.mode,
+      environment: payments.environment,
     })
     .from(refunds)
     .leftJoin(payments, eq(refunds.paymentId, payments.id))

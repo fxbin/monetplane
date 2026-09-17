@@ -11,6 +11,7 @@ import {
 } from "../entitlements/service";
 import type { NormalizedProviderEvent } from "../providers/contract";
 import { verifyAndNormalizeProviderWebhook } from "../providers/runtime";
+import { getProviderConnection } from "../providers/service";
 import {
   checkoutSessions,
   orderItems,
@@ -77,6 +78,18 @@ export async function processProviderWebhook(
     );
   }
 
+  // Environment is derived from the receiving provider connection — never
+  // from caller input (ADR: fail-closed environment selection).
+  const providerConnection = await getProviderConnection(
+    applicationId,
+    providerConnectionId,
+    db,
+  );
+  if (!providerConnection) {
+    throw new Error("Active provider connection not found");
+  }
+  const environment = providerConnection.mode;
+
   const occurredAt = parseEventDate(normalized.occurredAt);
   if (!occurredAt) {
     throw new InvalidNormalizedCommerceEventError(
@@ -95,6 +108,7 @@ export async function processProviderWebhook(
       normalizedType: normalized.type,
       rawBody: input.rawBody,
       normalizedEvent: normalized as unknown as Record<string, unknown>,
+      environment,
       occurredAt,
     })
     .onConflictDoNothing()
@@ -248,6 +262,7 @@ export async function processProviderWebhook(
             customerId: mappedApplicationCustomer?.customerId ?? null,
             providerConnectionId,
             providerPaymentId: event.providerPaymentId,
+            environment,
             status: paymentStatus,
             amountMinor,
             currency,
@@ -317,6 +332,7 @@ export async function processProviderWebhook(
                   validFrom: occurredAt,
                   validUntil: null,
                   periodKey: "durable",
+                  environment,
                 },
                 tx,
               );
@@ -328,6 +344,7 @@ export async function processProviderWebhook(
                   transactionType: "grant.purchase",
                   sourceType: "order",
                   sourceId: order.id,
+                  environment,
                   sourceEventId: event.providerEventId,
                   periodKey: "durable",
                 },
@@ -349,6 +366,7 @@ export async function processProviderWebhook(
               paymentId: payment.id,
               providerConnectionId,
               providerRefundId,
+              environment,
               status: "succeeded",
               amountMinor: event.amountMinor ?? null,
             })
@@ -451,6 +469,7 @@ export async function processProviderWebhook(
             applicationCustomerId,
             providerConnectionId,
             providerSubscriptionId: event.providerSubscriptionId,
+            environment,
             status: inferredStatus,
             currentPeriodStart: periodStart,
             currentPeriodEnd: periodEnd,
@@ -525,6 +544,7 @@ export async function processProviderWebhook(
               validFrom: periodStart,
               validUntil: periodEnd,
               periodKey: periodStart.toISOString(),
+              environment,
             },
             tx,
           );
@@ -541,6 +561,7 @@ export async function processProviderWebhook(
                 transactionType: "grant.subscription",
                 sourceType: "subscription",
                 sourceId: subscription.id,
+                environment,
                 sourceEventId: event.providerEventId,
                 periodKey: periodStart.toISOString(),
               },

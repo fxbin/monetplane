@@ -49,6 +49,11 @@ export async function POST(request: Request) {
       );
     }
 
+    const environment =
+      body.environment === "test" || body.environment === "live"
+        ? body.environment
+        : undefined;
+
     const items = itemsRaw.map((item, i) => {
       const obj = item as Record<string, unknown>;
       const priceId = typeof obj.priceId === "string" ? obj.priceId.trim() : "";
@@ -65,6 +70,7 @@ export async function POST(request: Request) {
       items,
       successUrl,
       cancelUrl,
+      environment,
     });
 
     return NextResponse.json(
@@ -89,6 +95,16 @@ export async function POST(request: Request) {
           code: "unauthorized",
         },
         { status: 401 },
+      );
+    }
+    if (name === "CommerceEnvironmentMismatchError") {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error ? error.message : "Environment mismatch",
+          code: "environment_mismatch",
+        },
+        { status: 400 },
       );
     }
     if (name === "CommerceCustomerNotFoundError") {

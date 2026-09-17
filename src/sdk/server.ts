@@ -36,6 +36,7 @@ import type {
   DebitCreditsResult,
   EntitlementCheckInput,
   EntitlementCheckResult,
+  Environment,
   MonetPlaneClientOptions,
   ReleaseReservationInput,
   ReleaseReservationResult,
@@ -49,6 +50,7 @@ type Client = {
   getCreditBalance(
     externalCustomerId: string,
     creditType: string,
+    environment?: Environment,
   ): Promise<CreditBalance>;
   debitCredits(input: DebitCreditsInput): Promise<DebitCreditsResult>;
   reserveCredits(input: ReserveCreditsInput): Promise<ReserveCreditsResult>;
@@ -151,10 +153,12 @@ export function createMonetPlaneClient(
     async getCreditBalance(
       externalCustomerId: string,
       creditType: string,
+      environment?: Environment,
     ): Promise<CreditBalance> {
       const data = await call("/api/credits/balance", {
         externalCustomerId,
         creditType,
+        environment,
       });
       return data as CreditBalance;
     },

@@ -44,6 +44,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       context.selectedApplication.id,
       customerId,
       { creditType, amount, note },
+      context.environment,
     );
     return NextResponse.json({ transaction: result.transaction });
   } catch (error) {

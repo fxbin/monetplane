@@ -29,6 +29,8 @@ export const orders = pgTable(
     billingMode: text("billing_mode").notNull(),
     status: text("status").default("pending").notNull(),
     currency: text("currency").notNull(),
+    environment: text("environment").default("test").notNull(),
+
     totalAmountMinor: bigint("total_amount_minor", {
       mode: "number",
     }).notNull(),
@@ -40,7 +42,7 @@ export const orders = pgTable(
       .notNull(),
   },
   (table) => [
-    index("orders_application_idx").on(table.applicationId),
+    index("orders_application_idx").on(table.applicationId, table.environment),
     index("orders_customer_idx").on(table.applicationCustomerId),
     check(
       "orders_billing_mode_check",
@@ -53,6 +55,10 @@ export const orders = pgTable(
     check(
       "orders_total_nonnegative_check",
       sql`${table.totalAmountMinor} >= 0`,
+    ),
+    check(
+      "orders_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
     ),
   ],
 );
@@ -96,6 +102,7 @@ export const checkoutSessions = pgTable(
     providerConnectionId: text("provider_connection_id")
       .notNull()
       .references(() => providerConnections.id, { onDelete: "no action" }),
+    environment: text("environment").default("test").notNull(),
     status: text("status").default("creating").notNull(),
     providerCheckoutId: text("provider_checkout_id"),
     checkoutUrl: text("checkout_url"),
@@ -109,7 +116,10 @@ export const checkoutSessions = pgTable(
       .notNull(),
   },
   (table) => [
-    index("checkout_sessions_application_idx").on(table.applicationId),
+    index("checkout_sessions_application_idx").on(
+      table.applicationId,
+      table.environment,
+    ),
     index("checkout_sessions_order_idx").on(table.orderId),
     uniqueIndex("checkout_sessions_provider_checkout_unique").on(
       table.providerConnectionId,
@@ -118,6 +128,10 @@ export const checkoutSessions = pgTable(
     check(
       "checkout_sessions_status_check",
       sql`${table.status} IN ('creating', 'open', 'completed', 'failed', 'expired')`,
+    ),
+    check(
+      "checkout_sessions_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
     ),
   ],
 );
@@ -139,6 +153,8 @@ export const payments = pgTable(
       .notNull()
       .references(() => providerConnections.id, { onDelete: "no action" }),
     providerPaymentId: text("provider_payment_id").notNull(),
+    environment: text("environment").default("test").notNull(),
+
     status: text("status").notNull(),
     amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
     currency: text("currency").notNull(),
@@ -154,13 +170,20 @@ export const payments = pgTable(
       table.providerConnectionId,
       table.providerPaymentId,
     ),
-    index("payments_application_idx").on(table.applicationId),
+    index("payments_application_idx").on(
+      table.applicationId,
+      table.environment,
+    ),
     index("payments_order_idx").on(table.orderId),
     check(
       "payments_status_check",
       sql`${table.status} IN ('pending', 'succeeded', 'failed', 'refunded')`,
     ),
     check("payments_amount_check", sql`${table.amountMinor} >= 0`),
+    check(
+      "payments_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
+    ),
   ],
 );
 
@@ -181,6 +204,8 @@ export const refunds = pgTable(
       .notNull()
       .references(() => providerConnections.id, { onDelete: "no action" }),
     providerRefundId: text("provider_refund_id").notNull(),
+    environment: text("environment").default("test").notNull(),
+
     status: text("status").notNull(),
     amountMinor: bigint("amount_minor", { mode: "number" }),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -205,6 +230,10 @@ export const refunds = pgTable(
       "refunds_amount_check",
       sql`${table.amountMinor} IS NULL OR ${table.amountMinor} >= 0`,
     ),
+    check(
+      "refunds_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
+    ),
   ],
 );
 
@@ -222,6 +251,8 @@ export const subscriptions = pgTable(
       .notNull()
       .references(() => providerConnections.id, { onDelete: "no action" }),
     providerSubscriptionId: text("provider_subscription_id").notNull(),
+    environment: text("environment").default("test").notNull(),
+
     status: text("status").notNull(),
     currentPeriodStart: timestamp("current_period_start", {
       withTimezone: true,
@@ -240,11 +271,18 @@ export const subscriptions = pgTable(
       table.providerConnectionId,
       table.providerSubscriptionId,
     ),
-    index("subscriptions_application_idx").on(table.applicationId),
+    index("subscriptions_application_idx").on(
+      table.applicationId,
+      table.environment,
+    ),
     index("subscriptions_customer_idx").on(table.applicationCustomerId),
     check(
       "subscriptions_status_check",
       sql`${table.status} IN ('pending', 'active', 'past_due', 'cancelled', 'expired')`,
+    ),
+    check(
+      "subscriptions_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
     ),
   ],
 );
@@ -288,6 +326,8 @@ export const webhookEvents = pgTable(
       .notNull()
       .references(() => providerConnections.id, { onDelete: "no action" }),
     providerEventId: text("provider_event_id").notNull(),
+    environment: text("environment").default("test").notNull(),
+
     providerEventName: text("provider_event_name").notNull(),
     normalizedType: text("normalized_type").notNull(),
     status: text("status").default("received").notNull(),
@@ -312,6 +352,10 @@ export const webhookEvents = pgTable(
     check(
       "webhook_events_status_check",
       sql`${table.status} IN ('received', 'processed', 'ignored', 'failed')`,
+    ),
+    check(
+      "webhook_events_environment_check",
+      sql`${table.environment} IN ('test', 'live')`,
     ),
   ],
 );

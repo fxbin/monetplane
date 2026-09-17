@@ -26,6 +26,7 @@ export const billingOperations = pgTable(
       .notNull()
       .references(() => providerConnections.id, { onDelete: "no action" }),
     providerResourceId: text("provider_resource_id").notNull(),
+    environment: text("environment").default("test").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
     status: text("status").default("pending_provider").notNull(),
     failureKind: text("failure_kind"),

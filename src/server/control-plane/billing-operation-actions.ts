@@ -75,6 +75,7 @@ async function createOrGetOperation(input: {
   resourceId: string;
   providerConnectionId: string;
   providerResourceId: string;
+  environment: string;
   idempotencyKey: string;
   retryOfOperationId?: string | null;
   attemptNumber?: number;
@@ -261,6 +262,7 @@ export async function refundPaymentWithJournal(
     resourceType: "payment",
     resourceId: payment.id,
     providerConnectionId: payment.providerConnectionId,
+    environment: payment.environment,
     providerResourceId: payment.providerPaymentId,
     idempotencyKey,
   });
@@ -324,6 +326,7 @@ export async function cancelSubscriptionWithJournal(
     resourceType: "subscription",
     resourceId: subscription.id,
     providerConnectionId: subscription.providerConnectionId,
+    environment: subscription.environment,
     providerResourceId: subscription.providerSubscriptionId,
     idempotencyKey,
   });
@@ -440,6 +443,7 @@ export async function retryBillingOperation(
     resourceId: source.resourceId,
     providerConnectionId: source.providerConnectionId,
     providerResourceId: source.providerResourceId,
+    environment: source.environment,
     idempotencyKey: `retry:${source.id}`,
     retryOfOperationId: source.id,
     attemptNumber,
@@ -551,6 +555,7 @@ export async function reconcileBillingOperation(
             orderId,
             paymentId: payment.id,
             providerConnectionId: payment.providerConnectionId,
+            environment: payment.environment,
             providerRefundId,
             status,
             amountMinor: amountMinor ?? payment.amountMinor,
