@@ -406,6 +406,7 @@ describe("two-application isolation demo", () => {
       "debitCredits",
       "getCreditBalance",
       "releaseReservation",
+      "reportUsage",
       "reserveCredits",
       "upsertCustomer",
     ]);

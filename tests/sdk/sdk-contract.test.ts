@@ -343,6 +343,7 @@ describe("MonetPlane SDK", () => {
         "debitCredits",
         "getCreditBalance",
         "releaseReservation",
+        "reportUsage",
         "reserveCredits",
         "upsertCustomer",
       ]);
