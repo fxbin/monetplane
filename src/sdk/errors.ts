@@ -47,6 +47,30 @@ export class AuthorizationError extends MonetPlaneError {
   }
 }
 
+/** No valid payment provider route exists for the checkout (routing/config). */
+export class NoProviderRouteError extends MonetPlaneError {
+  constructor(message = "No payment provider route") {
+    super(message, "no_provider_route");
+    this.name = "NoProviderRouteError";
+  }
+}
+
+/** The referenced usage meter does not exist. */
+export class UsageMeterNotFoundError extends MonetPlaneError {
+  constructor(message = "Usage meter not found") {
+    super(message, "meter_not_found");
+    this.name = "UsageMeterNotFoundError";
+  }
+}
+
+/** Request validation failed (bad shape, amounts, or keys). */
+export class ValidationError extends MonetPlaneError {
+  constructor(message = "Invalid request") {
+    super(message, "invalid_request");
+    this.name = "ValidationError";
+  }
+}
+
 /** A generic API error returned by the MonetPlane server. */
 export class ApiError extends MonetPlaneError {
   readonly statusCode: number;
@@ -107,6 +131,13 @@ export async function responseToError(
       return new InvalidStateError(message);
     case "unauthorized":
       return new AuthorizationError(message);
+    case "no_provider_route":
+      return new NoProviderRouteError(message);
+    case "meter_not_found":
+      return new UsageMeterNotFoundError(message);
+    case "invalid_request":
+    case "environment_mismatch":
+      return new ValidationError(message);
     default:
       return new ApiError(message, code, response.status, body);
   }

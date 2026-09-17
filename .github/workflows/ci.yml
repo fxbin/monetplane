@@ -68,6 +68,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Verify SDK package and examples
+        run: pnpm sdk:verify
+
       - name: Verify database-aware health endpoint
         run: |
           pnpm exec next start --hostname 127.0.0.1 > /tmp/monetplane-next.log 2>&1 &

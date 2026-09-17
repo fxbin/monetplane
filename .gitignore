@@ -11,3 +11,8 @@ coverage/
 
 # Local test/build verification artifacts
 tsconfig.tsbuildinfo
+packages/sdk/dist/
+*.tgz
+examples/*/node_modules/
+
+.playwright-mcp/

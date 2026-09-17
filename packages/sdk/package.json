@@ -1,0 +1,39 @@
+{
+  "name": "@monetplane/sdk",
+  "version": "0.1.0",
+  "description": "MonetPlane provider-neutral billing SDK for Node.js servers",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "default": "./dist/server.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "keywords": [
+    "billing",
+    "payments",
+    "credits",
+    "subscriptions",
+    "monetization"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fxbin/monetplane",
+    "directory": "packages/sdk"
+  }
+}

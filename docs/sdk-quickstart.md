@@ -7,6 +7,13 @@ MonetPlane provides a single server-side SDK that lets product teams integrate b
 - A running MonetPlane instance (local or hosted)
 - An application registered in MonetPlane with at least one active credential
 - Node.js 22+ (the SDK uses the global `fetch` API)
+- The `@monetplane/sdk` package (built from this repository's `packages/sdk`;
+  see [sdk-versioning.md](./sdk-versioning.md) for the versioning policy and
+  release process — it is not yet published to a public registry)
+
+```bash
+npm install @monetplane/sdk
+```
 
 ## 1. Register your application
 
@@ -25,7 +32,7 @@ const credential = await issueApplicationCredential(app.id, "production-api");
 
 ## 2. Configure a provider connection
 
-Register a provider connection (Creem, Waffo, or mock) in the MonetPlane admin or via the API. You will need the `providerConnectionId` for checkout creation.
+Register a provider connection (Creem, Waffo, or mock) in the MonetPlane admin or via the API. Checkout does NOT need a `providerConnectionId`: MonetPlane's payment router resolves the provider from your product and environment configuration.
 
 ## 3. Create products and prices
 
