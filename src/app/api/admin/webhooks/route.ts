@@ -5,6 +5,7 @@ import {
   listWebhookDeliveries,
   listWebhookEndpoints,
 } from "@/modules/webhooks";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export async function GET() {
@@ -63,6 +64,15 @@ export async function POST(request: Request) {
           : undefined,
       },
     );
+    await recordAuditEntry({
+      applicationId: application.id,
+      environment: context.environment,
+      action: "webhook_endpoint.created",
+      resourceType: "webhook_endpoint",
+      resourceId: endpoint.id,
+      metadata: { url: endpoint.url, eventTypes: endpoint.eventTypes },
+      request,
+    });
     return NextResponse.json(
       {
         endpoint,

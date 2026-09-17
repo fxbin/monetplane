@@ -9,6 +9,7 @@ import {
   getProviderSetup,
   validateProviderSetupCredentials,
 } from "@/modules/providers/setup";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getConsoleProviderConnectionDetail } from "@/server/control-plane/providers";
 
@@ -116,6 +117,18 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       );
     }
 
+    await recordAuditEntry({
+      applicationId: application.id,
+      environment: context.environment,
+      action: "provider.reconfigured",
+      resourceType: "provider_connection",
+      resourceId: connection.id,
+      metadata: {
+        name,
+        credentialsRotated: credentials !== null,
+      },
+      request,
+    });
     return NextResponse.json({ connection: updated });
   } catch (error) {
     const message =
@@ -146,6 +159,15 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   }
 
   const revoked = await revokeProviderConnection(application.id, connection.id);
+  await recordAuditEntry({
+    applicationId: application.id,
+    environment: context.environment,
+    action: "provider.revoked",
+    resourceType: "provider_connection",
+    resourceId: connection.id,
+    metadata: { provider: connection.provider, name: connection.name },
+    request: _request,
+  });
   if (!revoked) {
     return NextResponse.json(
       { error: "Provider connection could not be revoked" },

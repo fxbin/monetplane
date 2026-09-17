@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
 import { retryWebhookDelivery } from "@/modules/webhooks";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 type RouteContext = { params: Promise<{ deliveryId: string }> };
@@ -26,6 +27,15 @@ export async function POST(_request: Request, { params }: RouteContext) {
       context.environment,
       deliveryId,
     );
+    await recordAuditEntry({
+      applicationId: application.id,
+      environment: context.environment,
+      action: "webhook_delivery.retried",
+      resourceType: "webhook_delivery",
+      resourceId: deliveryId,
+      metadata: { status: delivery.status },
+      request: _request,
+    });
     return NextResponse.json({ delivery });
   } catch (error) {
     const message =

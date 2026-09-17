@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { revokeDeveloperApiKey } from "@/server/control-plane/developer";
 
@@ -22,6 +23,13 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       );
     }
     const result = await revokeDeveloperApiKey(application.id, credentialId);
+    await recordAuditEntry({
+      applicationId: application.id,
+      action: "api_key.revoked",
+      resourceType: "application_credential",
+      resourceId: credentialId,
+      request: _request,
+    });
     return NextResponse.json(result);
   } catch (error) {
     const message =

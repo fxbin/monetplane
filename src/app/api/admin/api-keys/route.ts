@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
   createDeveloperApiKey,
@@ -41,6 +42,14 @@ export async function POST(request: Request) {
       );
     }
     const key = await createDeveloperApiKey(application.id, name);
+    await recordAuditEntry({
+      applicationId: application.id,
+      action: "api_key.created",
+      resourceType: "application_credential",
+      resourceId: key.id,
+      metadata: { name, secretPrefix: key.secretPrefix },
+      request,
+    });
     return NextResponse.json(
       {
         key,

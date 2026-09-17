@@ -99,6 +99,13 @@
       "when": 1789842000000,
       "tag": "0013_credit_buckets",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789928000000,
+      "tag": "0014_operator_audit_log",
+      "breakpoints": true
     }
   ]
 }

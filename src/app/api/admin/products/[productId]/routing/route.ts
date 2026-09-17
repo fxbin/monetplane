@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { setProductProviderRoute } from "@/server/control-plane/products";
 
@@ -37,6 +38,15 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       providerConnectionId,
     );
 
+    await recordAuditEntry({
+      applicationId: context.selectedApplication.id,
+      environment: context.environment,
+      action: "product.routing_changed",
+      resourceType: "product",
+      resourceId: productId,
+      metadata: { providerConnectionId },
+      request,
+    });
     return NextResponse.json({
       product: result.product,
       provider: {

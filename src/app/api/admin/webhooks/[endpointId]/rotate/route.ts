@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/modules/admin/guard";
 import { rotateWebhookEndpointSecret } from "@/modules/webhooks";
+import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 type RouteContext = { params: Promise<{ endpointId: string }> };
@@ -26,6 +27,14 @@ export async function POST(_request: Request, { params }: RouteContext) {
       context.environment,
       endpointId,
     );
+    await recordAuditEntry({
+      applicationId: application.id,
+      environment: context.environment,
+      action: "webhook_endpoint.rotated",
+      resourceType: "webhook_endpoint",
+      resourceId: endpoint.id,
+      request: _request,
+    });
     return NextResponse.json({
       endpoint,
       notice:
