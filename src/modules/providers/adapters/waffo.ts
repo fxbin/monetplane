@@ -30,6 +30,8 @@ const WAFFO_CAPABILITIES: ProviderCapabilities = {
   recurring_subscription: true,
   monthly_interval: true,
   annual_interval: true,
+  weekly_interval: false,
+  trial_periods: false,
   refund: true,
   subscription_cancel: true,
   subscription_update: false,

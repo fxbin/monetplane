@@ -57,6 +57,7 @@ export const prices = pgTable(
     billingType: text("billing_type").notNull(),
     recurringInterval: text("recurring_interval"),
     intervalCount: integer("interval_count"),
+    trialPeriodDays: integer("trial_period_days"),
     status: text("status").default("active").notNull(),
     metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -79,6 +80,14 @@ export const prices = pgTable(
       sql`${table.billingType} IN ('one_time', 'recurring')`,
     ),
     check(
+      "prices_trial_check",
+      sql`${table.trialPeriodDays} IS NULL OR ${table.trialPeriodDays} >= 1`,
+    ),
+    check(
+      "prices_status_check",
+      sql`${table.status} IN ('active', 'archived')`,
+    ),
+    check(
       "prices_billing_shape_check",
       sql`(
         ${table.billingType} = 'one_time'
@@ -86,7 +95,7 @@ export const prices = pgTable(
         AND ${table.intervalCount} IS NULL
       ) OR (
         ${table.billingType} = 'recurring'
-        AND ${table.recurringInterval} IN ('month', 'year')
+        AND ${table.recurringInterval} IN ('week', 'month', 'year')
         AND ${table.intervalCount} >= 1
       )`,
     ),

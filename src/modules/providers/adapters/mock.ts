@@ -23,11 +23,13 @@ import {
   NORMALIZED_PROVIDER_EVENT_TYPES,
 } from "../contract";
 
-const MOCK_CAPABILITIES: ProviderCapabilities = {
+export const MOCK_CAPABILITIES: ProviderCapabilities = {
   one_time_checkout: true,
   recurring_subscription: true,
   monthly_interval: true,
   annual_interval: true,
+  weekly_interval: true,
+  trial_periods: true,
   refund: true,
   subscription_cancel: true,
   subscription_update: true,

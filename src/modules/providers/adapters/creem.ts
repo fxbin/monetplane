@@ -29,6 +29,8 @@ const CREEM_CAPABILITIES: ProviderCapabilities = {
   recurring_subscription: true,
   monthly_interval: true,
   annual_interval: true,
+  weekly_interval: false,
+  trial_periods: false,
   refund: false,
   subscription_cancel: true,
   subscription_update: false,

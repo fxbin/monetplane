@@ -63,6 +63,7 @@ export async function POST(request: Request) {
         amountMinor:
           typeof body.amountMinor === "number" ? body.amountMinor : Number.NaN,
         recurringInterval:
+          body.recurringInterval === "week" ||
           body.recurringInterval === "month" ||
           body.recurringInterval === "year"
             ? body.recurringInterval

@@ -18,6 +18,8 @@ const CAPABILITY_LABELS: Record<ProviderCapability, string> = {
   recurring_subscription: "Recurring subscriptions",
   monthly_interval: "Monthly interval",
   annual_interval: "Annual interval",
+  weekly_interval: "Weekly interval",
+  trial_periods: "Trial periods",
   refund: "Refunds",
   subscription_cancel: "Subscription cancellation",
   subscription_update: "Subscription updates",

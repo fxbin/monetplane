@@ -301,6 +301,12 @@ export const subscriptionItems = pgTable(
       .notNull()
       .references(() => prices.id, { onDelete: "no action" }),
     quantity: integer("quantity").notNull(),
+    // Commercial terms snapshot: subscription keeps the terms it was
+    // created under even if the price is later archived (#64).
+    unitAmountMinor: bigint("unit_amount_minor", { mode: "number" }).notNull(),
+    currency: text("currency").notNull(),
+    recurringInterval: text("recurring_interval"),
+    trialPeriodDays: integer("trial_period_days"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

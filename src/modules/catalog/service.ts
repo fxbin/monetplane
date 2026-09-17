@@ -5,7 +5,7 @@ import { getDb } from "../../db/client";
 import { prices, productGrantConfigs, products } from "./schema";
 
 export type BillingType = "one_time" | "recurring";
-export type RecurringInterval = "month" | "year";
+export type RecurringInterval = "week" | "month" | "year";
 export type GrantType = "entitlement" | "credit";
 
 export type ConfiguredProductGrantInput = {
@@ -134,12 +134,21 @@ export async function createPrice(
     billingType: BillingType;
     recurringInterval?: RecurringInterval;
     intervalCount?: number;
+    trialPeriodDays?: number | null;
     metadata?: Record<string, unknown>;
   },
   db: Database = getDb(),
 ) {
   await assertProductForApplication(input.applicationId, input.productId, db);
   assertMinorUnitAmount(input.amountMinor);
+
+  if (
+    input.trialPeriodDays !== undefined &&
+    input.trialPeriodDays !== null &&
+    (!Number.isSafeInteger(input.trialPeriodDays) || input.trialPeriodDays < 1)
+  ) {
+    throw new Error("Trial period must be a positive number of days");
+  }
 
   if (input.billingType === "one_time") {
     if (
@@ -148,12 +157,18 @@ export async function createPrice(
     ) {
       throw new Error("One-time prices cannot define a recurring interval");
     }
+    if (input.trialPeriodDays) {
+      throw new Error("Trial periods require a recurring price");
+    }
   } else {
     if (
+      input.recurringInterval !== "week" &&
       input.recurringInterval !== "month" &&
       input.recurringInterval !== "year"
     ) {
-      throw new Error("Recurring prices require a month or year interval");
+      throw new Error(
+        "Recurring prices require a week, month, or year interval",
+      );
     }
     if (
       input.intervalCount !== undefined &&
@@ -176,12 +191,39 @@ export async function createPrice(
         input.billingType === "recurring" ? input.recurringInterval : null,
       intervalCount:
         input.billingType === "recurring" ? (input.intervalCount ?? 1) : null,
+      trialPeriodDays: input.trialPeriodDays ?? null,
       metadata: input.metadata ?? {},
     })
     .returning();
 
   if (!price) throw new Error("Failed to create price");
   return price;
+}
+
+/**
+ * Archive a price: it becomes unavailable for NEW checkout while existing
+ * subscription references keep working (#64 lifecycle semantics).
+ */
+export async function archivePrice(
+  input: { applicationId: string; productId: string; priceId: string },
+  db: Database = getDb(),
+) {
+  await assertProductForApplication(input.applicationId, input.productId, db);
+  const [archived] = await db
+    .update(prices)
+    .set({ status: "archived", updatedAt: new Date() })
+    .where(
+      and(
+        eq(prices.id, input.priceId),
+        eq(prices.productId, input.productId),
+        eq(prices.status, "active"),
+      ),
+    )
+    .returning();
+  if (!archived) {
+    throw new Error("Active price not found for this product");
+  }
+  return archived;
 }
 
 export async function addProductGrantConfig(

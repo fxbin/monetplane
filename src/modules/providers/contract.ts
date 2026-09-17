@@ -3,6 +3,8 @@ export const PROVIDER_CAPABILITIES = [
   "recurring_subscription",
   "monthly_interval",
   "annual_interval",
+  "weekly_interval",
+  "trial_periods",
   "refund",
   "subscription_cancel",
   "subscription_update",
@@ -38,7 +40,7 @@ export type CreateCheckoutInput = {
   monetplaneCustomerId: string;
   customerEmail?: string;
   billingMode: CheckoutBillingMode;
-  interval?: "month" | "year";
+  interval?: "week" | "month" | "year";
   currency: string;
   items: Array<{
     productId: string;

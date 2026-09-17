@@ -28,6 +28,8 @@ const limitedAdapter = {
     recurring_subscription: false,
     monthly_interval: false,
     annual_interval: false,
+    weekly_interval: false,
+    trial_periods: false,
     refund: false,
     subscription_cancel: false,
     subscription_update: false,

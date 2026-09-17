@@ -31,6 +31,8 @@ export function defineProviderAdapterContractTests(input: {
           "refund",
           "subscription_cancel",
           "subscription_update",
+          "trial_periods",
+          "weekly_interval",
         ].sort(),
       );
       expect(

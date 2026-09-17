@@ -5,7 +5,10 @@ import { getDb } from "../../db/client";
 import { assertAllowedCallbackUrl } from "../applications/service";
 import { prices, products } from "../catalog/schema";
 import { findApplicationCustomer } from "../customers/service";
-import { createProviderCheckout } from "../providers/runtime";
+import {
+  createProviderCheckout,
+  getProviderCapabilities,
+} from "../providers/runtime";
 import { getProviderConnection } from "../providers/service";
 import { resolveCheckoutProviderRoute } from "./router";
 import { checkoutSessions, orderItems, orders } from "./schema";
@@ -114,7 +117,10 @@ export async function createCommerceCheckout(
       );
     }
     const row = catalogByPrice.get(item.priceId);
-    if (!row) throw new CommerceCatalogError("Price not found");
+    if (!row)
+      throw new CommerceCatalogError(
+        "Price not found or no longer available for new checkout",
+      );
     return { ...row, quantity: item.quantity };
   });
 
@@ -152,12 +158,22 @@ export async function createCommerceCheckout(
     providerConnectionId = explicitConnection.id;
     routingSource = "explicit";
   } else {
+    const firstPrice = resolvedItems[0]?.price;
     const route = await resolveCheckoutProviderRoute(
       {
         applicationId,
         environment: input.environment ?? "test",
         billingMode,
         productIds: resolvedItems.map((item) => item.product.id),
+        recurringInterval:
+          billingMode === "subscription"
+            ? (firstPrice?.recurringInterval as
+                | "week"
+                | "month"
+                | "year"
+                | undefined)
+            : undefined,
+        trialPeriodDays: firstPrice?.trialPeriodDays ?? undefined,
       },
       db,
     );
@@ -175,6 +191,34 @@ export async function createCommerceCheckout(
   const environment = providerConnection.mode;
   if (input.environment && input.environment !== environment) {
     throw new CommerceEnvironmentMismatchError();
+  }
+
+  // Interval/trial capabilities apply on every path, including explicit
+  // internal overrides — unsupported terms must fail before provider
+  // invocation (#64).
+  if (routingSource === "explicit" && billingMode === "subscription") {
+    const capabilities = await getProviderCapabilities(
+      applicationId,
+      providerConnectionId,
+      db,
+    );
+    const first = resolvedItems[0]?.price;
+    const intervalCapability =
+      first?.recurringInterval === "week"
+        ? "weekly_interval"
+        : first?.recurringInterval === "year"
+          ? "annual_interval"
+          : "monthly_interval";
+    if (first?.recurringInterval && !capabilities[intervalCapability]) {
+      throw new CommerceCatalogError(
+        `Payment provider does not support ${first.recurringInterval} recurring billing`,
+      );
+    }
+    if (first?.trialPeriodDays && !capabilities.trial_periods) {
+      throw new CommerceCatalogError(
+        "Payment provider does not support trial periods on this plan",
+      );
+    }
   }
   const recurringIntervals = new Set(
     resolvedItems
@@ -263,7 +307,10 @@ export async function createCommerceCheckout(
         billingMode,
         interval:
           billingMode === "subscription"
-            ? (resolvedItems[0]?.price.recurringInterval as "month" | "year")
+            ? (resolvedItems[0]?.price.recurringInterval as
+                | "week"
+                | "month"
+                | "year")
             : undefined,
         currency,
         items: resolvedItems.map((item) => ({

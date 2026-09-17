@@ -6,6 +6,7 @@ import {
   products,
   type RecurringInterval,
 } from "@/modules/catalog";
+import { getProviderCapabilities } from "@/modules/providers/runtime";
 import {
   getProviderConnection,
   listProviderConnections,
@@ -298,7 +299,31 @@ export async function getBuilderProviderOptions(
   environment: ConsoleEnvironment,
 ) {
   const providers = await listProviderConnections(applicationId, getDb());
-  return providers.filter(
+  const active = providers.filter(
     (provider) => provider.status === "active" && provider.mode === environment,
+  );
+  // Surface interval/trial capabilities so the Product Builder only offers
+  // options the selected provider can actually support (#64).
+  return Promise.all(
+    active.map(async (provider) => {
+      try {
+        const capabilities = await getProviderCapabilities(
+          applicationId,
+          provider.id,
+        );
+        return {
+          ...provider,
+          capabilities: {
+            weeklyInterval: capabilities.weekly_interval,
+            trialPeriods: capabilities.trial_periods,
+          },
+        };
+      } catch {
+        return {
+          ...provider,
+          capabilities: { weeklyInterval: false, trialPeriods: false },
+        };
+      }
+    }),
   );
 }
