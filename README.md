@@ -90,3 +90,12 @@ Reference means **learn from the domain model and failure cases**, not copy impl
 ## P0 outcome
 
 P0 is complete when two example applications can share one MonetPlane deployment while using application-specific domains/configuration, complete one-time and recurring payment flows through provider adapters, receive normalized idempotent webhooks, grant entitlements/credits, and consume credits safely through the same API.
+
+
+## Status
+
+- **P0 — billing-engine foundation**: complete (architecture evidence in `docs/architecture.md`).
+- **P1 — Control Plane Console v1**: complete and gate-verified (`docs/p1-gate-evidence.md`).
+- **P2 — Production-ready monetization platform**: implemented (environment isolation ADR + implementation, payment router, developer lifecycle events, usage metering, credit buckets, pricing v2, packaged SDK, operator audit, analytics v1). Local dogfood evidence: `docs/p2-gate-dogfood-evidence.md`. Real-provider sandbox proof and sustained dogfood remain open (#41/#68).
+
+Verification: `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build` (CI runs the full sequence plus migrations and a database-aware health check).
