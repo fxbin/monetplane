@@ -1,5 +1,9 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { formatAmount } from "@/lib/format";
+import {
+  getRevenueAnalyticsV1,
+  getSubscriptionAnalytics,
+} from "@/server/control-plane/analytics";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getRevenueAnalytics } from "@/server/control-plane/overview";
 
@@ -38,6 +42,14 @@ export default async function RevenuePage() {
     application.id,
     context.environment,
   );
+  const now = new Date();
+  const [operational, subscriptions] = await Promise.all([
+    getRevenueAnalyticsV1(application.id, context.environment, {
+      from: new Date(now.getTime() - 30 * 24 * 3600 * 1000),
+      to: new Date(now.getTime() + 60_000),
+    }),
+    getSubscriptionAnalytics(application.id, context.environment),
+  ]);
   const maxRevenue = Math.max(
     ...analytics.monthly.map((entry) => entry.revenueMinor),
     1,
@@ -65,6 +77,69 @@ export default async function RevenuePage() {
             {formatAmount(analytics.totals.averagePaymentMinor, "USD")}
           </span>
         </div>
+        <div className="stat-card">
+          <span className="stat-label">Success rate (30d)</span>
+          <span className="stat-value">
+            {operational.paymentOutcomes.successRate === null
+              ? "—"
+              : `${(operational.paymentOutcomes.successRate * 100).toFixed(1)}%`}
+          </span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">Active subscriptions</span>
+          <span className="stat-value">{subscriptions.active}</span>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2 className="card-title">Volume by currency (30 days)</h2>
+        {operational.volumeByCurrency.length === 0 ? (
+          <p className="cell-muted">
+            No succeeded payments in this environment yet.
+          </p>
+        ) : (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Currency</th>
+                <th>Volume</th>
+                <th>Payments</th>
+              </tr>
+            </thead>
+            <tbody>
+              {operational.volumeByCurrency.map((row) => (
+                <tr key={row.currency}>
+                  <td className="cell-mono">{row.currency}</td>
+                  <td>{formatAmount(row.amountMinor, row.currency)}</td>
+                  <td>{row.payments}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {subscriptions.mrrByCurrency.length > 0 && (
+          <>
+            <h2 className="card-title" style={{ marginTop: 16 }}>
+              MRR by currency (monthly-normalized)
+            </h2>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Currency</th>
+                  <th>MRR</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subscriptions.mrrByCurrency.map((row) => (
+                  <tr key={row.currency}>
+                    <td className="cell-mono">{row.currency}</td>
+                    <td>{formatAmount(row.amountMinor, row.currency)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
       </div>
 
       <div className="card">
