@@ -1,5 +1,8 @@
+import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { getDb } from "@/db/client";
 import { processProviderWebhook } from "@/modules/commerce/webhook";
+import { providerConnections } from "@/modules/providers/schema";
 import { publishBillingLifecycleEvent } from "@/server/control-plane/billing-events";
 
 /**
@@ -19,13 +22,27 @@ export async function POST(
   const headers = Object.fromEntries(request.headers.entries());
 
   try {
-    const applicationId = headers["x-monetplane-application"];
-    if (typeof applicationId !== "string" || !applicationId) {
+    // The URL's connection id IS the routing credential: resolve the
+    // application from the connection itself. Real providers never send
+    // custom routing headers; signature verification authenticates the
+    // payload. (The x-monetplane-application header remains an optional
+    // test-only override.)
+    const [connection] = await getDb()
+      .select({ applicationId: providerConnections.applicationId })
+      .from(providerConnections)
+      .where(eq(providerConnections.id, connectionId))
+      .limit(1);
+    if (!connection) {
       return NextResponse.json(
-        { error: "x-monetplane-application header is required" },
-        { status: 400 },
+        { error: "Unknown webhook connection" },
+        { status: 404 },
       );
     }
+    const headerApplication = headers["x-monetplane-application"];
+    const applicationId =
+      typeof headerApplication === "string" && headerApplication
+        ? headerApplication
+        : connection.applicationId;
 
     const result = await processProviderWebhook(applicationId, connectionId, {
       rawBody,
