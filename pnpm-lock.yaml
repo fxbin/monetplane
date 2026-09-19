@@ -8,9 +8,9 @@ importers:
 
   .:
     dependencies:
-      '@waffo/waffo-node':
-        specifier: 3.1.0
-        version: 3.1.0
+      '@waffo/pancake-ts':
+        specifier: ^0.21.0
+        version: 0.21.0
       drizzle-orm:
         specifier: 0.43.1
         version: 0.43.1(postgres@3.4.7)
@@ -994,9 +994,9 @@ packages:
   '@vitest/utils@4.1.11':
     resolution: {integrity: sha512-zTCVGpyFsGWBhllOyKlTw/vnr6D9qxsfSDyfbyZmTyjHw5N/VuvzHpHoQjm2ZJzn4RJgx5w4r7V0er69CmLgPQ==}
 
-  '@waffo/waffo-node@3.1.0':
-    resolution: {integrity: sha512-EqYhiJS9cSF8M4NmCwiV3Dkk/APmuafrTB1e3cPEqqN8r/1P0mzTFCGkeEODEX21r4cIRzCN4kzVG7CTtAw+OA==}
-    engines: {node: '>=18.0.0'}
+  '@waffo/pancake-ts@0.21.0':
+    resolution: {integrity: sha512-gYn9GffAQdV3H2bQ2BLwCAsYsQebyNkrX1+56HWOzLpBPnJNGVGtg/xWa0yvUrmSCAOQfdUPKAnjsaG1Ue9Zyg==}
+    engines: {node: '>=20.0.0'}
 
   assertion-error@2.0.1:
     resolution: {integrity: sha512-Izi8RQcffqCeNVgFigKli1ssklIbpHnCYc6AknXGYoB6grJqyeby7jv12JUQgmTAnIDnbck1uxksT4dzN3PWBA==}
@@ -2053,7 +2053,7 @@ snapshots:
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.1
 
-  '@waffo/waffo-node@3.1.0': {}
+  '@waffo/pancake-ts@0.21.0': {}
 
   assertion-error@2.0.1: {}
 

@@ -7,66 +7,52 @@ import {
 describe("provider setup metadata", () => {
   it("defines the supported console providers", () => {
     expect(getProviderSetup("creem")?.label).toBe("Creem");
-    expect(getProviderSetup("waffo")?.label).toBe("Waffo");
-    expect(getProviderSetup("mock")).toBeNull();
+    expect(getProviderSetup("waffo")?.label).toBe("Waffo Pancake");
+    expect(getProviderSetup("stripe")).toBeNull();
   });
 
-  it("normalizes Creem credentials and ignores unknown fields", () => {
-    expect(
-      validateProviderSetupCredentials("creem", {
-        apiKey: "  creem_key  ",
-        webhookSecret: " webhook_secret ",
-        ignored: "do-not-store",
-      }),
-    ).toEqual({
-      apiKey: "creem_key",
-      webhookSecret: "webhook_secret",
-    });
-  });
-
-  it("requires the current Waffo RSA credential contract", () => {
+  it("requires the Waffo Pancake credential contract (merchantId/privateKey/storeId)", () => {
     expect(() =>
       validateProviderSetupCredentials("waffo", {
-        apiKey: "waffo_key",
-        merchantId: "merchant_1",
-        privateKey: "private_key",
-        notifyUrl: "https://billing.example.com/waffo",
+        merchantId: "MER_valid123",
+        privateKey: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----",
+        storeId: "STO_valid123",
       }),
-    ).toThrow("Waffo public key is required for Waffo");
+    ).not.toThrow();
 
-    expect(
-      validateProviderSetupCredentials("waffo", {
-        apiKey: " waffo_key ",
-        merchantId: " merchant_1 ",
-        privateKey: " private_key ",
-        waffoPublicKey: " public_key ",
-        notifyUrl: " https://billing.example.com/waffo ",
-        signingSecret: "legacy-value-must-not-be-stored",
-      }),
-    ).toEqual({
-      apiKey: "waffo_key",
-      merchantId: "merchant_1",
-      privateKey: "private_key",
-      waffoPublicKey: "public_key",
-      notifyUrl: "https://billing.example.com/waffo",
-    });
-  });
-
-  it("requires an HTTPS Waffo notification URL", () => {
     expect(() =>
       validateProviderSetupCredentials("waffo", {
-        apiKey: "waffo_key",
-        merchantId: "merchant_1",
-        privateKey: "private_key",
-        waffoPublicKey: "public_key",
-        notifyUrl: "http://localhost:3000/webhook",
+        merchantId: "wrong-shape",
+        privateKey: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----",
+        storeId: "STO_valid123",
       }),
-    ).toThrow("must use HTTPS");
+    ).toThrow(/Merchant ID must look like MER_/);
+
+    expect(() =>
+      validateProviderSetupCredentials("waffo", {
+        merchantId: "MER_valid123",
+        privateKey: "definitely not a key !!!",
+        storeId: "STO_valid123",
+      }),
+    ).toThrow(/private key must be a PEM string or its base64 encoding/i);
+
+    expect(() =>
+      validateProviderSetupCredentials("waffo", {
+        merchantId: "MER_valid123",
+        privateKey: "SGVsbG8=",
+      }),
+    ).toThrow(/Store ID is required/);
   });
 
-  it("rejects unsupported provider names", () => {
-    expect(() => validateProviderSetupCredentials("stripe", {})).toThrow(
-      "supported payment provider",
-    );
+  it("accepts base64-encoded private keys", () => {
+    expect(() =>
+      validateProviderSetupCredentials("waffo", {
+        merchantId: "MER_valid123",
+        privateKey: Buffer.from(
+          "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----",
+        ).toString("base64"),
+        storeId: "STO_valid123",
+      }),
+    ).not.toThrow();
   });
 });

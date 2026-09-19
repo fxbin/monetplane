@@ -41,6 +41,8 @@ export type CreateCheckoutInput = {
   customerEmail?: string;
   billingMode: CheckoutBillingMode;
   interval?: "week" | "month" | "year";
+  /** Trial window from the price (pricing v2); providers gate on capability. */
+  trialPeriodDays?: number;
   currency: string;
   items: Array<{
     productId: string;
