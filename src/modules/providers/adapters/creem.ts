@@ -31,7 +31,10 @@ const CREEM_CAPABILITIES: ProviderCapabilities = {
   annual_interval: true,
   weekly_interval: false,
   trial_periods: false,
-  refund: false,
+  // POST /v1/refunds supports full refunds by transaction ID (may return
+  // pending for async provider confirmation); refund.created webhooks
+  // complete the picture (#100).
+  refund: true,
   subscription_cancel: true,
   subscription_update: false,
   customer_portal: false,
@@ -393,6 +396,27 @@ function normalizeCreemWebhook(
     };
   }
 
+  if (
+    event.providerEventName === "subscription.update" ||
+    event.providerEventName === "subscription.trialing" ||
+    event.providerEventName === "subscription.paused"
+  ) {
+    const subscriptionId = stringValue(object.id);
+    if (!subscriptionId) return unknownEvent(connection, event);
+    return {
+      ...base,
+      ...correlation,
+      type: "subscription.updated",
+      providerSubscriptionId: subscriptionId,
+      providerCustomerId: customerId,
+      subscriptionStatus: mapSubscriptionStatus(object.status),
+      subscriptionPeriodStart: stringValue(object.current_period_start_date),
+      subscriptionPeriodEnd: stringValue(object.current_period_end_date),
+      cancelAtPeriodEnd: object.status === "scheduled_cancel",
+      rawEventReference: event.providerEventId,
+    };
+  }
+
   if (event.providerEventName === "subscription.canceled") {
     const subscriptionId = stringValue(object.id);
     if (!subscriptionId) return unknownEvent(connection, event);
@@ -593,10 +617,32 @@ export function createCreemProviderAdapter(
     },
 
     async refundPayment(
-      _connection,
-      _input: RefundPaymentInput,
+      connection,
+      input: RefundPaymentInput,
     ): Promise<NormalizedRefund> {
-      throw new UnsupportedProviderCapabilityError("creem", "refund");
+      const response = await creemRequest(connection, options, "/v1/refunds", {
+        method: "POST",
+        body: JSON.stringify({
+          transaction_id: input.providerPaymentId,
+          ...(input.requestId
+            ? { metadata: { monetplane_request_id: input.requestId } }
+            : {}),
+        }),
+      });
+      const refundId = stringValue(response.id);
+      if (!refundId) {
+        throw new Error("Creem refund response is missing the refund id");
+      }
+      const status = stringValue(response.status) ?? "";
+      // Creem refunds may confirm asynchronously ("pending"); the
+      // refund.created webhook carries the final outcome.
+      const normalizedStatus: NormalizedRefund["status"] =
+        status === "pending" ? "pending" : "succeeded";
+      return {
+        providerRefundId: refundId,
+        providerPaymentId: input.providerPaymentId,
+        status: normalizedStatus,
+      };
     },
 
     async verifyWebhook(

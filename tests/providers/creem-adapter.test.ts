@@ -193,19 +193,81 @@ describe("Creem adapter", () => {
     });
   });
 
-  it("does not advertise operations Creem does not expose in the public merchant API", async () => {
+  it("declares refunds (POST /v1/refunds) and keeps plan updates unsupported", async () => {
     const adapter = createCreemProviderAdapter();
     const capabilities = adapter.getCapabilities(connection);
-    expect(capabilities.refund).toBe(false);
+    expect(capabilities.refund).toBe(true);
     expect(capabilities.subscription_update).toBe(false);
-    await expect(
-      adapter.refundPayment(connection, { providerPaymentId: "tran_1" }),
-    ).rejects.toBeInstanceOf(UnsupportedProviderCapabilityError);
     await expect(
       adapter.updateSubscription(connection, {
         providerSubscriptionId: "sub_1",
       }),
     ).rejects.toBeInstanceOf(UnsupportedProviderCapabilityError);
+  });
+
+  it("submits full refunds by transaction id and normalizes pending confirmation", async () => {
+    const requests: Array<{ url: string; init: RequestInit }> = [];
+    const adapter = createCreemProviderAdapter({
+      fetchImpl: (async (url: string, init: RequestInit) => {
+        requests.push({ url: String(url), init });
+        const pending = String(url).endsWith("/v1/refunds");
+        return new Response(
+          JSON.stringify(
+            pending
+              ? {
+                  id: "refu_1",
+                  status: "pending",
+                  transaction: { id: "tran_1" },
+                }
+              : {},
+          ),
+          { status: 200, headers: { "content-type": "application/json" } },
+        );
+      }) as typeof fetch,
+    });
+    const refund = await adapter.refundPayment(connection, {
+      providerPaymentId: "tran_1",
+      requestId: "req_refund_1",
+    });
+    expect(refund).toEqual({
+      providerRefundId: "refu_1",
+      providerPaymentId: "tran_1",
+      status: "pending",
+    });
+    const refundCall = requests.find((r) => r.url.endsWith("/v1/refunds"));
+    expect(refundCall?.init.method).toBe("POST");
+    expect(JSON.parse(String(refundCall?.init.body))).toMatchObject({
+      transaction_id: "tran_1",
+    });
+  });
+
+  it("maps subscription update/trialing/paused to subscription.updated with object state", async () => {
+    const adapter = createCreemProviderAdapter();
+    for (const eventType of [
+      "subscription.update",
+      "subscription.trialing",
+      "subscription.paused",
+    ]) {
+      const event = await adapter.normalizeWebhook(
+        connection,
+        signedPayload({
+          id: `evt_${eventType.replace(".", "_")}`,
+          eventType,
+          created_at: 1770000000,
+          object: {
+            id: "sub_1",
+            status: "active",
+            customer: "cus_1",
+            metadata: { monetplane_order_id: "ord_1" },
+            current_period_start_date: "2026-09-01",
+            current_period_end_date: "2026-10-01",
+          },
+        }),
+      );
+      expect(event.type, eventType).toBe("subscription.updated");
+      expect(event.providerSubscriptionId).toBe("sub_1");
+      expect(event.subscriptionStatus).toBe("active");
+    }
   });
 
   it("uses subscription.paid as the paid-period event and keeps subscription.active sync-only", async () => {
