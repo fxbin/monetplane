@@ -80,6 +80,48 @@ describe("inbound provider webhook receiver (#95)", () => {
     expect(response.status).toBe(404);
   });
 
+  it("parks permanently-unprocessable events with 200 processed:false", async () => {
+    const slug = `receiver-park-${Math.random().toString(36).slice(2, 6)}`;
+    const app = await createApplication({ slug, name: slug }, db);
+    const connection = await createProviderConnection(
+      {
+        applicationId: app.id,
+        provider: "mock",
+        name: "receiver",
+        mode: "test",
+        credentials: { webhookSecret: `${slug}-secret` },
+      },
+      db,
+    );
+    // Valid signature, but the subscription references an application
+    // customer MonetPlane never created → permanent processing failure.
+    const rawBody = JSON.stringify({
+      id: "evt_park_1",
+      type: "subscription.activated",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_subscription_id: "SUB_unknown",
+        amount_minor: 900,
+        currency: "USD",
+      },
+    });
+    const response = await receiveWebhook(
+      request("http://localhost/api/webhooks/x", rawBody, {
+        "x-monetplane-mock-signature": signMockWebhookPayload(
+          rawBody,
+          `${slug}-secret`,
+        ),
+      }),
+      { params: Promise.resolve({ connectionId: connection.id }) },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      received: boolean;
+      processed: boolean;
+    };
+    expect(body).toMatchObject({ received: true, processed: false });
+  });
+
   it("rejects invalid signatures with 401", async () => {
     const slug = `receiver-bad-${Math.random().toString(36).slice(2, 6)}`;
     const app = await createApplication({ slug, name: slug }, db);

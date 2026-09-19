@@ -44,10 +44,30 @@ export async function POST(
         ? headerApplication
         : connection.applicationId;
 
-    const result = await processProviderWebhook(applicationId, connectionId, {
-      rawBody,
-      headers,
-    });
+    let result: Awaited<ReturnType<typeof processProviderWebhook>>;
+    try {
+      result = await processProviderWebhook(applicationId, connectionId, {
+        rawBody,
+        headers,
+      });
+    } catch (error) {
+      const name = error instanceof Error ? error.name : "";
+      if (name === "InvalidProviderWebhookSignatureError") {
+        // Authentication failure — keep 401 so providers and scanners see it.
+        return NextResponse.json(
+          { error: "Invalid webhook signature" },
+          { status: 401 },
+        );
+      }
+      // Signature already verified: the event is durably recorded with its
+      // failure by the inbox. Return 200 processed:false so the provider
+      // stops its retry schedule instead of looping for 24h (#97).
+      return NextResponse.json({
+        received: true,
+        processed: false,
+        error: error instanceof Error ? error.message : "Processing failed",
+      });
+    }
 
     // Fan out developer events only for newly processed, committed
     // lifecycle transitions; duplicates replays are skipped (idempotent

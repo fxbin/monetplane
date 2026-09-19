@@ -91,6 +91,18 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
+    if (name === "CallbackUrlNotAllowedError") {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Callback URL is not allowed for this application",
+          code: "callback_url_not_allowed",
+        },
+        { status: 400 },
+      );
+    }
     if (name === "NoProviderRouteError") {
       return NextResponse.json(
         {

@@ -62,7 +62,11 @@ const WAFFO_CAPABILITIES: ProviderCapabilities = {
   annual_interval: true,
   weekly_interval: true,
   trial_periods: true,
-  refund: true,
+  // Live verification (#97): the Pancake gateway denies refund tickets
+  // submitted through merchant-issued session tokens (403 Access denied
+  // with a scope-valid token). Refunds happen in the Waffo dashboard;
+  // refund.succeeded/failed webhooks remain fully mapped.
+  refund: false,
   subscription_cancel: true,
   subscription_update: false,
   customer_portal: false,
