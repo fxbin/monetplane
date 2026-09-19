@@ -1,196 +1,373 @@
 import { describe, expect, it } from "vitest";
 import { createWaffoProviderAdapter } from "../src/modules/providers/adapters/waffo";
+import type { ProviderConnectionContext } from "../src/modules/providers/contract";
 import {
-  classifyProviderOperationFailure,
-  type ProviderConnectionContext,
   ProviderOperationError,
+  UnsupportedProviderCapabilityError,
 } from "../src/modules/providers/contract";
-
-function success(data: Record<string, unknown>) {
-  return {
-    isSuccess: () => true,
-    getData: () => data,
-    getCode: () => "0",
-    getMessage: () => "Success",
-  };
-}
-
-function rejected(message: string) {
-  return {
-    isSuccess: () => false,
-    getData: () => ({}),
-    getCode: () => "WAFFO_REJECTED",
-    getMessage: () => message,
-  };
-}
-
-function firstCall(calls: Array<Record<string, unknown>>, label: string) {
-  const call = calls.at(0);
-  if (!call) throw new Error(`${label} was not called`);
-  return call;
-}
+import {
+  adapterWith,
+  pancakeFake,
+} from "./provider-contract/waffo-adapter.test";
 
 const connection: ProviderConnectionContext = {
-  id: "pconn_waffo_sdk",
-  applicationId: "app_waffo_sdk",
+  id: "pc_waffo_unit",
+  applicationId: "app_unit",
   provider: "waffo",
   mode: "test",
   metadata: {},
   credentials: {
-    apiKey: "api_key",
-    merchantId: "merchant_123",
-    privateKey: "private_key",
-    waffoPublicKey: "public_key",
-    notifyUrl: "https://merchant.example.com/waffo/webhook",
+    merchantId: "MER_unittest",
+    privateKey: "-----BEGIN PRIVATE KEY-----\nunit\n-----END PRIVATE KEY-----",
+    storeId: "STO_unittest",
   },
 };
 
-describe("Waffo official SDK adapter contract", () => {
-  it("sends the required full-refund and cancellation fields", async () => {
-    const refundCalls: Array<Record<string, unknown>> = [];
-    const cancelCalls: Array<Record<string, unknown>> = [];
+function pancakeEvent(
+  eventType: string,
+  data: Record<string, unknown>,
+  id = `wh_${eventType.replace(/\./g, "_")}`,
+) {
+  return JSON.stringify({
+    id,
+    timestamp: "2026-09-19T08:00:00.000Z",
+    eventType,
+    eventId: `EVT_${id}`,
+    storeId: "STO_unittest",
+    storeName: "Unit Store",
+    mode: "test",
+    data,
+  });
+}
 
-    const adapter = createWaffoProviderAdapter({
-      clientFactory: () => ({
-        order: () => ({
-          refund: async (params) => {
-            refundCalls.push(params);
-            return success({
-              refundRequestId: params.refundRequestId,
-              acquiringOrderId: params.acquiringOrderId,
-              acquiringRefundOrderId: "refund_waffo_1",
-              refundAmount: params.refundAmount,
-              refundStatus: "ORDER_FULLY_REFUNDED",
-            });
-          },
-        }),
-        subscription: () => ({
-          cancel: async (params) => {
-            cancelCalls.push(params);
-            return success({
-              subscriptionId: params.subscriptionId,
-              orderStatus: "ORDER_SUCCESS",
-            });
-          },
-        }),
-        merchantConfig: () => ({
-          inquiry: async () => success({ merchantId: "merchant_123" }),
-        }),
-        webhook: () => ({ verifySignature: () => true }),
-      }),
-    });
-
-    const refund = await adapter.refundPayment(connection, {
-      providerPaymentId: "order_123",
-      amountMinor: 2599,
-      requestId: "bop_attempt_2",
-    });
-    const cancellation = await adapter.cancelSubscription(connection, {
-      providerSubscriptionId: "sub_123",
+describe("waffo pancake adapter", () => {
+  it("creates an idempotent product shell and passes order correlation into the session", async () => {
+    const fake = pancakeFake();
+    const adapter = adapterWith(fake);
+    const result = await adapter.createCheckout(connection, {
+      applicationId: connection.applicationId,
+      monetplaneOrderId: "ord_unit_1",
+      monetplaneCustomerId: "cus_unit_1",
+      customerEmail: "buyer@test",
+      billingMode: "one_time",
+      currency: "USD",
+      items: [
+        {
+          productId: "prod_unit",
+          productName: "Unit Pro Plan",
+          priceId: "price_unit",
+          quantity: 2,
+          unitAmountMinor: 2495,
+        },
+      ],
+      successUrl: "https://product.test/success",
+      cancelUrl: "https://product.test/cancel",
     });
 
-    const refundParams = firstCall(refundCalls, "Waffo refund");
-    const cancelParams = firstCall(cancelCalls, "Waffo cancellation");
-
-    expect(refund.status).toBe("succeeded");
-    expect(refund.providerRefundId).toBe("refund_waffo_1");
-    expect(refundParams).toMatchObject({
-      acquiringOrderId: "order_123",
-      merchantId: "merchant_123",
-      refundAmount: "25.99",
-      refundReason: "MonetPlane operator full refund",
+    const shell = fake.calls.find((c) => c.op === "onetimeProducts.create");
+    expect(shell?.params).toMatchObject({
+      storeId: "STO_unittest",
+      name: "mp-unit-pro-plan",
+      prices: { USD: { amount: "49.90", taxCategory: "saas" } },
     });
-    expect(refundParams.refundRequestId).toEqual(expect.any(String));
-    expect(refundParams.requestedAt).toEqual(expect.any(String));
-
-    expect(cancellation).toMatchObject({
-      providerSubscriptionId: "sub_123",
-      status: "cancelled",
-      cancelAtPeriodEnd: false,
+    const session = fake.calls.find((c) => c.op === "checkout.createSession");
+    expect(session?.params).toMatchObject({
+      productId: "PROD_onetime_shell",
+      currency: "USD",
+      buyerEmail: "buyer@test",
+      orderMerchantExternalId: "ord_unit_1",
+      metadata: {
+        monetplaneOrderId: "ord_unit_1",
+        monetplaneCustomerId: "cus_unit_1",
+      },
     });
-    expect(cancelParams).toMatchObject({
-      subscriptionId: "sub_123",
-      merchantId: "merchant_123",
-    });
-    expect(cancelParams.requestedAt).toEqual(expect.any(String));
+    expect(result.providerCheckoutId).toBe("CHK_contract_1");
   });
 
-  it("runs a read-only merchant configuration diagnostic", async () => {
-    const merchantCalls: Array<Record<string, unknown>> = [];
-    const adapter = createWaffoProviderAdapter({
-      clientFactory: () => ({
-        order: () => ({}),
-        subscription: () => ({}),
-        merchantConfig: () => ({
-          inquiry: async (params) => {
-            merchantCalls.push(params);
-            return success({ merchantId: "merchant_123" });
+  it("maps subscription shells to weekly/monthly/yearly billing periods and gates trials", async () => {
+    const fake = pancakeFake();
+    const adapter = adapterWith(fake);
+    for (const [interval, period] of [
+      ["week", "weekly"],
+      ["month", "monthly"],
+      ["year", "yearly"],
+    ] as const) {
+      await adapter.createCheckout(connection, {
+        applicationId: connection.applicationId,
+        monetplaneOrderId: `ord_${period}`,
+        monetplaneCustomerId: "cus_unit_1",
+        billingMode: "subscription",
+        interval,
+        trialPeriodDays: period === "monthly" ? 14 : undefined,
+        currency: "USD",
+        items: [
+          {
+            productId: "prod_unit",
+            productName: "Unit Plan",
+            priceId: "price_unit",
+            quantity: 1,
+            unitAmountMinor: 900,
           },
-        }),
-        webhook: () => ({ verifySignature: () => true }),
-      }),
-    });
-
-    const result = await adapter.validateConnection?.(connection);
-    expect(merchantCalls[0]).toEqual({ merchantId: "merchant_123" });
-    expect(result?.summary).toContain("RSA request/response verification");
-  });
-
-  it("classifies explicit provider rejection as retryable but transport ambiguity as uncertain", async () => {
-    const rejectedAdapter = createWaffoProviderAdapter({
-      clientFactory: () => ({
-        order: () => ({
-          refund: async () => rejected("Refund reason rejected"),
-        }),
-        subscription: () => ({}),
-        merchantConfig: () => ({}),
-        webhook: () => ({ verifySignature: () => true }),
-      }),
-    });
-
-    const rejection = await rejectedAdapter
-      .refundPayment(connection, {
-        providerPaymentId: "order_rejected",
-        amountMinor: 1000,
-        requestId: "attempt_rejected",
-      })
-      .catch((error: unknown) => error);
-    expect(rejection).toBeInstanceOf(ProviderOperationError);
-    expect(classifyProviderOperationFailure(rejection)).toBe("rejected");
-
-    const uncertainAdapter = createWaffoProviderAdapter({
-      clientFactory: () => ({
-        order: () => ({
-          refund: async () => {
-            throw new Error("socket reset after request write");
-          },
-        }),
-        subscription: () => ({}),
-        merchantConfig: () => ({}),
-        webhook: () => ({ verifySignature: () => true }),
-      }),
-    });
-    const uncertainty = await uncertainAdapter
-      .refundPayment(connection, {
-        providerPaymentId: "order_uncertain",
-        amountMinor: 1000,
-        requestId: "attempt_uncertain",
-      })
-      .catch((error: unknown) => error);
-    expect(classifyProviderOperationFailure(uncertainty)).toBe(
-      "outcome_uncertain",
+        ],
+        successUrl: "https://product.test/success",
+        cancelUrl: "https://product.test/cancel",
+      });
+    }
+    const subs = fake.calls.filter(
+      (c) => c.op === "subscriptionProducts.create",
     );
+    expect(subs.map((c) => c.params.billingPeriod)).toEqual([
+      "weekly",
+      "monthly",
+      "yearly",
+    ]);
+    const sessions = fake.calls.filter(
+      (c) => c.op === "checkout.createSession",
+    );
+    expect(sessions[1]?.params.withTrial).toBe(true);
+    expect(sessions[0]?.params.withTrial).toBeUndefined();
   });
 
-  it("does not claim subscription update until MonetPlane has the full Waffo change contract", () => {
-    const adapter = createWaffoProviderAdapter({
-      clientFactory: () => ({
-        order: () => ({}),
-        subscription: () => ({}),
-        merchantConfig: () => ({}),
-        webhook: () => ({ verifySignature: () => true }),
+  it("rejects multi-item checkouts (Pancake sessions are single-product)", async () => {
+    const adapter = adapterWith(pancakeFake());
+    await expect(
+      adapter.createCheckout(connection, {
+        applicationId: connection.applicationId,
+        monetplaneOrderId: "ord_multi",
+        monetplaneCustomerId: "cus_unit_1",
+        billingMode: "one_time",
+        currency: "USD",
+        items: [
+          {
+            productId: "a",
+            priceId: "pa",
+            quantity: 1,
+            unitAmountMinor: 100,
+          },
+          {
+            productId: "b",
+            priceId: "pb",
+            quantity: 1,
+            unitAmountMinor: 200,
+          },
+        ],
+        successUrl: "https://product.test/success",
+        cancelUrl: "https://product.test/cancel",
+      }),
+    ).rejects.toThrow(UnsupportedProviderCapabilityError);
+  });
+
+  it("normalizes the documented Pancake event taxonomy", async () => {
+    const adapter = adapterWith(pancakeFake());
+    const cases: Array<[string, Record<string, unknown>, string]> = [
+      [
+        "order.completed",
+        {
+          orderId: "ORD_1",
+          currency: "USD",
+          amount: "29.00",
+          paymentId: "PAY_1",
+          orderMerchantExternalId: "ord_mp",
+        },
+        "payment.succeeded",
+      ],
+      [
+        "subscription.payment_succeeded",
+        {
+          orderId: "SUB_1",
+          currency: "USD",
+          amount: "9.00",
+          paymentId: "PAY_2",
+        },
+        "payment.succeeded",
+      ],
+      [
+        "subscription.activated",
+        {
+          orderId: "SUB_1",
+          orderStatus: "active",
+          currency: "USD",
+          amount: "9.00",
+          currentPeriodStart: "2026-09-01",
+          currentPeriodEnd: "2026-10-01",
+        },
+        "subscription.activated",
+      ],
+      [
+        "subscription.renewed",
+        {
+          orderId: "SUB_1",
+          orderStatus: "active",
+          currency: "USD",
+          amount: "9.00",
+        },
+        "subscription.renewed",
+      ],
+      [
+        "subscription.canceling",
+        {
+          orderId: "SUB_1",
+          orderStatus: "canceling",
+          currency: "USD",
+          amount: "9.00",
+        },
+        "subscription.updated",
+      ],
+      [
+        "subscription.past_due",
+        {
+          orderId: "SUB_1",
+          orderStatus: "past_due",
+          currency: "USD",
+          amount: "9.00",
+        },
+        "subscription.updated",
+      ],
+      [
+        "subscription.canceled",
+        {
+          orderId: "SUB_1",
+          orderStatus: "canceled",
+          currency: "USD",
+          amount: "9.00",
+        },
+        "subscription.cancelled",
+      ],
+      [
+        "refund.succeeded",
+        {
+          orderId: "ORD_1",
+          currency: "USD",
+          amount: "29.00",
+          paymentId: "PAY_1",
+        },
+        "payment.refunded",
+      ],
+      [
+        "refund.failed",
+        {
+          orderId: "ORD_1",
+          currency: "USD",
+          amount: "29.00",
+          paymentId: "PAY_1",
+        },
+        "unknown",
+      ],
+    ];
+    for (const [eventType, data, expectedType] of cases) {
+      const event = await adapter.normalizeWebhook(connection, {
+        rawBody: pancakeEvent(eventType, data),
+      });
+      expect(event.type, eventType).toBe(expectedType);
+      expect(event.providerEventId).toMatch(/^wh_/);
+    }
+  });
+
+  it("correlates webhooks via orderMerchantExternalId and metadata, converting display amounts", async () => {
+    const adapter = adapterWith(pancakeFake());
+    const event = await adapter.normalizeWebhook(connection, {
+      rawBody: pancakeEvent("order.completed", {
+        orderId: "ORD_corr",
+        currency: "USD",
+        amount: "49.90",
+        paymentId: "PAY_corr",
+        orderMerchantExternalId: "ord_corr",
+        orderMetadata: { monetplaneCustomerId: "cus_corr" },
       }),
     });
-    expect(adapter.getCapabilities(connection).subscription_update).toBe(false);
+    expect(event.monetplaneOrderId).toBe("ord_corr");
+    expect(event.monetplaneCustomerId).toBe("cus_corr");
+    expect(event.amountMinor).toBe(4990);
+  });
+
+  it("verifies x-waffo-signature with the environment pinned from the connection", async () => {
+    const seen: Array<string | null | undefined> = [];
+    const adapter = createWaffoProviderAdapter({
+      clientFactory: () => pancakeFake().client as never,
+      verifyWebhookImpl: (payload, signatureHeader, opts) => {
+        seen.push(signatureHeader);
+        seen.push(String(opts?.environment));
+        return JSON.parse(payload) as never;
+      },
+    });
+    await adapter.verifyWebhook(connection, {
+      rawBody: pancakeEvent("order.completed", { amount: "1.00" }),
+      headers: { "X-Waffo-Signature": "t=1,v1=x" },
+    });
+    expect(seen[0]).toBe("t=1,v1=x");
+    expect(seen[1]).toBe("test");
+
+    // live connections verify against prod keys — fail closed per env.
+    await adapter.verifyWebhook(
+      { ...connection, mode: "live" },
+      {
+        rawBody: pancakeEvent("order.completed", { amount: "1.00" }),
+        headers: { "x-waffo-signature": "t=1,v1=x" },
+      },
+    );
+    expect(seen[3]).toBe("prod");
+  });
+
+  it("cancels subscriptions by Pancake order id and classifies SDK failures", async () => {
+    const fake = pancakeFake();
+    const adapter = adapterWith(fake);
+    const cancelled = await adapter.cancelSubscription(connection, {
+      providerSubscriptionId: "SUB_cancel",
+    });
+    expect(cancelled).toMatchObject({
+      providerSubscriptionId: "SUB_cancel",
+      status: "cancelled",
+    });
+
+    const failing = createWaffoProviderAdapter({
+      clientFactory: () =>
+        ({
+          ...fake.client,
+          orders: {
+            cancelSubscription: async () => {
+              const err = new Error("gateway exploded") as Error & {
+                status: number;
+                errors: unknown[];
+              };
+              err.status = 503;
+              err.name = "WaffoPancakeError";
+              throw err;
+            },
+          },
+        }) as never,
+      verifyWebhookImpl: (payload) => JSON.parse(payload) as never,
+    });
+    await expect(
+      failing.cancelSubscription(connection, {
+        providerSubscriptionId: "SUB_x",
+      }),
+    ).rejects.toThrow(ProviderOperationError);
+  });
+
+  it("submits refund tickets via customer sessions and maps ticket status", async () => {
+    const fake = pancakeFake();
+    const adapter = adapterWith(fake);
+    const refund = await adapter.refundPayment(connection, {
+      providerPaymentId: "PAY_refund",
+      amountMinor: 2990,
+      requestId: "req_refund_1",
+    });
+    expect(refund).toMatchObject({
+      providerRefundId: "TCK_refund_1",
+      providerPaymentId: "PAY_refund",
+      status: "pending",
+      amountMinor: 2990,
+    });
+    const ticket = fake.calls.find(
+      (c) => c.op === "customer.createRefundTicket",
+    );
+    expect(ticket?.params).toMatchObject({
+      paymentId: "PAY_refund",
+      refundTicketMerchantExternalId: "req_refund_1",
+    });
+    expect(ticket?.params.requestedAmount).toMatchObject({
+      amount: "29.90",
+      currency: "USD",
+    });
   });
 });

@@ -40,48 +40,32 @@ export const SUPPORTED_PROVIDER_SETUPS = [
   },
   {
     provider: "waffo",
-    label: "Waffo",
+    label: "Waffo Pancake",
     description:
-      "One-time and recurring checkout with RSA-signed API and webhook operations.",
+      "Waffo Pancake MoR platform: hosted checkout, subscriptions (weekly/monthly/yearly), trials, and refund tickets via the official @waffo/pancake-ts SDK.",
     credentialFields: [
-      {
-        key: "apiKey",
-        label: "API key",
-        placeholder: "waffo_...",
-        help: "Official Waffo API key for the selected Sandbox or Production environment.",
-        inputType: "password",
-        secret: true,
-      },
       {
         key: "merchantId",
         label: "Merchant ID",
-        placeholder: "merchant_...",
-        help: "Waffo merchant identifier. The official SDK injects this into merchant-scoped requests.",
+        placeholder: "MER_...",
+        help: "Waffo Pancake merchant id (X-Merchant-Id). Create a Merchant API Key in the Waffo console; the key's environment (test/prod) is derived by Waffo automatically.",
         inputType: "text",
         secret: false,
       },
       {
         key: "privateKey",
         label: "Merchant private key",
-        placeholder: "Base64 PKCS8 or unencrypted PKCS8 PEM",
-        help: "Merchant RSA private key used by the official Waffo SDK to sign requests.",
+        placeholder: "-----BEGIN PRIVATE KEY----- or base64 PKCS8",
+        help: "RSA private key from the Merchant API Key. The SDK signs every request with it. Paste the PEM text or its base64 form.",
         inputType: "password",
         secret: true,
       },
       {
-        key: "waffoPublicKey",
-        label: "Waffo public key",
-        placeholder: "Base64 X509 public key",
-        help: "Waffo RSA public key used by the official SDK to verify responses and webhooks.",
-        inputType: "password",
-        secret: true,
-      },
-      {
-        key: "notifyUrl",
-        label: "Webhook notification URL",
-        placeholder: "https://billing.example.com/api/waffo/webhook",
-        help: "Public HTTPS endpoint that receives Waffo payment and subscription notifications for this connection.",
-        inputType: "url",
+        key: "storeId",
+        label: "Store ID",
+        placeholder: "STO_...",
+        help: "Waffo store that owns the product shells MonetPlane creates for checkout. Webhook signing keys are built into the SDK, so no public key is needed.",
+        inputType: "text",
         secret: false,
       },
     ],
@@ -114,14 +98,19 @@ export function validateProviderSetupCredentials(
   }
 
   if (provider === "waffo") {
-    let notifyUrl: URL;
-    try {
-      notifyUrl = new URL(normalized.notifyUrl ?? "");
-    } catch {
-      throw new Error("Webhook notification URL must be a valid URL for Waffo");
+    if (!/^MER_[A-Za-z0-9]+$/.test(normalized.merchantId ?? "")) {
+      throw new Error("Waffo Merchant ID must look like MER_…");
     }
-    if (notifyUrl.protocol !== "https:") {
-      throw new Error("Webhook notification URL must use HTTPS for Waffo");
+    if (!/^STO_[A-Za-z0-9]+$/.test(normalized.storeId ?? "")) {
+      throw new Error("Waffo Store ID must look like STO_…");
+    }
+    const key = normalized.privateKey ?? "";
+    const looksLikePem = key.includes("PRIVATE KEY");
+    const looksLikeBase64 = /^[A-Za-z0-9+/=\s]+$/.test(key);
+    if (!looksLikePem && !looksLikeBase64) {
+      throw new Error(
+        "Waffo private key must be a PEM string or its base64 encoding",
+      );
     }
   }
 

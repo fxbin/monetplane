@@ -2,15 +2,6 @@ import { createWaffoProviderAdapter } from "../../src/modules/providers/adapters
 import type { ProviderConnectionContext } from "../../src/modules/providers/contract";
 import { defineProviderAdapterContractTests } from "./adapter-contract";
 
-function response(data: Record<string, unknown>) {
-  return {
-    isSuccess: () => true,
-    getData: () => data,
-    getCode: () => "0",
-    getMessage: () => "Success",
-  };
-}
-
 const connection: ProviderConnectionContext = {
   id: "pc_waffo_contract",
   applicationId: "app_contract",
@@ -18,82 +9,130 @@ const connection: ProviderConnectionContext = {
   mode: "test",
   metadata: {},
   credentials: {
-    apiKey: "waffo_test_key",
-    merchantId: "merchant_contract",
-    privateKey: "merchant_private_key",
-    waffoPublicKey: "waffo_public_key",
-    notifyUrl: "https://merchant.test/waffo/webhook",
+    merchantId: "MER_contracttest",
+    privateKey:
+      "-----BEGIN PRIVATE KEY-----\ncontract\n-----END PRIVATE KEY-----",
+    storeId: "STO_contracttest",
   },
 };
 
-const adapter = createWaffoProviderAdapter({
-  clientFactory: () => ({
-    order: () => ({
-      create: async () =>
-        response({
-          paymentRequestId: "req_waffo_provider_1",
-          acquiringOrderId: "ord_waffo_provider_1",
-          orderStatus: "PAY_IN_PROGRESS",
-          orderAction: "https://checkout.waffo.test/ord_waffo_provider_1",
-        }),
+/** In-memory fake of the pancake-ts surface the adapter consumes. */
+export function pancakeFake() {
+  const calls: Array<{ op: string; params: Record<string, unknown> }> = [];
+  const client = {
+    onetimeProducts: {
+      create: async (params: Record<string, unknown>) => {
+        calls.push({ op: "onetimeProducts.create", params });
+        return { product: { id: "PROD_onetime_shell" } };
+      },
+    },
+    subscriptionProducts: {
+      create: async (params: Record<string, unknown>) => {
+        calls.push({ op: "subscriptionProducts.create", params });
+        return { product: { id: "PROD_subscription_shell" } };
+      },
+    },
+    checkout: {
+      createSession: async (params: Record<string, unknown>) => {
+        calls.push({ op: "checkout.createSession", params });
+        return {
+          sessionId: "CHK_contract_1",
+          checkoutUrl: "https://checkout.waffo.ai/CHK_contract_1",
+          expiresAt: "2026-09-20T00:00:00.000Z",
+        };
+      },
+    },
+    orders: {
+      cancelSubscription: async (params: Record<string, unknown>) => {
+        calls.push({ op: "orders.cancelSubscription", params });
+        return { orderId: String(params.orderId), status: "canceled" };
+      },
+    },
+    auth: {
+      issueSessionToken: async (params: Record<string, unknown>) => {
+        calls.push({ op: "auth.issueSessionToken", params });
+        return { token: "session_token" };
+      },
+    },
+    customer: (_token: string, _options?: Record<string, unknown>) => ({
+      createRefundTicket: async (params: Record<string, unknown>) => {
+        calls.push({ op: "customer.createRefundTicket", params });
+        return {
+          ticket: {
+            id: "TCK_refund_1",
+            status: "pending",
+            subjectId: String(params.paymentId),
+          },
+        };
+      },
     }),
-    subscription: () => ({}),
-    merchantConfig: () => ({
-      inquiry: async () => response({ merchantId: "merchant_contract" }),
-    }),
-    webhook: () => ({
-      verifySignature: (_body: string, signature: string) =>
-        signature === "valid-rsa-signature",
-    }),
-  }),
-});
+  };
+  return { client, calls };
+}
 
-const webhookPayload = JSON.stringify({
-  eventType: "PAYMENT_NOTIFICATION",
-  eventId: "evt_waffo_contract",
-  eventTime: "2026-08-24T12:00:00.000Z",
-  result: {
-    paymentRequestId: "req_waffo_provider_1",
-    merchantOrderId: "ord_contract",
-    acquiringOrderId: "pay_waffo_contract_1",
-    orderStatus: "PAY_SUCCESS",
-    orderAmount: "25.00",
-    orderCurrency: "USD",
-    userInfo: { userId: "cus_contract", userEmail: "dev@example.com" },
+export function adapterWith(fake: ReturnType<typeof pancakeFake>) {
+  return createWaffoProviderAdapter({
+    clientFactory: () => fake.client as never,
+    verifyWebhookImpl: (payload) => JSON.parse(payload) as never,
+  });
+}
+
+const fake = pancakeFake();
+const adapter = adapterWith(fake);
+
+const orderCompletedBody = JSON.stringify({
+  id: "wh_delivery_contract_1",
+  timestamp: "2026-09-19T00:00:00.000Z",
+  eventType: "order.completed",
+  eventId: "PAY_contract_1",
+  storeId: "STO_contracttest",
+  storeName: "Contract Store",
+  mode: "test",
+  data: {
+    orderId: "ORD_contract_1",
+    orderStatus: "completed",
+    buyerEmail: "buyer@test",
+    currency: "USD",
+    amount: "29.00",
+    taxAmount: "0.00",
+    total: "29.00",
+    productName: "Contract Pro",
+    paymentId: "PAY_contract_1",
+    paymentStatus: "succeeded",
+    orderMerchantExternalId: "ord_contract_waffo",
   },
 });
 
 defineProviderAdapterContractTests({
-  name: "Waffo",
+  name: "waffo (Pancake)",
   adapter,
   connection,
   checkout: {
-    applicationId: "app_contract",
-    monetplaneOrderId: "ord_contract",
-    monetplaneCustomerId: "cus_contract",
-    customerEmail: "dev@example.com",
+    applicationId: connection.applicationId,
+    monetplaneOrderId: "ord_contract_waffo",
+    monetplaneCustomerId: "cus_contract_waffo",
     billingMode: "one_time",
     currency: "USD",
     items: [
       {
-        productId: "prod_internal",
-        productName: "Starter",
-        priceId: "price_internal",
+        productId: "prod_contract",
+        productName: "Contract Pro",
+        priceId: "price_contract",
         quantity: 1,
-        unitAmountMinor: 2500,
+        unitAmountMinor: 2900,
       },
     ],
     successUrl: "https://product.test/success",
     cancelUrl: "https://product.test/cancel",
   },
   validWebhook: {
-    rawBody: webhookPayload,
-    headers: { "x-signature": "valid-rsa-signature" },
+    rawBody: orderCompletedBody,
+    headers: { "x-waffo-signature": "t=1,v1=contract" },
   },
   invalidWebhook: {
-    rawBody: webhookPayload,
-    headers: { "x-signature": "invalid-rsa-signature" },
+    rawBody: orderCompletedBody,
+    headers: {},
   },
-  expectedEventId: "evt_waffo_contract",
+  expectedEventId: "wh_delivery_contract_1",
   expectedEventType: "payment.succeeded",
 });

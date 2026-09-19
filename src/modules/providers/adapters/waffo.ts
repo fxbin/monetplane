@@ -1,10 +1,11 @@
-import { createHash } from "node:crypto";
+import type { WebhookEvent, WebhookEventData } from "@waffo/pancake-ts";
 import {
-  Environment,
-  Waffo,
-  WaffoError,
-  WaffoUnknownStatusError,
-} from "@waffo/waffo-node";
+  BillingPeriod,
+  verifyWebhook as sdkVerifyWebhook,
+  TaxCategory,
+  WaffoPancake,
+  WaffoPancakeError,
+} from "@waffo/pancake-ts";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
@@ -16,22 +17,51 @@ import type {
   ProviderCapabilities,
   ProviderConnectionContext,
   RefundPaymentInput,
-  UpdateSubscriptionInput,
   VerifiedWebhook,
   VerifyWebhookInput,
 } from "../contract";
 import {
   InvalidProviderWebhookSignatureError,
   ProviderOperationError,
+  UnsupportedProviderCapabilityError,
 } from "../contract";
+
+/**
+ * Waffo Pancake MoR adapter (#93).
+ *
+ * Protocol source of truth: the official `@waffo/pancake-ts` SDK against
+ * the Waffo Pancake platform documented at docs.waffo.ai. The SDK owns
+ * request signing (merchant RSA key), webhook signature verification
+ * (built-in platform public keys, anti-replay tolerance), hosts, and
+ * error semantics.
+ *
+ * Connection credentials (encrypted envelope):
+ *  - merchantId  MER_…   (X-Merchant-Id; the API key's environment is
+ *                         derived by the gateway from the key itself)
+ *  - privateKey  merchant RSA private key (PEM or base64 PKCS8)
+ *  - storeId     STO_…   store that owns the product shells we create
+ *
+ * Checkout model: Pancake sessions reference exactly ONE product. We
+ * create an idempotent "shell" product per (MonetPlane product, billing
+ * shape, price) via the SDK's deterministic idempotency (merchantId +
+ * path + body) and let the session use the shell's stored price. The
+ * MonetPlane order id travels as `orderMerchantExternalId` (inherited by
+ * payments/refunds) plus flat metadata for the customer id, which is how
+ * webhooks correlate back.
+ *
+ * Webhooks: `x-waffo-signature` = `t=<ts>,v1=<base64>`; SDK verifies
+ * RSA-SHA256 over `${t}.${rawBody}` with per-environment built-in public
+ * keys and anti-replay tolerance. Refunds are asynchronous tickets —
+ * completion arrives as refund.succeeded / refund.failed webhooks.
+ */
 
 const WAFFO_CAPABILITIES: ProviderCapabilities = {
   one_time_checkout: true,
   recurring_subscription: true,
   monthly_interval: true,
   annual_interval: true,
-  weekly_interval: false,
-  trial_periods: false,
+  weekly_interval: true,
+  trial_periods: true,
   refund: true,
   subscription_cancel: true,
   subscription_update: false,
@@ -41,43 +71,171 @@ const WAFFO_CAPABILITIES: ProviderCapabilities = {
 
 type JsonRecord = Record<string, unknown>;
 
-type WaffoResource = {
-  create?: (params: JsonRecord) => Promise<unknown>;
-  inquiry?: (params: JsonRecord) => Promise<unknown>;
-  cancel?: (params: JsonRecord) => Promise<unknown>;
-  refund?: (params: JsonRecord) => Promise<unknown>;
-};
-
-type WaffoClientLike = {
-  order(): WaffoResource;
-  subscription(): WaffoResource;
-  merchantConfig(): WaffoResource;
-  webhook(): {
-    verifySignature(body: string, signature: string): boolean;
+/** Subset of the SDK surface this adapter uses (also the test seam). */
+type PancakeClientLike = {
+  onetimeProducts: {
+    create(params: JsonRecord): Promise<{ product: { id: string } }>;
+  };
+  subscriptionProducts: {
+    create(params: JsonRecord): Promise<{ product: { id: string } }>;
+  };
+  checkout: {
+    createSession(params: JsonRecord): Promise<{
+      sessionId: string;
+      checkoutUrl: string;
+      expiresAt: string;
+    }>;
+  };
+  orders: {
+    cancelSubscription(
+      params: JsonRecord,
+    ): Promise<{ orderId: string; status: string }>;
+  };
+  auth: {
+    issueSessionToken(params: JsonRecord): Promise<{ token: string }>;
+  };
+  customer: (
+    token: string,
+    options?: JsonRecord,
+  ) => {
+    createRefundTicket(params: JsonRecord): Promise<{
+      ticket: { id: string; status: string; subjectId: string };
+    }>;
   };
 };
 
+type VerifyWebhookImpl = (
+  payload: string,
+  signatureHeader: string | undefined | null,
+  options?: { environment?: "test" | "prod" },
+) => WebhookEvent;
+
 type WaffoAdapterOptions = {
-  clientFactory?: (connection: ProviderConnectionContext) => WaffoClientLike;
+  clientFactory?: (connection: ProviderConnectionContext) => PancakeClientLike;
+  verifyWebhookImpl?: VerifyWebhookImpl;
 };
 
 function isRecord(value: unknown): value is JsonRecord {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function recordValue(value: unknown): JsonRecord | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
+function requiredCredential(
+  connection: ProviderConnectionContext,
+  field: string,
+): string {
+  const credentials = connection.credentials as Record<string, unknown>;
+  const value = stringValue(credentials?.[field]);
+  if (!value) {
+    throw new ProviderOperationError(
+      `Waffo connection is missing the ${field} credential`,
+      "rejected",
+    );
+  }
+  return value;
 }
+
+/**
+ * Money: Pancake uses display-value strings ("29.00" USD, "1000" JPY);
+ * MonetPlane uses integer minor units. Zero-decimal ISO currencies are
+ * converted without cents.
+ */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "ISK",
+  "JPY",
+  "KMF",
+  "KRW",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XOF",
+  "XPF",
+]);
+
+function currencyDecimals(currency: string): number {
+  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : 2;
+}
+
+function minorToDisplay(amountMinor: number, currency: string): string {
+  const decimals = currencyDecimals(currency);
+  const value = amountMinor / 10 ** decimals;
+  return value.toFixed(decimals);
+}
+
+function displayToMinor(display: string, currency: string): number | undefined {
+  const parsed = Number(display);
+  if (!Number.isFinite(parsed)) return undefined;
+  return Math.round(parsed * 10 ** currencyDecimals(currency));
+}
+
+function pancakeEnvironment(mode: string): "test" | "prod" {
+  return mode === "live" ? "prod" : "test";
+}
+
+function billingPeriodFor(
+  interval: "week" | "month" | "year" | undefined,
+): BillingPeriod {
+  if (interval === "week") return BillingPeriod.Weekly;
+  if (interval === "year") return BillingPeriod.Yearly;
+  return BillingPeriod.Monthly;
+}
+
+function slugifyProductShell(input: string): string {
+  const slug = input
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return slug || "monetplane-product";
+}
+
+function classifySdkError(
+  error: unknown,
+  operation: string,
+): ProviderOperationError {
+  if (error instanceof WaffoPancakeError) {
+    const message = `Waffo rejected ${operation} (HTTP ${error.status})`;
+    // 4xx is a deterministic provider rejection; 5xx may have executed
+    // server-side, so it stays uncertain (never blind-retried).
+    return new ProviderOperationError(
+      message,
+      error.status >= 500 ? "outcome_uncertain" : "rejected",
+    );
+  }
+  const message =
+    error instanceof Error ? error.message : `Waffo ${operation} failed`;
+  return new ProviderOperationError(
+    `Waffo ${operation} outcome uncertain: ${message}`,
+    "outcome_uncertain",
+  );
+}
+
+function clientFor(
+  connection: ProviderConnectionContext,
+  options: WaffoAdapterOptions,
+): PancakeClientLike {
+  if (options.clientFactory) return options.clientFactory(connection);
+  const merchantId = requiredCredential(connection, "merchantId");
+  const privateKey = requiredCredential(connection, "privateKey");
+  return new WaffoPancake({
+    merchantId,
+    privateKey,
+  }) as unknown as PancakeClientLike;
+}
+
+/* ------------------------------------------------------------------ */
+/* Webhook normalization                                               */
+/* ------------------------------------------------------------------ */
 
 function headerValue(
   headers: Readonly<Record<string, string | undefined>>,
@@ -92,761 +250,411 @@ function headerValue(
   return undefined;
 }
 
-function requiredCredential(
-  connection: ProviderConnectionContext,
-  key: string,
-): string {
-  const value = connection.credentials[key]?.trim();
-  if (!value) {
-    throw new ProviderOperationError(
-      `Waffo connection configuration ${key} is required. Replace this connection's legacy credentials before retrying.`,
-      "rejected",
-    );
-  }
-  return value;
-}
+type ParsedPancakeEvent = WebhookEvent & { data: WebhookEventData };
 
-function createSdkClient(
-  connection: ProviderConnectionContext,
-): WaffoClientLike {
-  return new Waffo({
-    apiKey: requiredCredential(connection, "apiKey"),
-    privateKey: requiredCredential(connection, "privateKey"),
-    waffoPublicKey: requiredCredential(connection, "waffoPublicKey"),
-    merchantId: requiredCredential(connection, "merchantId"),
-    environment:
-      connection.mode === "test" ? Environment.SANDBOX : Environment.PRODUCTION,
-  }) as unknown as WaffoClientLike;
-}
-
-function clientFor(
-  connection: ProviderConnectionContext,
-  options: WaffoAdapterOptions,
-): WaffoClientLike {
-  return options.clientFactory?.(connection) ?? createSdkClient(connection);
-}
-
-function responseMethod<T>(
-  response: unknown,
-  method: string,
-): (() => T) | undefined {
-  if (!isRecord(response)) return undefined;
-  const value = response[method];
-  return typeof value === "function"
-    ? (value as () => T).bind(response)
-    : undefined;
-}
-
-function unwrapResponse(response: unknown, operation: string): JsonRecord {
-  const isSuccess = responseMethod<boolean>(response, "isSuccess");
-  const getData = responseMethod<unknown>(response, "getData");
-  if (!isSuccess || !getData) {
-    throw new ProviderOperationError(
-      `Waffo ${operation} returned an invalid SDK response`,
-      "outcome_uncertain",
-    );
-  }
-  if (!isSuccess()) {
-    const getCode = responseMethod<unknown>(response, "getCode");
-    const getMessage =
-      responseMethod<unknown>(response, "getMessage") ??
-      responseMethod<unknown>(response, "getMsg");
-    const code = stringValue(getCode?.());
-    const message = stringValue(getMessage?.());
-    throw new ProviderOperationError(
-      [message ?? `Waffo rejected ${operation}`, code ? `(code ${code})` : ""]
-        .filter(Boolean)
-        .join(" "),
-      "rejected",
-    );
-  }
-
-  const data = getData();
-  if (!isRecord(data)) {
-    throw new ProviderOperationError(
-      `Waffo ${operation} succeeded without a response object`,
-      "outcome_uncertain",
-    );
-  }
-  return data;
-}
-
-function sdkErrorMessage(error: WaffoError | WaffoUnknownStatusError): string {
-  return error.message || error.name || "Waffo SDK operation failed";
-}
-
-function rethrowSdkError(error: unknown, mutation: boolean): never {
-  if (error instanceof ProviderOperationError) throw error;
-  if (error instanceof WaffoUnknownStatusError) {
-    throw new ProviderOperationError(
-      sdkErrorMessage(error),
-      "outcome_uncertain",
-    );
-  }
-  if (error instanceof WaffoError) {
-    const code = String(error.errorCode ?? "");
-    const failureKind =
-      mutation && ["S0002", "S0004", "S0006"].includes(code)
-        ? "outcome_uncertain"
-        : "rejected";
-    throw new ProviderOperationError(sdkErrorMessage(error), failureKind);
-  }
-  throw error;
-}
-
-async function sdkCall<T>(
-  mutation: boolean,
-  operation: () => Promise<T>,
-): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    rethrowSdkError(error, mutation);
-  }
-}
-
-function compactRequestId(prefix: string, value: string): string {
-  const digest = createHash("sha256").update(value).digest("hex").slice(0, 24);
-  return `${prefix}_${digest}`.slice(0, 32);
-}
-
-function amountString(amountMinor: number): string {
-  if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) {
-    throw new ProviderOperationError(
-      "Waffo amount must be a non-negative safe integer in minor units",
-      "rejected",
-    );
-  }
-  return (amountMinor / 100).toFixed(2);
-}
-
-function actionUrl(value: unknown): string | undefined {
-  const direct = stringValue(value);
-  if (!direct) return undefined;
-  if (/^https?:\/\//i.test(direct)) return direct;
-  try {
-    const parsed = JSON.parse(direct) as unknown;
-    const record = recordValue(parsed);
-    return stringValue(record?.webUrl ?? record?.url ?? record?.checkoutUrl);
-  } catch {
-    return undefined;
-  }
-}
-
-function timestampValue(value: unknown): string | undefined {
-  if (typeof value === "string" && value.length > 0) return value;
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return new Date(value).toISOString();
-  }
-  return undefined;
-}
-
-function centsFromAmount(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return Math.round(value * 100);
-  }
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return undefined;
-  return Math.round(parsed * 100);
-}
-
-function mapPaymentStatus(value: unknown): NormalizedPayment["status"] {
-  switch (value) {
-    case "PAY_SUCCESS":
-      return "succeeded";
-    case "ORDER_CLOSE":
-    case "PAY_FAILED":
-    case "FAILED":
-      return "failed";
-    case "ORDER_FULLY_REFUNDED":
-      return "refunded";
-    default:
-      return "pending";
-  }
-}
-
-function mapRefundStatus(value: unknown): NormalizedRefund["status"] {
-  switch (value) {
-    case "ORDER_FULLY_REFUNDED":
-      return "succeeded";
-    case "ORDER_REFUND_FAILED":
-      return "failed";
-    default:
-      return "pending";
-  }
-}
-
-function mapSubscriptionStatus(
-  value: unknown,
-): NormalizedSubscription["status"] {
-  switch (value) {
-    case "ACTIVE":
-      return "active";
-    case "MERCHANT_CANCELLED":
-    case "USER_CANCELLED":
-    case "CHANNEL_CANCELLED":
-      return "cancelled";
-    case "EXPIRED":
-    case "CLOSE":
-      return "expired";
-    default:
-      return "pending";
-  }
-}
-
-function userIdFrom(value: JsonRecord): string | undefined {
-  return stringValue(recordValue(value.userInfo)?.userId);
-}
-
-function normalizePaymentObject(value: JsonRecord): NormalizedPayment {
-  const providerPaymentId =
-    stringValue(value.acquiringOrderId) ??
-    stringValue(value.paymentRequestId) ??
-    stringValue(value.merchantOrderId);
-  if (!providerPaymentId) {
-    throw new Error("Waffo payment response is missing an order identifier");
-  }
-  return {
-    providerPaymentId,
-    status: mapPaymentStatus(value.orderStatus),
-    amountMinor:
-      centsFromAmount(value.orderAmount) ?? numberValue(value.amountMinor) ?? 0,
-    currency: stringValue(value.orderCurrency) ?? "USD",
-    providerCustomerId: userIdFrom(value),
-  };
-}
-
-function normalizeSubscriptionObject(
-  value: JsonRecord,
-): NormalizedSubscription {
-  const providerSubscriptionId = stringValue(value.subscriptionId);
-  if (!providerSubscriptionId) {
-    throw new Error("Waffo subscription response is missing subscriptionId");
-  }
-  const productInfo = recordValue(value.productInfo);
-  return {
-    providerSubscriptionId,
-    status: mapSubscriptionStatus(value.subscriptionStatus),
-    providerCustomerId: userIdFrom(value),
-    currentPeriodStart: timestampValue(
-      productInfo?.startDateTime ?? value.startDateTime,
-    ),
-    currentPeriodEnd: timestampValue(
-      productInfo?.nextPaymentDateTime ??
-        productInfo?.endDateTime ??
-        value.nextPaymentDateTime,
-    ),
-    cancelAtPeriodEnd: false,
-  };
-}
-
-function parseWebhook(input: VerifiedWebhook): {
-  providerEventId: string;
-  providerEventName: string;
-  occurredAt: string;
-  result: JsonRecord;
-} {
+function parsePancakeEvent(rawBody: string): ParsedPancakeEvent {
   let parsed: unknown;
   try {
-    parsed = JSON.parse(input.rawBody) as unknown;
+    parsed = JSON.parse(rawBody);
   } catch {
-    throw new Error("Waffo webhook body is not valid JSON");
+    throw new Error("Waffo Pancake webhook body is not valid JSON");
   }
-  if (!isRecord(parsed)) throw new Error("Waffo webhook must be a JSON object");
-  const result = recordValue(parsed.result ?? parsed.data);
-  const providerEventName = stringValue(parsed.eventType ?? parsed.type);
-  if (!providerEventName || !result) {
-    throw new Error("Waffo webhook is missing required event fields");
+  if (!isRecord(parsed)) {
+    throw new Error("Waffo Pancake webhook must be a JSON object");
   }
-  const occurredAt =
-    timestampValue(
-      parsed.eventTime ??
-        result.orderUpdatedAt ??
-        result.refundUpdatedAt ??
-        result.updatedAt ??
-        result.requestedAt,
-    ) ?? new Date(0).toISOString();
-  const explicitId =
-    stringValue(parsed.eventId) ??
-    stringValue(parsed.notificationId) ??
-    stringValue(parsed.id);
-  const bodyHash = createHash("sha256")
-    .update(input.rawBody)
-    .digest("hex")
-    .slice(0, 32);
-  const providerEventId = explicitId ?? `${providerEventName}:${bodyHash}`;
-  return { providerEventId, providerEventName, occurredAt, result };
+  const eventType = stringValue(parsed.eventType);
+  const id = stringValue(parsed.id);
+  const timestamp = stringValue(parsed.timestamp);
+  const data = isRecord(parsed.data)
+    ? (parsed.data as unknown as WebhookEventData)
+    : undefined;
+  if (!eventType || !id || !timestamp || !data) {
+    throw new Error("Waffo Pancake webhook is missing required event fields");
+  }
+  return parsed as unknown as ParsedPancakeEvent;
 }
 
-function metadataCorrelation(result: JsonRecord) {
-  return {
-    monetplaneOrderId:
-      stringValue(result.merchantOrderId) ??
-      stringValue(result.merchantSubscriptionId),
-    monetplaneCustomerId: userIdFrom(result),
-  };
+function subscriptionStatusFrom(
+  orderStatus: string | undefined,
+  eventType: string,
+): NormalizedSubscription["status"] {
+  switch (orderStatus) {
+    case "active":
+      return "active";
+    case "past_due":
+    case "past-due":
+      return "past_due";
+    case "canceled":
+    case "cancelled":
+      return "cancelled";
+    case "expired":
+      return "expired";
+    case "pending":
+      return "pending";
+    default:
+      return eventType === "subscription.activated" ? "active" : "active";
+  }
 }
 
-function baseNormalizedEvent(
+function baseEvent(
   connection: ProviderConnectionContext,
-  event: ReturnType<typeof parseWebhook>,
+  event: ParsedPancakeEvent,
 ): Omit<NormalizedProviderEvent, "type" | "rawEventReference"> {
+  const data = event.data;
+  // Correlation: prefer the external id we stamped on the checkout
+  // session (inherited by orders/payments/refunds), then session metadata.
+  const metadata = isRecord(data.orderMetadata) ? data.orderMetadata : {};
   return {
     provider: "waffo",
     providerConnectionId: connection.id,
-    providerEventId: event.providerEventId,
-    providerEventName: event.providerEventName,
+    // Delivery UUID — deterministic idempotency identity.
+    providerEventId: event.id,
+    providerEventName: event.eventType,
     applicationId: connection.applicationId,
-    occurredAt: event.occurredAt,
+    occurredAt: event.timestamp,
+    monetplaneOrderId:
+      stringValue(data.orderMerchantExternalId) ??
+      stringValue(metadata.monetplaneOrderId),
+    monetplaneCustomerId:
+      stringValue(data.merchantProvidedBuyerIdentity) ??
+      stringValue(metadata.monetplaneCustomerId),
   };
 }
 
-function unknownEvent(
-  connection: ProviderConnectionContext,
-  event: ReturnType<typeof parseWebhook>,
-): NormalizedProviderEvent {
-  return {
-    ...baseNormalizedEvent(connection, event),
-    type: "unknown",
-    rawEventReference: event.providerEventId,
-  };
-}
-
-function normalizeWaffoWebhook(
+function normalizeWaffoPancakeWebhook(
   connection: ProviderConnectionContext,
   input: VerifiedWebhook,
 ): NormalizedProviderEvent {
-  const event = parseWebhook(input);
-  const result = event.result;
-  const base = baseNormalizedEvent(connection, event);
-  const correlation = metadataCorrelation(result);
+  const event = parsePancakeEvent(input.rawBody);
+  const data = event.data;
+  const base = baseEvent(connection, event);
+  const unknown = (): NormalizedProviderEvent => ({
+    ...base,
+    type: "unknown",
+    rawEventReference: event.id,
+  });
 
-  if (event.providerEventName === "PAYMENT_NOTIFICATION") {
-    const payment = normalizePaymentObject(result);
-    const subscriptionId = stringValue(
-      recordValue(result.subscriptionInfo)?.subscriptionId,
-    );
-    const type: NormalizedProviderEvent["type"] =
-      payment.status === "succeeded"
-        ? "payment.succeeded"
-        : payment.status === "failed"
-          ? "payment.failed"
-          : "unknown";
-    if (type === "unknown") return unknownEvent(connection, event);
-    return {
-      ...base,
-      ...correlation,
-      type,
-      providerPaymentId: payment.providerPaymentId,
-      providerSubscriptionId: subscriptionId,
-      providerCustomerId: payment.providerCustomerId,
-      amountMinor: payment.amountMinor,
-      currency: payment.currency,
-      rawEventReference: event.providerEventId,
-    };
-  }
+  const amountMinor = displayToMinor(String(data.amount ?? ""), data.currency);
 
-  if (event.providerEventName === "REFUND_NOTIFICATION") {
-    if (result.refundStatus !== "ORDER_FULLY_REFUNDED") {
-      return unknownEvent(connection, event);
+  switch (event.eventType) {
+    case "order.completed":
+    case "subscription.payment_succeeded": {
+      const providerPaymentId = stringValue(data.paymentId) ?? event.eventId;
+      return {
+        ...base,
+        type: "payment.succeeded",
+        providerPaymentId,
+        providerSubscriptionId:
+          event.eventType === "subscription.payment_succeeded"
+            ? data.orderId
+            : undefined,
+        providerCustomerId: base.monetplaneCustomerId ?? undefined,
+        amountMinor,
+        currency: data.currency,
+        rawEventReference: event.id,
+      };
     }
-    const providerRefundId =
-      stringValue(result.acquiringRefundOrderId) ??
-      stringValue(result.merchantRefundOrderId) ??
-      stringValue(result.refundRequestId);
-    const providerPaymentId = stringValue(result.acquiringOrderId);
-    if (!providerRefundId || !providerPaymentId) {
-      return unknownEvent(connection, event);
+    case "subscription.activated":
+    case "subscription.renewed":
+    case "subscription.recovered":
+    case "subscription.plan_changed":
+    case "subscription.plan_change_scheduled":
+    case "subscription.plan_change_failed":
+    case "subscription.canceling":
+    case "subscription.uncanceled":
+    case "subscription.past_due":
+    case "subscription.canceled": {
+      if (event.eventType === "subscription.canceled") {
+        return {
+          ...base,
+          type: "subscription.cancelled",
+          providerSubscriptionId: data.orderId,
+          subscriptionStatus: "cancelled",
+          subscriptionPeriodStart: stringValue(data.currentPeriodStart),
+          subscriptionPeriodEnd: stringValue(data.currentPeriodEnd),
+          rawEventReference: event.id,
+        };
+      }
+      const activated = event.eventType === "subscription.activated";
+      const renewing = event.eventType === "subscription.renewed";
+      return {
+        ...base,
+        type: activated
+          ? "subscription.activated"
+          : renewing
+            ? "subscription.renewed"
+            : "subscription.updated",
+        providerSubscriptionId: data.orderId,
+        subscriptionStatus: subscriptionStatusFrom(
+          data.orderStatus,
+          event.eventType,
+        ),
+        subscriptionPeriodStart: stringValue(data.currentPeriodStart),
+        subscriptionPeriodEnd: stringValue(data.currentPeriodEnd),
+        cancelAtPeriodEnd: event.eventType === "subscription.canceling",
+        rawEventReference: event.id,
+      };
     }
-    return {
-      ...base,
-      ...correlation,
-      type: "payment.refunded",
-      providerRefundId,
-      providerPaymentId,
-      providerCustomerId: userIdFrom(result),
-      amountMinor: centsFromAmount(result.refundAmount),
-      rawEventReference: event.providerEventId,
-    };
+    case "refund.succeeded": {
+      const providerPaymentId = stringValue(data.paymentId);
+      if (!providerPaymentId) return unknown();
+      return {
+        ...base,
+        type: "payment.refunded",
+        providerRefundId: event.eventId,
+        providerPaymentId,
+        amountMinor,
+        rawEventReference: event.id,
+      };
+    }
+    default:
+      // refund.failed and any future event types stay visible in the
+      // Events timeline without mutating billing state.
+      return unknown();
   }
-
-  if (event.providerEventName === "SUBSCRIPTION_STATUS_NOTIFICATION") {
-    const subscription = normalizeSubscriptionObject(result);
-    const normalizedType: NormalizedProviderEvent["type"] =
-      subscription.status === "active"
-        ? "subscription.activated"
-        : subscription.status === "cancelled"
-          ? "subscription.cancelled"
-          : subscription.status === "expired"
-            ? "subscription.expired"
-            : "subscription.updated";
-    return {
-      ...base,
-      ...correlation,
-      type: normalizedType,
-      providerSubscriptionId: subscription.providerSubscriptionId,
-      providerCustomerId: subscription.providerCustomerId,
-      subscriptionStatus: subscription.status,
-      subscriptionPeriodStart: subscription.currentPeriodStart,
-      subscriptionPeriodEnd: subscription.currentPeriodEnd,
-      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-      rawEventReference: event.providerEventId,
-    };
-  }
-
-  if (event.providerEventName === "SUBSCRIPTION_PERIOD_CHANGED_NOTIFICATION") {
-    const subscription = normalizeSubscriptionObject(result);
-    return {
-      ...base,
-      ...correlation,
-      type: "subscription.renewed",
-      providerSubscriptionId: subscription.providerSubscriptionId,
-      providerCustomerId: subscription.providerCustomerId,
-      subscriptionStatus: subscription.status,
-      subscriptionPeriodStart: subscription.currentPeriodStart,
-      subscriptionPeriodEnd: subscription.currentPeriodEnd,
-      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-      rawEventReference: event.providerEventId,
-    };
-  }
-
-  if (event.providerEventName === "SUBSCRIPTION_CHANGE_NOTIFICATION") {
-    const subscription = normalizeSubscriptionObject(result);
-    return {
-      ...base,
-      ...correlation,
-      type: "subscription.updated",
-      providerSubscriptionId: subscription.providerSubscriptionId,
-      providerCustomerId: subscription.providerCustomerId,
-      subscriptionStatus: subscription.status,
-      subscriptionPeriodStart: subscription.currentPeriodStart,
-      subscriptionPeriodEnd: subscription.currentPeriodEnd,
-      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-      rawEventReference: event.providerEventId,
-    };
-  }
-
-  return unknownEvent(connection, event);
 }
+
+/* ------------------------------------------------------------------ */
+/* Adapter                                                             */
+/* ------------------------------------------------------------------ */
 
 export function createWaffoProviderAdapter(
   options: WaffoAdapterOptions = {},
 ): PaymentProviderAdapter {
+  const verifyImpl: VerifyWebhookImpl =
+    options.verifyWebhookImpl ??
+    ((payload, signatureHeader, verifyOptions) =>
+      sdkVerifyWebhook(payload, signatureHeader, verifyOptions));
+
   return {
     provider: "waffo",
 
-    getCapabilities() {
+    getCapabilities(): ProviderCapabilities {
       return WAFFO_CAPABILITIES;
     },
 
-    async validateConnection(connection) {
-      const client = clientFor(connection, options);
-      const merchantId = requiredCredential(connection, "merchantId");
-      const response = await sdkCall(
-        false,
-        () =>
-          client.merchantConfig().inquiry?.({ merchantId }) ??
-          Promise.reject(
-            new Error("Waffo merchant config inquiry is unavailable"),
-          ),
-      );
-      unwrapResponse(response, "merchant configuration inquiry");
-      return {
-        summary:
-          "Waffo merchant configuration inquiry succeeded with RSA request/response verification.",
-      };
-    },
-
-    async createCheckout(connection, input): Promise<CheckoutResult> {
+    async createCheckout(
+      connection: ProviderConnectionContext,
+      input,
+    ): Promise<CheckoutResult> {
       if (input.items.length !== 1) {
-        throw new ProviderOperationError(
-          "Waffo checkout currently supports exactly one item per checkout",
-          "rejected",
+        throw new UnsupportedProviderCapabilityError(
+          "waffo",
+          "one_time_checkout",
         );
       }
-      const item = input.items[0];
-      if (!item) {
-        throw new ProviderOperationError(
-          "Waffo checkout requires one item",
-          "rejected",
-        );
-      }
-      const productName = item.productName?.trim();
-      if (!productName) {
-        throw new ProviderOperationError(
-          "Waffo checkout requires a product name",
-          "rejected",
-        );
-      }
-      const customerEmail = input.customerEmail?.trim();
-      if (!customerEmail) {
-        throw new ProviderOperationError(
-          "Waffo checkout requires the application customer to have an email address",
-          "rejected",
-        );
-      }
-      const notifyUrl = requiredCredential(connection, "notifyUrl");
       const client = clientFor(connection, options);
-      const totalMinor = item.unitAmountMinor * item.quantity;
-      const requestedAt = new Date().toISOString();
-
-      if (input.billingMode === "subscription") {
-        const response = await sdkCall(
-          false,
-          () =>
-            client.subscription().create?.({
-              subscriptionRequest: compactRequestId(
-                "sub",
-                input.monetplaneOrderId,
-              ),
-              merchantSubscriptionId: input.monetplaneOrderId,
-              currency: input.currency,
-              amount: amountString(totalMinor),
-              notifyUrl,
-              productInfo: {
-                description: productName,
-                periodType: "MONTHLY",
-                periodInterval: input.interval === "year" ? "12" : "1",
-              },
-              userInfo: {
-                userId: input.monetplaneCustomerId,
-                userEmail: customerEmail,
-              },
-              paymentInfo: { productName },
-              goodsInfo: {
-                goodsId: item.productId,
-                goodsName: productName,
-                goodsQuantity: item.quantity,
-              },
-              successRedirectUrl: input.successUrl,
-              cancelRedirectUrl: input.cancelUrl,
-              requestedAt,
-              extendInfo: JSON.stringify({
-                monetplaneApplicationId: input.applicationId,
-                monetplanePriceId: item.priceId,
-              }),
-            }) ??
-            Promise.reject(
-              new Error("Waffo subscription create is unavailable"),
-            ),
-        );
-        const data = unwrapResponse(response, "subscription create");
-        const providerCheckoutId =
-          stringValue(data.subscriptionId) ??
-          stringValue(data.subscriptionRequest) ??
-          compactRequestId("sub", input.monetplaneOrderId);
-        const checkoutUrl = actionUrl(data.subscriptionAction);
-        if (!checkoutUrl) {
-          throw new ProviderOperationError(
-            "Waffo subscription create response is missing a hosted checkout URL",
-            "outcome_uncertain",
-          );
-        }
-        return {
-          providerCheckoutId,
-          checkoutUrl,
-          providerCustomerId: input.monetplaneCustomerId,
-          reconciliationMetadata: {
-            monetplane_order_id: input.monetplaneOrderId,
-            monetplane_customer_id: input.monetplaneCustomerId,
-          },
-        };
-      }
-
-      const response = await sdkCall(
-        false,
-        () =>
-          client.order().create?.({
-            paymentRequestId: compactRequestId("pay", input.monetplaneOrderId),
-            merchantOrderId: input.monetplaneOrderId,
-            orderCurrency: input.currency,
-            orderAmount: amountString(totalMinor),
-            orderDescription: productName,
-            notifyUrl,
-            userInfo: {
-              userId: input.monetplaneCustomerId,
-              userEmail: customerEmail,
-            },
-            paymentInfo: { productName },
-            goodsInfo: {
-              goodsId: item.productId,
-              goodsName: productName,
-              goodsQuantity: item.quantity,
-            },
-            successRedirectUrl: input.successUrl,
-            cancelRedirectUrl: input.cancelUrl,
-            orderRequestedAt: requestedAt,
-            extendInfo: JSON.stringify({
-              monetplaneApplicationId: input.applicationId,
-              monetplanePriceId: item.priceId,
-            }),
-          }) ?? Promise.reject(new Error("Waffo order create is unavailable")),
-      );
-      const data = unwrapResponse(response, "order create");
-      const providerCheckoutId =
-        stringValue(data.acquiringOrderId) ??
-        stringValue(data.paymentRequestId) ??
-        compactRequestId("pay", input.monetplaneOrderId);
-      const checkoutUrl = actionUrl(data.orderAction);
-      if (!checkoutUrl) {
-        throw new ProviderOperationError(
-          "Waffo order create response is missing a hosted checkout URL",
-          "outcome_uncertain",
-        );
-      }
-      return {
-        providerCheckoutId,
-        checkoutUrl,
-        providerCustomerId: input.monetplaneCustomerId,
-        reconciliationMetadata: {
-          monetplane_order_id: input.monetplaneOrderId,
-          monetplane_customer_id: input.monetplaneCustomerId,
+      const storeId = requiredCredential(connection, "storeId");
+      const item = input.items[0];
+      const currency = input.currency.toUpperCase();
+      const lineTotalMinor = item.unitAmountMinor * item.quantity;
+      const shellName = `mp-${slugifyProductShell(
+        item.productName ?? item.productId,
+      )}`;
+      const shellPrices = {
+        [currency]: {
+          amount: minorToDisplay(lineTotalMinor, currency),
+          taxCategory: TaxCategory.SaaS,
         },
       };
+
+      let productId: string;
+      try {
+        if (input.billingMode === "subscription") {
+          const { product } = await client.subscriptionProducts.create({
+            storeId,
+            name: shellName,
+            billingPeriod: billingPeriodFor(input.interval),
+            prices: shellPrices,
+            metadata: { monetplaneProductId: item.productId },
+          });
+          productId = product.id;
+        } else {
+          const { product } = await client.onetimeProducts.create({
+            storeId,
+            name: shellName,
+            prices: shellPrices,
+            metadata: { monetplaneProductId: item.productId },
+          });
+          productId = product.id;
+        }
+      } catch (error) {
+        throw classifySdkError(error, "product shell creation");
+      }
+
+      try {
+        const session = await client.checkout.createSession({
+          productId,
+          currency,
+          buyerEmail: input.customerEmail,
+          successUrl: input.successUrl,
+          withTrial:
+            input.billingMode === "subscription" && input.trialPeriodDays
+              ? true
+              : undefined,
+          metadata: {
+            monetplaneOrderId: input.monetplaneOrderId,
+            monetplaneCustomerId: input.monetplaneCustomerId,
+          },
+          orderMerchantExternalId: input.monetplaneOrderId,
+        });
+        return {
+          providerCheckoutId: session.sessionId,
+          checkoutUrl: session.checkoutUrl,
+          reconciliationMetadata: {
+            // Snake-case keys are the cross-adapter contract the commerce
+            // layer greps for when reconciling provider state.
+            monetplane_order_id: input.monetplaneOrderId,
+            monetplane_customer_id: input.monetplaneCustomerId,
+            waffo_session_id: session.sessionId,
+            waffo_product_id: productId,
+            expires_at: session.expiresAt,
+          },
+        };
+      } catch (error) {
+        throw classifySdkError(error, "checkout session creation");
+      }
     },
 
-    async getPayment(connection, input): Promise<NormalizedPayment> {
-      const client = clientFor(connection, options);
-      const response = await sdkCall(
-        false,
-        () =>
-          client
-            .order()
-            .inquiry?.({ acquiringOrderId: input.providerPaymentId }) ??
-          Promise.reject(new Error("Waffo order inquiry is unavailable")),
-      );
-      return normalizePaymentObject(unwrapResponse(response, "order inquiry"));
-    },
-
-    async getSubscription(connection, input): Promise<NormalizedSubscription> {
-      const client = clientFor(connection, options);
-      const response = await sdkCall(
-        false,
-        () =>
-          client.subscription().inquiry?.({
-            subscriptionId: input.providerSubscriptionId,
-          }) ??
-          Promise.reject(
-            new Error("Waffo subscription inquiry is unavailable"),
-          ),
-      );
-      return normalizeSubscriptionObject(
-        unwrapResponse(response, "subscription inquiry"),
+    async getSubscription(): Promise<NormalizedSubscription> {
+      // Subscription state arrives via webhooks; synchronous inquiry is
+      // intentionally unsupported for the Pancake adapter.
+      throw new UnsupportedProviderCapabilityError(
+        "waffo",
+        "subscription_update",
       );
     },
 
-    async cancelSubscription(
-      connection,
-      input: CancelSubscriptionInput,
-    ): Promise<NormalizedSubscription> {
-      const client = clientFor(connection, options);
-      const merchantId = requiredCredential(connection, "merchantId");
-      const response = await sdkCall(
-        true,
-        () =>
-          client.subscription().cancel?.({
-            subscriptionId: input.providerSubscriptionId,
-            merchantId,
-            requestedAt: new Date().toISOString(),
-          }) ??
-          Promise.reject(new Error("Waffo subscription cancel is unavailable")),
+    async updateSubscription(): Promise<NormalizedSubscription> {
+      // Pancake plan changes happen in the Waffo dashboard or via product
+      // groups; MonetPlane does not mutate plans programmatically yet.
+      throw new UnsupportedProviderCapabilityError(
+        "waffo",
+        "subscription_update",
       );
-      unwrapResponse(response, "subscription cancel");
-      return {
-        providerSubscriptionId: input.providerSubscriptionId,
-        status: "cancelled",
-        cancelAtPeriodEnd: false,
-      };
     },
 
-    async updateSubscription(
-      _connection,
-      input: UpdateSubscriptionInput,
-    ): Promise<NormalizedSubscription> {
-      throw new ProviderOperationError(
-        `Waffo subscription update is disabled until MonetPlane can provide the full amount/product-period contract for ${input.providerSubscriptionId}`,
-        "rejected",
+    async getPayment(): Promise<NormalizedPayment> {
+      // Pancake exposes payments through GraphQL queries; MonetPlane
+      // reconciles via webhooks + the operation journal instead, so
+      // synchronous payment inquiry is intentionally unsupported.
+      throw new UnsupportedProviderCapabilityError(
+        "waffo",
+        "recurring_subscription",
       );
     },
 
     async refundPayment(
-      connection,
+      connection: ProviderConnectionContext,
       input: RefundPaymentInput,
     ): Promise<NormalizedRefund> {
-      if (input.amountMinor === undefined) {
-        throw new ProviderOperationError(
-          "Waffo refund requires an explicit amount",
-          "rejected",
-        );
-      }
       const client = clientFor(connection, options);
-      const merchantId = requiredCredential(connection, "merchantId");
-      const refundRequestId = compactRequestId(
-        "refund",
-        input.requestId ?? `${input.providerPaymentId}:${input.amountMinor}`,
-      );
-      const response = await sdkCall(
-        true,
-        () =>
-          client.order().refund?.({
-            refundRequestId,
-            acquiringOrderId: input.providerPaymentId,
-            merchantId,
-            refundAmount: amountString(input.amountMinor ?? 0),
-            refundReason: "MonetPlane operator full refund",
-            requestedAt: new Date().toISOString(),
-          }) ?? Promise.reject(new Error("Waffo order refund is unavailable")),
-      );
-      const data = unwrapResponse(response, "order refund");
-      const providerRefundId =
-        stringValue(data.acquiringRefundOrderId) ??
-        stringValue(data.merchantRefundOrderId) ??
-        stringValue(data.refundRequestId) ??
-        refundRequestId;
-      return {
-        providerRefundId,
-        providerPaymentId: input.providerPaymentId,
-        status: mapRefundStatus(data.refundStatus),
-        amountMinor: centsFromAmount(data.refundAmount) ?? input.amountMinor,
-      };
+      const storeId = requiredCredential(connection, "storeId");
+      const currency = "USD";
+      try {
+        const { token } = await client.auth.issueSessionToken({
+          storeId,
+          buyerIdentity: input.requestId ?? input.providerPaymentId,
+        });
+        const { ticket } = await client
+          .customer(token, {
+            environment: pancakeEnvironment(connection.mode),
+          })
+          .createRefundTicket({
+            paymentId: input.providerPaymentId,
+            reason: "monetplane operator refund",
+            requestedAmount: input.amountMinor
+              ? {
+                  amount: minorToDisplay(input.amountMinor, currency),
+                  currency,
+                }
+              : undefined,
+            refundTicketMerchantExternalId: input.requestId,
+          });
+        const status: NormalizedRefund["status"] =
+          ticket.status === "succeeded"
+            ? "succeeded"
+            : ticket.status === "rejected"
+              ? "failed"
+              : "pending";
+        return {
+          providerRefundId: ticket.id,
+          providerPaymentId: input.providerPaymentId,
+          status,
+          amountMinor: input.amountMinor,
+        };
+      } catch (error) {
+        throw classifySdkError(error, "refund ticket");
+      }
+    },
+
+    async cancelSubscription(
+      connection: ProviderConnectionContext,
+      input: CancelSubscriptionInput,
+    ): Promise<NormalizedSubscription> {
+      const client = clientFor(connection, options);
+      try {
+        const result = await client.orders.cancelSubscription({
+          orderId: input.providerSubscriptionId,
+        });
+        return {
+          providerSubscriptionId: result.orderId,
+          status: result.status === "canceled" ? "cancelled" : "active",
+          cancelAtPeriodEnd: result.status !== "canceled",
+        };
+      } catch (error) {
+        throw classifySdkError(error, "subscription cancellation");
+      }
+    },
+
+    async validateConnection(connection: ProviderConnectionContext) {
+      const client = clientFor(connection, options);
+      const storeId = requiredCredential(connection, "storeId");
+      try {
+        // Cheap, side-effect-free probe: issuing a short-lived customer
+        // session token exercises merchant auth + signing end to end.
+        await client.auth.issueSessionToken({
+          storeId,
+          buyerIdentity: "monetplane-connection-check",
+        });
+        return { summary: "Merchant credentials verified with Waffo" };
+      } catch (error) {
+        if (error instanceof ProviderOperationError) throw error;
+        throw classifySdkError(error, "connection validation");
+      }
     },
 
     async verifyWebhook(
-      connection,
+      connection: ProviderConnectionContext,
       input: VerifyWebhookInput,
     ): Promise<VerifiedWebhook> {
-      const signature = headerValue(input.headers, "x-signature");
+      const signature = headerValue(input.headers, "x-waffo-signature");
       if (!signature) {
         throw new InvalidProviderWebhookSignatureError(
-          "Missing Waffo webhook signature",
+          "Missing x-waffo-signature header",
         );
       }
-      let valid = false;
       try {
-        valid = clientFor(connection, options)
-          .webhook()
-          .verifySignature(input.rawBody, signature);
+        // Environment pinned from the connection so a test key cannot be
+        // verified against prod keys (fail closed).
+        verifyImpl(input.rawBody, signature, {
+          environment: pancakeEnvironment(connection.mode),
+        });
       } catch (error) {
         throw new InvalidProviderWebhookSignatureError(
           error instanceof Error
-            ? `Waffo webhook verification failed: ${error.message}`
-            : "Waffo webhook verification failed",
-        );
-      }
-      if (!valid) {
-        throw new InvalidProviderWebhookSignatureError(
-          "Invalid Waffo webhook signature",
+            ? `Waffo Pancake webhook verification failed: ${error.message}`
+            : "Waffo Pancake webhook verification failed",
         );
       }
       return { rawBody: input.rawBody };
     },
 
     async normalizeWebhook(
-      connection,
+      connection: ProviderConnectionContext,
       input: VerifiedWebhook,
     ): Promise<NormalizedProviderEvent> {
-      return normalizeWaffoWebhook(connection, input);
+      return normalizeWaffoPancakeWebhook(connection, input);
     },
   };
 }

@@ -173,7 +173,7 @@ export async function createCommerceCheckout(
                 | "year"
                 | undefined)
             : undefined,
-        trialPeriodDays: firstPrice?.trialPeriodDays ?? undefined,
+        trialPeriodDays: resolvedItems[0]?.price.trialPeriodDays ?? undefined,
       },
       db,
     );
@@ -312,6 +312,7 @@ export async function createCommerceCheckout(
                 | "month"
                 | "year")
             : undefined,
+        trialPeriodDays: resolvedItems[0]?.price.trialPeriodDays ?? undefined,
         currency,
         items: resolvedItems.map((item) => ({
           productId: item.product.id,
