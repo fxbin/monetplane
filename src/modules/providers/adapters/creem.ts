@@ -620,26 +620,26 @@ export function createCreemProviderAdapter(
       connection,
       input: RefundPaymentInput,
     ): Promise<NormalizedRefund> {
+      // Live-verified contract (#102): the request body accepts ONLY
+      // transaction_id (metadata is rejected), and the 200 response is
+      // { status } — no refund id. The authoritative refund id arrives
+      // later via the refund.created webhook (object.id); until then a
+      // deterministic id keyed to the transaction keeps retries stable.
       const response = await creemRequest(connection, options, "/v1/refunds", {
         method: "POST",
         body: JSON.stringify({
           transaction_id: input.providerPaymentId,
-          ...(input.requestId
-            ? { metadata: { monetplane_request_id: input.requestId } }
-            : {}),
         }),
       });
-      const refundId = stringValue(response.id);
-      if (!refundId) {
-        throw new Error("Creem refund response is missing the refund id");
-      }
       const status = stringValue(response.status) ?? "";
-      // Creem refunds may confirm asynchronously ("pending"); the
-      // refund.created webhook carries the final outcome.
       const normalizedStatus: NormalizedRefund["status"] =
-        status === "pending" ? "pending" : "succeeded";
+        status === "succeeded"
+          ? "succeeded"
+          : status === "failed" || status === "canceled"
+            ? "failed"
+            : "pending";
       return {
-        providerRefundId: refundId,
+        providerRefundId: `refund:${input.providerPaymentId}`,
         providerPaymentId: input.providerPaymentId,
         status: normalizedStatus,
       };

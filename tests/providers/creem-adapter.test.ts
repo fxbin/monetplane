@@ -205,22 +205,15 @@ describe("Creem adapter", () => {
     ).rejects.toBeInstanceOf(UnsupportedProviderCapabilityError);
   });
 
-  it("submits full refunds by transaction id and normalizes pending confirmation", async () => {
+  it("submits full refunds with the live-verified request/response shape", async () => {
     const requests: Array<{ url: string; init: RequestInit }> = [];
     const adapter = createCreemProviderAdapter({
       fetchImpl: (async (url: string, init: RequestInit) => {
         requests.push({ url: String(url), init });
-        const pending = String(url).endsWith("/v1/refunds");
+        const isRefund = String(url).endsWith("/v1/refunds");
+        // Real API (#102): body { status } only — no refund id.
         return new Response(
-          JSON.stringify(
-            pending
-              ? {
-                  id: "refu_1",
-                  status: "pending",
-                  transaction: { id: "tran_1" },
-                }
-              : {},
-          ),
+          JSON.stringify(isRefund ? { status: "succeeded" } : {}),
           { status: 200, headers: { "content-type": "application/json" } },
         );
       }) as typeof fetch,
@@ -230,13 +223,13 @@ describe("Creem adapter", () => {
       requestId: "req_refund_1",
     });
     expect(refund).toEqual({
-      providerRefundId: "refu_1",
+      providerRefundId: "refund:tran_1",
       providerPaymentId: "tran_1",
-      status: "pending",
+      status: "succeeded",
     });
     const refundCall = requests.find((r) => r.url.endsWith("/v1/refunds"));
     expect(refundCall?.init.method).toBe("POST");
-    expect(JSON.parse(String(refundCall?.init.body))).toMatchObject({
+    expect(JSON.parse(String(refundCall?.init.body))).toEqual({
       transaction_id: "tran_1",
     });
   });
