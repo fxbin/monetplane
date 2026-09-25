@@ -62,6 +62,19 @@ export async function POST(request: Request) {
     );
   }
 
+  // Restricted members cannot point their console session at an
+  // out-of-scope application. Respond 404 (not 403) so in- and out-of-scope
+  // unknown applications are indistinguishable (#70).
+  if (
+    guard.applicationScope === "restricted" &&
+    !guard.applicationIds.includes(applicationId)
+  ) {
+    return NextResponse.json(
+      { error: "Application not found" },
+      { status: 404 },
+    );
+  }
+
   const response = NextResponse.json({
     application: { id: application.id, name: application.name },
     environment,

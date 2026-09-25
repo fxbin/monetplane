@@ -9,9 +9,11 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/overview";
 
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailId = useId();
   const passwordId = useId();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -20,12 +22,13 @@ function LoginForm() {
     setError(null);
 
     const result = await signIn("credentials", {
+      email,
       password,
       redirect: false,
     });
 
     if (result?.error) {
-      setError("Invalid password");
+      setError("Invalid email or password");
       setLoading(false);
       return;
     }
@@ -39,10 +42,27 @@ function LoginForm() {
       <div className="login-card">
         <div className="login-header">
           <h1 className="login-title">MonetPlane</h1>
-          <p className="login-subtitle">Admin Dashboard</p>
+          <p className="login-subtitle">Operator console</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
+          <div className="form-field">
+            <label htmlFor={emailId} className="form-label">
+              Email
+            </label>
+            <input
+              id={emailId}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="form-input"
+              placeholder="operator@yourcompany.com"
+              autoComplete="email"
+              required
+              disabled={loading}
+            />
+          </div>
+
           <div className="form-field">
             <label htmlFor={passwordId} className="form-label">
               Password
@@ -53,7 +73,8 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="form-input"
-              placeholder="Enter admin password"
+              placeholder="Enter your password"
+              autoComplete="current-password"
               required
               disabled={loading}
             />

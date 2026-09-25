@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { setProductProviderRoute } from "@/server/control-plane/products";
@@ -9,7 +12,7 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("catalog:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -25,6 +28,12 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(
+      guard,
+      context.selectedApplication.id,
+    );
+    if (scopeCheck) return scopeCheck;
 
     const providerConnectionId =
       typeof body.providerConnectionId === "string"

@@ -1,22 +1,52 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import NextAuth from "next-auth";
+import { authConfig } from "@/auth.config";
 
 /**
  * NextAuth proxy (Next.js 16 convention, formerly middleware) — protects
  * dashboard routes.
  *
- * Routes that require admin session:
- * - /overview, /products, /providers, /customers (dashboard pages)
+ * Uses the edge-safe base config: only JWT decoding happens here. Role and
+ * membership authorization is re-checked against the database at every admin
+ * API boundary (src/modules/admin/guard.ts) and never trusted from this
+ * token (#70 fail-closed).
+ *
+ * Routes that require a session: every console page under the dashboard.
  *
  * Routes that are public:
  * - /login (the sign-in page itself)
- * - /api/* (SDK Bearer auth handles its own security)
- * - /api/auth/* (NextAuth callback endpoints)
+ * - /invitations (invitation acceptance)
+ * - /api/auth (NextAuth callback endpoints)
+ * - /api/invitations (invitation acceptance endpoint)
+ * - /api/* SDK routes (Bearer auth handles its own security)
  */
 
-const PROTECTED_PATHS = ["/overview", "/products", "/providers", "/customers"];
+const PROTECTED_PATHS = [
+  "/overview",
+  "/products",
+  "/providers",
+  "/customers",
+  "/applications",
+  "/payments",
+  "/subscriptions",
+  "/refunds",
+  "/revenue",
+  "/usage",
+  "/events",
+  "/logs",
+  "/webhooks",
+  "/api-keys",
+  "/developer",
+  "/audit",
+  "/team",
+];
 
-const PUBLIC_PATHS = ["/login", "/api/auth"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/invitations",
+  "/api/auth",
+  "/api/invitations",
+];
 
 function isProtected(path: string): boolean {
   return PROTECTED_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
@@ -52,7 +82,7 @@ function adminMutationAllowed(key: string): boolean {
   return window.count <= ADMIN_MUTATION_LIMIT;
 }
 
-export default auth((req) => {
+export default NextAuth(authConfig).auth((req) => {
   const { pathname } = req.nextUrl;
   const method = req.method.toUpperCase();
 

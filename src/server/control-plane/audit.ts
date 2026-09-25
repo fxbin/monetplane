@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
 import { operatorAuditLog } from "@/modules/operations/audit-schema";
@@ -101,8 +101,13 @@ export async function recordAuditEntry(
   return entry;
 }
 
+/**
+ * Application-scoped audit history. Pass applicationId = null to list
+ * workspace-level entries (team management actions recorded without a
+ * project, #70).
+ */
 export async function listAuditEntries(
-  applicationId: string,
+  applicationId: string | null,
   filters: {
     action?: string;
     actor?: string;
@@ -119,7 +124,9 @@ export async function listAuditEntries(
     .from(operatorAuditLog)
     .where(
       and(
-        eq(operatorAuditLog.applicationId, applicationId),
+        applicationId === null
+          ? isNull(operatorAuditLog.applicationId)
+          : eq(operatorAuditLog.applicationId, applicationId),
         filters.action
           ? eq(operatorAuditLog.action, filters.action)
           : undefined,

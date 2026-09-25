@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
   ConsoleProviderDiagnosticError,
@@ -12,7 +15,7 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -31,6 +34,9 @@ export async function POST(request: Request, { params }: RouteContext) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(guard, application.id);
+    if (scopeCheck) return scopeCheck;
 
     const kind =
       body.kind === "configuration" ||

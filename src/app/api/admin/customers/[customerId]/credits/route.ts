@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { grantCustomerCredits } from "@/server/control-plane/customer-workspace";
@@ -9,7 +12,7 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("credits:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -28,6 +31,12 @@ export async function POST(request: Request, { params }: RouteContext) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(
+      guard,
+      context.selectedApplication.id,
+    );
+    if (scopeCheck) return scopeCheck;
 
     const creditType =
       typeof body.creditType === "string" ? body.creditType.trim() : "";

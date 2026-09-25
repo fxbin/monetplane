@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { disableWebhookEndpoint } from "@/modules/webhooks";
 import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -7,7 +10,7 @@ import { getConsoleContext } from "@/server/control-plane/context";
 type RouteContext = { params: Promise<{ endpointId: string }> };
 
 export async function DELETE(_request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("webhooks:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -22,6 +25,9 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(guard, application.id);
+    if (scopeCheck) return scopeCheck;
     const endpoint = await disableWebhookEndpoint(
       application.id,
       context.environment,

@@ -1,93 +1,59 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import { authConfig } from "@/auth.config";
+import { authenticateWithBootstrap } from "@/modules/team/service";
 
 /**
  * Auth.js (NextAuth v5) configuration.
  *
- * Admin-only authentication for the MonetPlane dashboard.
- * Uses JWT sessions (no database adapter needed) and a single
- * shared admin credential sourced from ADMIN_PASSWORD env var.
+ * Console authentication for the MonetPlane dashboard (#70): operators sign
+ * in with their own durable email + password identity. The very first sign-in
+ * on a fresh installation may claim the initial owner account with the
+ * ADMIN_PASSWORD env value (bootstrap-on-first-login); afterwards the shared
+ * password is inert and every operator uses their own credential.
  *
  * This is intentionally separate from the SDK Bearer token auth
  * (mp_app_* prefix) used by third-party applications on /api/* routes.
  *
  * Env vars (set in .env):
- *   AUTH_SECRET     — JWT signing secret (generate: openssl rand -base64 32)
- *   ADMIN_PASSWORD  — shared admin login password
+ *   AUTH_SECRET      — JWT signing secret (generate: openssl rand -base64 32)
+ *   ADMIN_PASSWORD   — one-time bootstrap password for the first owner
+ *
+ * NOTE: role/permission authorization never trusts the JWT — the admin guard
+ * re-reads membership from the database on every request (see
+ * src/modules/admin/guard.ts).
  */
-
-function getAdminPassword(): string {
-  const value = process.env.ADMIN_PASSWORD?.trim();
-  if (!value) {
-    throw new Error(
-      "ADMIN_PASSWORD is required for dashboard admin login. Set it in .env",
-    );
-  }
-  return value;
-}
-
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  trustHost: true,
-  secret: process.env.AUTH_SECRET?.trim() || "build-placeholder-do-not-use",
-  session: {
-    strategy: "jwt",
-    maxAge: 60 * 60 * 12, // 12 hours
-  },
-  pages: {
-    signIn: "/login",
-  },
+  ...authConfig,
   providers: [
     Credentials({
-      name: "Admin",
+      name: "Workspace",
       credentials: {
+        email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
+        const email = credentials?.email as string | undefined;
         const password = credentials?.password as string | undefined;
-        if (!password) return null;
+        if (!email || !password) return null;
 
-        const adminPassword = getAdminPassword();
-        if (password !== adminPassword) return null;
-
-        return {
-          id: "admin",
-          name: "Admin",
-          email: "admin@monetplane.local",
-          role: "admin",
-        };
+        try {
+          const operator = await authenticateWithBootstrap({
+            email,
+            password,
+          });
+          if (!operator) return null;
+          return {
+            id: operator.operatorId,
+            name: operator.name,
+            email: operator.email,
+            role: operator.role,
+          };
+        } catch (error) {
+          console.error("[auth] sign-in failed:", error);
+          return null;
+        }
       },
     }),
   ],
-  callbacks: {
-    async jwt({ token, user }) {
-      if (user) {
-        token.role = (user as { role?: string }).role ?? "admin";
-      }
-      return token;
-    },
-    async session({ session, token }) {
-      if (token.sub) {
-        (session.user as { id?: string }).id = token.sub;
-      }
-      (session.user as { role?: string }).role =
-        (token.role as string | undefined) ?? "admin";
-      return session;
-    },
-  },
 });
-
-/**
- * Check if a request has a valid admin session.
- * Returns the session object if authenticated, null otherwise.
- *
- * Usage in Admin API route handlers:
- * ```ts
- * import { requireAdminSession } from "@/auth";
- * const session = await requireAdminSession();
- * ```
- */
-export async function requireAdminSession() {
-  const session = await auth();
-  if (!session?.user) return null;
-  return session;
-}

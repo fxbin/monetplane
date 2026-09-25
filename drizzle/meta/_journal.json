@@ -1,111 +1,118 @@
 {
-  "version": "7",
-  "dialect": "postgresql",
-  "entries": [
-    {
-      "idx": 0,
-      "version": "7",
-      "when": 1787050800000,
-      "tag": "0000_bootstrap",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1787062800000,
-      "tag": "0001_application_registry",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1787065200000,
-      "tag": "0002_customer_catalog",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1787067600000,
-      "tag": "0003_provider_runtime",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1787070000000,
-      "tag": "0004_commerce_webhook_inbox",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1787072400000,
-      "tag": "0005_entitlements",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1787074800000,
-      "tag": "0006_credits_ledger",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1789266600000,
-      "tag": "0007_billing_operations",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1789281900000,
-      "tag": "0008_billing_operation_retry",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1789518000000,
-      "tag": "0009_developer_webhooks",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1789589000000,
-      "tag": "0010_environment_isolation",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1789670000000,
-      "tag": "0011_pricing_v2",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1789756000000,
-      "tag": "0012_usage_metering",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1789842000000,
-      "tag": "0013_credit_buckets",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "7",
-      "when": 1789928000000,
-      "tag": "0014_operator_audit_log",
-      "breakpoints": true
-    }
-  ]
+    "version": "7",
+    "dialect": "postgresql",
+    "entries": [
+        {
+            "idx": 0,
+            "version": "7",
+            "when": 1787050800000,
+            "tag": "0000_bootstrap",
+            "breakpoints": true
+        },
+        {
+            "idx": 1,
+            "version": "7",
+            "when": 1787062800000,
+            "tag": "0001_application_registry",
+            "breakpoints": true
+        },
+        {
+            "idx": 2,
+            "version": "7",
+            "when": 1787065200000,
+            "tag": "0002_customer_catalog",
+            "breakpoints": true
+        },
+        {
+            "idx": 3,
+            "version": "7",
+            "when": 1787067600000,
+            "tag": "0003_provider_runtime",
+            "breakpoints": true
+        },
+        {
+            "idx": 4,
+            "version": "7",
+            "when": 1787070000000,
+            "tag": "0004_commerce_webhook_inbox",
+            "breakpoints": true
+        },
+        {
+            "idx": 5,
+            "version": "7",
+            "when": 1787072400000,
+            "tag": "0005_entitlements",
+            "breakpoints": true
+        },
+        {
+            "idx": 6,
+            "version": "7",
+            "when": 1787074800000,
+            "tag": "0006_credits_ledger",
+            "breakpoints": true
+        },
+        {
+            "idx": 7,
+            "version": "7",
+            "when": 1789266600000,
+            "tag": "0007_billing_operations",
+            "breakpoints": true
+        },
+        {
+            "idx": 8,
+            "version": "7",
+            "when": 1789281900000,
+            "tag": "0008_billing_operation_retry",
+            "breakpoints": true
+        },
+        {
+            "idx": 9,
+            "version": "7",
+            "when": 1789518000000,
+            "tag": "0009_developer_webhooks",
+            "breakpoints": true
+        },
+        {
+            "idx": 10,
+            "version": "7",
+            "when": 1789589000000,
+            "tag": "0010_environment_isolation",
+            "breakpoints": true
+        },
+        {
+            "idx": 11,
+            "version": "7",
+            "when": 1789670000000,
+            "tag": "0011_pricing_v2",
+            "breakpoints": true
+        },
+        {
+            "idx": 12,
+            "version": "7",
+            "when": 1789756000000,
+            "tag": "0012_usage_metering",
+            "breakpoints": true
+        },
+        {
+            "idx": 13,
+            "version": "7",
+            "when": 1789842000000,
+            "tag": "0013_credit_buckets",
+            "breakpoints": true
+        },
+        {
+            "idx": 14,
+            "version": "7",
+            "when": 1789928000000,
+            "tag": "0014_operator_audit_log",
+            "breakpoints": true
+        },
+        {
+            "idx": 15,
+            "version": "7",
+            "when": 1790400000000,
+            "tag": "0015_team_access",
+            "breakpoints": true
+        }
+    ]
 }
