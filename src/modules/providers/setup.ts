@@ -70,6 +70,38 @@ export const SUPPORTED_PROVIDER_SETUPS = [
       },
     ],
   },
+  {
+    provider: "paypal",
+    label: "PayPal",
+    description:
+      "PayPal hosted checkout for one-time payments and subscriptions (Orders + Billing Subscriptions APIs), with refunds and signed webhooks.",
+    credentialFields: [
+      {
+        key: "clientId",
+        label: "Client ID",
+        placeholder: "AQ…",
+        help: "PayPal REST app client ID (sandbox for test mode).",
+        inputType: "text",
+        secret: false,
+      },
+      {
+        key: "clientSecret",
+        label: "Client secret",
+        placeholder: "••••••••••••••••",
+        help: "PayPal REST app secret; exchanged for OAuth tokens server-side.",
+        inputType: "password",
+        secret: true,
+      },
+      {
+        key: "webhookId",
+        label: "Webhook ID",
+        placeholder: "WH…",
+        help: "ID of the PayPal webhook pointing at this connection's MonetPlane webhook URL; used for signature verification.",
+        inputType: "text",
+        secret: false,
+      },
+    ],
+  },
 ] as const satisfies readonly ProviderSetup[];
 
 export type SupportedProviderSetup =
