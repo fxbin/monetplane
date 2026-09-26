@@ -1,5 +1,5 @@
-import { AuthError } from "next-auth";
 import { redirect } from "next/navigation";
+import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 
 /**
@@ -48,33 +48,31 @@ export default async function LoginPage({
 
         <form action={authenticate} className="login-form">
           <div className="form-field">
-            <label htmlFor="email" className="form-label">
+            <label className="form-label">
               Email
+              <input
+                name="email"
+                type="email"
+                className="form-input"
+                placeholder="operator@yourcompany.com"
+                autoComplete="email"
+                required
+              />
             </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              className="form-input"
-              placeholder="operator@yourcompany.com"
-              autoComplete="email"
-              required
-            />
           </div>
 
           <div className="form-field">
-            <label htmlFor="password" className="form-label">
+            <label className="form-label">
               Password
+              <input
+                name="password"
+                type="password"
+                className="form-input"
+                placeholder="Enter your password"
+                autoComplete="current-password"
+                required
+              />
             </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              className="form-input"
-              placeholder="Enter your password"
-              autoComplete="current-password"
-              required
-            />
           </div>
 
           {failed && <p className="form-error">Invalid email or password</p>}
