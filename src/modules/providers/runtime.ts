@@ -1,6 +1,7 @@
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { createCreemProviderAdapter } from "./adapters/creem";
+import { createPayPalProviderAdapter } from "./adapters/paypal";
 import { createWaffoProviderAdapter } from "./adapters/waffo";
 import type {
   CancelSubscriptionInput,
@@ -50,7 +51,9 @@ function resolveProviderAdapter(provider: string): PaymentProviderAdapter {
         ? createCreemProviderAdapter()
         : provider === "waffo"
           ? createWaffoProviderAdapter()
-          : null;
+          : provider === "paypal"
+            ? createPayPalProviderAdapter()
+            : null;
     if (!adapter) throw error;
 
     registerProviderAdapter(adapter);
