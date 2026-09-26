@@ -498,6 +498,7 @@ function InviteForm({
           <span>Role</span>
           <select
             value={role}
+            title={ROLE_DESCRIPTIONS[role]}
             onChange={(event) => setRole(event.target.value as WorkspaceRole)}
           >
             {ROLES.filter((candidate) => isOwner || candidate !== "owner").map(
@@ -508,7 +509,6 @@ function InviteForm({
               ),
             )}
           </select>
-          <span className="cell-muted">{ROLE_DESCRIPTIONS[role]}</span>
         </label>
         <label>
           <span>Project access</span>

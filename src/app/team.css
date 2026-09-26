@@ -59,8 +59,8 @@
 
 .team-invite-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 14px 16px;
   align-items: end;
 }
 
@@ -72,9 +72,14 @@
   color: var(--color-text-secondary);
 }
 
-.team-invite-form label span:last-child {
-  font-size: 12px;
+.team-invite-form label > span:first-child {
+  font-weight: 600;
   color: var(--color-text-muted);
+}
+
+.team-invite-form label input,
+.team-invite-form label select {
+  width: 100%;
 }
 
 .team-invite-form .btn {
