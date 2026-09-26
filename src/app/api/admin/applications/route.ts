@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import { requirePermission } from "@/modules/admin/guard";
 import {
   createApplication,
   issueApplicationCredential,
@@ -16,7 +16,7 @@ function optionalString(value: unknown) {
 }
 
 export async function POST(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("applications:write");
   if (guard instanceof NextResponse) return guard;
 
   let body: unknown;

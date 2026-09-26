@@ -29,7 +29,8 @@ type NavItem = {
     | "keys"
     | "events"
     | "logs"
-    | "settings";
+    | "settings"
+    | "team";
   comingSoon?: boolean;
 };
 
@@ -82,6 +83,13 @@ const navSections: Array<{ label?: string; items: NavItem[] }> = [
       { label: "Audit Log", href: "/audit", icon: "logs" },
     ],
   },
+  {
+    label: "Workspace",
+    items: [
+      { label: "Projects", href: "/applications", icon: "settings" },
+      { label: "Team", href: "/team", icon: "team" },
+    ],
+  },
 ];
 
 function NavIcon({ name }: { name: NavItem["icon"] }) {
@@ -110,6 +118,9 @@ function NavIcon({ name }: { name: NavItem["icon"] }) {
     ),
     events: <path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" />,
     logs: <path d="M4 5h16M4 10h16M4 15h10M4 20h7" />,
+    team: (
+      <path d="M17 8a5 5 0 1 0-10 0 5 5 0 0 0 10 0ZM3 21v-1a6 6 0 0 1 6-6h6a6 6 0 0 1 6 6v1" />
+    ),
     settings: (
       <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.9 7.9 0 0 0-.1-1l2-1.6-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.7 3h-4l-.4 2.9a8 8 0 0 0-1.7 1L6.1 6l-2 3.4 2 1.6a8 8 0 0 0 0 2l-2 1.6 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.4 2.9h4l.4-2.9a8 8 0 0 0 1.7-1l2.5 1 2-3.4-2-1.6a7.9 7.9 0 0 0 .1-1Z" />
     ),
@@ -134,14 +145,22 @@ type SidebarNavigationProps = {
   applications: ConsoleApplication[];
   selectedApplicationId: string | null;
   environment: ConsoleEnvironment;
+  canManageTeam: boolean;
 };
 
 export function SidebarNavigation({
   applications,
   selectedApplicationId,
   environment,
+  canManageTeam,
 }: SidebarNavigationProps) {
   const pathname = usePathname();
+  const visibleSections = canManageTeam
+    ? navSections
+    : navSections.map((section) => ({
+        ...section,
+        items: section.items.filter((item) => item.icon !== "team"),
+      }));
 
   return (
     <aside className="sidebar sidebar-p1">
@@ -170,7 +189,7 @@ export function SidebarNavigation({
       </section>
 
       <nav className="sidebar-nav sidebar-nav-p1">
-        {navSections.map((section, sectionIndex) => (
+        {visibleSections.map((section, sectionIndex) => (
           <div
             key={section.label ?? `primary-${sectionIndex}`}
             className="sidebar-section"

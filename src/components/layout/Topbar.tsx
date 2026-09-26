@@ -15,7 +15,10 @@ function initials(name: string) {
 
 export async function Topbar() {
   const [session, context] = await Promise.all([auth(), getConsoleContext()]);
-  const userName = session?.user?.name ?? session?.user?.email ?? "Admin";
+  const userName = session?.user?.name ?? session?.user?.email ?? "Operator";
+  const role = (
+    (session?.user as { role?: string } | undefined)?.role ?? "operator"
+  ).replace(/^./, (c) => c.toUpperCase());
   const applicationName = context.selectedApplication?.name ?? "No project";
 
   return (
@@ -34,7 +37,7 @@ export async function Topbar() {
       <div className="topbar-right">
         <div className="topbar-user-copy">
           <span className="topbar-user">{userName}</span>
-          <span className="topbar-role">Operator</span>
+          <span className="topbar-role">{role}</span>
         </div>
         <span className="topbar-avatar" aria-hidden="true">
           {initials(userName)}

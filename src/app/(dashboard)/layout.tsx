@@ -11,6 +11,7 @@ import "../customer-workspace.css";
 import "../billing-operations.css";
 import "../developer-tools.css";
 import "../overview-analytics.css";
+import "../team.css";
 
 export default function DashboardLayout({
   children,

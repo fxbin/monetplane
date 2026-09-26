@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { rotateDeveloperApiKey } from "@/server/control-plane/developer";
@@ -7,7 +10,7 @@ import { rotateDeveloperApiKey } from "@/server/control-plane/developer";
 type RouteContext = { params: Promise<{ credentialId: string }> };
 
 export async function POST(_request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("credentials:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -22,6 +25,9 @@ export async function POST(_request: Request, { params }: RouteContext) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(guard, application.id);
+    if (scopeCheck) return scopeCheck;
     const key = await rotateDeveloperApiKey(application.id, credentialId);
     await recordAuditEntry({
       applicationId: application.id,

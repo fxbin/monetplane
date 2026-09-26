@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireAdmin,
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
@@ -21,7 +25,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("credentials:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -33,6 +37,9 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(guard, application.id);
+    if (scopeCheck) return scopeCheck;
     const body = (await request.json()) as { name?: unknown };
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {

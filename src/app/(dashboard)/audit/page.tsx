@@ -27,8 +27,9 @@ export default async function AuditPage({
   const application = context.selectedApplication;
   const environmentLabel =
     context.environment === "test" ? "Sandbox" : "Production";
+  const scope = params.scope === "workspace" ? "workspace" : "project";
 
-  if (!application) {
+  if (!application && scope !== "workspace") {
     return (
       <PageContainer
         title="Audit log"
@@ -44,22 +45,36 @@ export default async function AuditPage({
 
   const from = params.from ? new Date(`${params.from}T00:00:00Z`) : undefined;
   const to = params.to ? new Date(`${params.to}T23:59:59Z`) : undefined;
-  const entries = await listAuditEntries(application.id, {
-    action: value(params, "action"),
-    actor: value(params, "actor"),
-    resourceType: value(params, "resource"),
-    environment: context.environment,
-    from: Number.isNaN(from?.getTime()) ? undefined : from,
-    to: Number.isNaN(to?.getTime()) ? undefined : to,
-    limit: 200,
-  });
+  const entries = await listAuditEntries(
+    scope === "workspace" ? null : (application?.id ?? null),
+    {
+      action: value(params, "action"),
+      actor: value(params, "actor"),
+      resourceType: value(params, "resource"),
+      environment: scope === "workspace" ? undefined : context.environment,
+      from: Number.isNaN(from?.getTime()) ? undefined : from,
+      to: Number.isNaN(to?.getTime()) ? undefined : to,
+      limit: 200,
+    },
+  );
 
   return (
     <PageContainer
       title="Audit log"
-      description={`Immutable operator activity for ${application.name} · ${environmentLabel}. Secrets are never recorded.`}
+      description={
+        scope === "workspace"
+          ? "Workspace-level operator activity (team and membership changes). Secrets are never recorded."
+          : `Immutable operator activity for ${application?.name ?? ""} · ${environmentLabel}. Secrets are never recorded.`
+      }
     >
       <form className="developer-filters" method="get">
+        <label>
+          <span>Scope</span>
+          <select name="scope" defaultValue={scope}>
+            <option value="project">Project</option>
+            <option value="workspace">Workspace</option>
+          </select>
+        </label>
         <label>
           <span>Action</span>
           <input
@@ -104,7 +119,10 @@ export default async function AuditPage({
           <button className="btn btn-primary" type="submit">
             Filter
           </button>
-          <a className="btn btn-secondary" href="/audit">
+          <a
+            className="btn btn-secondary"
+            href={scope === "workspace" ? "/audit?scope=workspace" : "/audit"}
+          >
             Reset
           </a>
         </div>

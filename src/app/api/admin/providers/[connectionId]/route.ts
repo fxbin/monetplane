@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireAdmin,
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import {
   getProviderConnection,
   revokeProviderConnection,
@@ -58,7 +62,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -71,6 +75,8 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         { status: 404 },
       );
     }
+    const scopeCheck = requireApplicationAccess(guard, application.id);
+    if (scopeCheck) return scopeCheck;
     if (connection.status !== "active") {
       return NextResponse.json(
         { error: "Revoked provider connections cannot be reconfigured" },
@@ -142,7 +148,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteContext) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
   const { connectionId } = await params;
@@ -154,6 +160,8 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
       { status: 404 },
     );
   }
+  const scopeCheck = requireApplicationAccess(guard, application.id);
+  if (scopeCheck) return scopeCheck;
   if (connection.status === "revoked") {
     return NextResponse.json({ connection });
   }

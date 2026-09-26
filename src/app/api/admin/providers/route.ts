@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/modules/admin/guard";
+import {
+  requireAdmin,
+  requireApplicationAccess,
+  requirePermission,
+} from "@/modules/admin/guard";
 import { createProviderConnection } from "@/modules/providers/service";
 import {
   getProviderSetup,
@@ -36,7 +40,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const guard = await requireAdmin();
+  const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
   try {
@@ -48,6 +52,9 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
+
+    const scopeCheck = requireApplicationAccess(guard, application.id);
+    if (scopeCheck) return scopeCheck;
 
     const body = (await request.json()) as {
       provider?: unknown;

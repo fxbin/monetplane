@@ -15,4 +15,4 @@ packages/sdk/dist/
 *.tgz
 examples/*/node_modules/
 
-.playwright-mcp/.video_agent/
+.playwright-mcp/

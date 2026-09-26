@@ -1,0 +1,111 @@
+/* Team workspace console (#70) */
+
+.team-manager {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.team-notice {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--color-success-bg);
+  color: var(--color-success);
+  font-size: 14px;
+}
+
+.team-operator {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.team-operator-name {
+  font-weight: 600;
+}
+
+.team-scope-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.team-scope-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.team-scope-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 4px;
+  max-height: 160px;
+  overflow: auto;
+}
+
+.team-scope-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.team-invite-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+
+.team-invite-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.team-invite-form label span:last-child {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.team-invite-form .btn {
+  justify-self: start;
+}
+
+.team-invite-form .team-scope-list {
+  grid-column: 1 / -1;
+}
+
+.team-invite-result {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px dashed var(--color-border);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.team-invite-result p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+}
+
+.team-invite-result code {
+  word-break: break-all;
+  font-size: 13px;
+  background: var(--color-bg-muted);
+  padding: 8px 10px;
+  border-radius: 8px;
+}

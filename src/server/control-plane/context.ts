@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { getSessionActor } from "@/modules/admin/guard";
 import { getApplicationList } from "@/server/control-plane/console-queries";
 
 export const CONSOLE_APPLICATION_COOKIE = "monetplane_console_application";
@@ -26,12 +27,24 @@ function isConsoleEnvironment(
 }
 
 export async function getConsoleContext(): Promise<ConsoleContext> {
-  const [applicationRows, cookieStore] = await Promise.all([
+  const [applicationRows, cookieStore, actor] = await Promise.all([
     getApplicationList(),
     cookies(),
+    getSessionActor(),
   ]);
 
-  const applications = applicationRows.filter(
+  // Restricted members only ever see applications inside their granted
+  // scope (#70). No session (e.g. direct control-plane callers in tests)
+  // means no narrowing — API boundaries enforce scope themselves.
+  const scopedApplications = actor
+    ? actor.applicationScope === "all"
+      ? applicationRows
+      : applicationRows.filter((application) =>
+          actor.applicationIds.includes(application.id),
+        )
+    : applicationRows;
+
+  const applications = scopedApplications.filter(
     (application) => application.status === "active",
   );
   const requestedApplicationId = cookieStore.get(
