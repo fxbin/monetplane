@@ -1,4 +1,5 @@
 import type { NextAuthConfig } from "next-auth";
+import { getAuthSecret } from "./config/env";
 
 /**
  * Edge-safe NextAuth base config (split from auth.ts, NextAuth v5 pattern).
@@ -11,9 +12,17 @@ import type { NextAuthConfig } from "next-auth";
  * from the database by the admin guard on every request (#70 fail-closed).
  */
 export const authConfig = {
+  // Required behind proxies where the forwarded host differs from the
+  // deployment host. Note this makes NextAuth trust the Host header for its
+  // own callback URLs; the SDK/API surface applies its own stricter
+  // application-domain checks (see src/modules/applications).
   trustHost: true,
   providers: [],
-  secret: process.env.AUTH_SECRET?.trim() || "build-placeholder-do-not-use",
+  // Fail fast: throws at module evaluation when AUTH_SECRET is missing or
+  // empty. `next build` evaluates this module while collecting page data
+  // (src/auth.ts is imported by pages/routes), so builds require the
+  // variable to be set — there is intentionally no placeholder fallback.
+  secret: getAuthSecret(),
   session: {
     strategy: "jwt",
     maxAge: 60 * 60 * 12, // 12 hours

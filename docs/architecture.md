@@ -54,7 +54,7 @@ Owns:
 - application API credentials
 - provider connection references
 
-Public/hosted requests resolve the application from the HTTP `Host` header. Server-to-server requests authenticate with an application credential and derive the application from that credential. Caller-supplied `application_id` must never override authenticated/host-derived context.
+Public/hosted requests resolve the application from the HTTP `Host` header. Server-to-server requests authenticate with an application credential and derive the application from that credential. Caller-supplied `application_id` must never override authenticated/host-derived context. The `Host` fallback is read-only: money-mutating SDK endpoints (checkout, credits, usage report, portal sessions, customers) reject host-only requests with `401 credential_required` and require an application credential.
 
 ### Customer Registry
 

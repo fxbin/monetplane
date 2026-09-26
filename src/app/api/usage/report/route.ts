@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { resolveApplicationContext } from "@/modules/applications";
+import { resolveCredentialApplicationContext } from "@/modules/applications";
 import { reportUsage } from "@/modules/usage/service";
 
 function parseEnvironment(body: Record<string, unknown>): "test" | "live" {
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const context = await resolveApplicationContext(request);
+    const context = await resolveCredentialApplicationContext(request);
 
     const externalCustomerId =
       typeof body.externalCustomerId === "string"
@@ -77,6 +77,15 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         { error: "Unauthorized", code: "unauthorized" },
+        { status: 401 },
+      );
+    }
+    if (name === "ApplicationCredentialRequiredError") {
+      return NextResponse.json(
+        {
+          error: "Application credential required",
+          code: "credential_required",
+        },
         { status: 401 },
       );
     }
