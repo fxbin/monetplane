@@ -35,14 +35,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       async authorize(credentials) {
         const email = credentials?.email as string | undefined;
         const password = credentials?.password as string | undefined;
-        if (!email || !password) return null;
+        if (!email || !password) {
+          console.warn(
+            "[auth] sign-in rejected: empty email or password received",
+          );
+          return null;
+        }
 
         try {
           const operator = await authenticateWithBootstrap({
             email,
             password,
           });
-          if (!operator) return null;
+          if (!operator) {
+            console.warn(
+              `[auth] sign-in failed for ${email}: credential mismatch`,
+            );
+            return null;
+          }
           return {
             id: operator.operatorId,
             name: operator.name,
