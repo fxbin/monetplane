@@ -68,6 +68,13 @@ const webhookPayload = JSON.stringify({
   },
 });
 
+const unknownPayload = JSON.stringify({
+  id: "evt_unknown_contract",
+  eventType: "definitely.not.a.real.event",
+  created_at: 1787076000000,
+  object: { id: "ch_unknown", request_id: "ord_unknown", metadata: {} },
+});
+
 function signWebhook(payload: string) {
   return {
     "creem-signature": createHmac("sha256", webhookSecret)
@@ -105,6 +112,11 @@ defineProviderAdapterContractTests({
     rawBody: webhookPayload,
     headers: { "creem-signature": "00".repeat(32) },
   },
+  unknownWebhook: {
+    rawBody: unknownPayload,
+    headers: signWebhook(unknownPayload),
+  },
   expectedEventId: "evt_contract",
   expectedEventType: "payment.succeeded",
+  expectedUnknownEventName: "definitely.not.a.real.event",
 });

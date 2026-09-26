@@ -48,12 +48,36 @@ describe("module boundaries", () => {
       expect(source, `${file} imports a concrete provider adapter`).not.toMatch(
         /providers[\\/]adapters/,
       );
-      expect(source, `${file} contains Creem-specific logic`).not.toMatch(
-        /\bcreem\b/i,
-      );
-      expect(source, `${file} contains Waffo-specific logic`).not.toMatch(
-        /\bwaffo\b/i,
+      expect(source, `${file} contains provider-specific logic`).not.toMatch(
+        PROVIDER_NAME_PATTERN,
       );
     }
   });
+
+  it("keeps provider names out of every core billing domain (#72)", async () => {
+    // A third provider must integrate without provider-name conditionals in
+    // commerce/credits/entitlements; this pins that for every provider,
+    // present and future.
+    const coreDirectories = ["commerce", "credits", "entitlements"];
+    for (const directory of coreDirectories) {
+      const coreDirectory = path.join(process.cwd(), "src/modules", directory);
+      const files = await collectTypeScriptFiles(coreDirectory);
+      for (const file of files) {
+        const source = await readFile(file, "utf8");
+        expect(
+          source,
+          `${file} contains a provider-name conditional`,
+        ).not.toMatch(PROVIDER_NAME_PATTERN);
+      }
+    }
+  });
 });
+
+/**
+ * Concrete provider names — extend this list when adding an adapter so the
+ * boundary check grows with the ecosystem. Registration points that are
+ * allowed to know providers (runtime.ts, setup.ts, adapters/) are outside
+ * the scanned directories.
+ */
+const PROVIDER_NAME_PATTERN =
+  /\b(creem|waffo|pancake|stripe|paddle|polar|paypal|lemonsqueezy|lemon[_ -]?squeezy|dodopayments|dodo[_ -]?payments|alipay|wechat[_ -]?pay|razorpay|mollie|square)\b/i;
