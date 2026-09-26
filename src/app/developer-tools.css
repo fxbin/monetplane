@@ -391,6 +391,36 @@
   background: #faf7f2;
 }
 
+.developer-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px 14px;
+  align-items: end;
+  margin-bottom: 4px;
+}
+
+.developer-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.developer-filters label span {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.developer-filters input,
+.developer-filters select {
+  width: 100%;
+}
+
+.developer-filters .developer-filter-actions {
+  align-self: end;
+}
+
 .developer-filter-actions {
   min-height: 38px;
 }
