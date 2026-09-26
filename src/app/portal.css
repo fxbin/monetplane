@@ -1,0 +1,250 @@
+/* Hosted customer billing portal (#71) — standalone surface, not the console. */
+
+.portal-shell {
+  min-height: 100vh;
+  background: var(--color-bg-page);
+  padding: 40px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.portal-card {
+  width: 100%;
+  max-width: 760px;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border);
+  border-radius: var(--card-radius);
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.portal-message-card {
+  max-width: 480px;
+  text-align: center;
+  align-items: center;
+}
+
+.portal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.portal-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.portal-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: var(--color-bg-muted);
+}
+
+.portal-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.portal-subtitle {
+  margin: 2px 0 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.portal-back-link {
+  font-size: 14px;
+  color: var(--color-info);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.portal-test-banner {
+  margin: 0;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+  font-size: 13px;
+}
+
+.portal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.portal-section-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.portal-subscription-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.portal-subscription {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  background: var(--color-bg-muted);
+}
+
+.portal-subscription-main {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.portal-plan-line {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portal-plan {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.portal-plan-meta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.portal-subscription-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.portal-price {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.portal-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--color-neutral-bg);
+  color: var(--color-neutral);
+  font-size: 12px;
+}
+
+.portal-badge-success {
+  background: var(--color-success-bg);
+  color: var(--color-success);
+}
+
+.portal-badge-warning {
+  background: var(--color-warning-bg);
+  color: var(--color-warning);
+}
+
+.portal-badge-danger {
+  background: var(--color-danger-bg);
+  color: var(--color-danger);
+}
+
+.portal-empty {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.portal-button {
+  align-self: flex-start;
+  display: inline-block;
+  padding: 9px 16px;
+  border-radius: 10px;
+  border: none;
+  background: var(--color-brand-primary);
+  color: var(--color-text-inverse);
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.portal-button-quiet {
+  background: var(--color-bg-hover);
+  color: var(--color-text-secondary);
+}
+
+.portal-button-danger {
+  background: var(--color-danger);
+}
+
+.portal-confirm {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.portal-confirm-text {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.portal-error {
+  font-size: 13px;
+  color: var(--color-danger);
+}
+
+.portal-details summary {
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.portal-history-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.portal-feature-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.portal-footer {
+  border-top: 1px solid var(--color-border-subtle);
+  padding-top: 16px;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.portal-message {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-text-secondary);
+}

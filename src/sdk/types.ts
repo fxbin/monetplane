@@ -34,6 +34,19 @@ export type CheckoutResult = {
   orderStatus: string;
 };
 
+export type PortalSessionInput = {
+  externalCustomerId: string;
+  environment?: Environment;
+  /** Optional post-portal return URL; its origin must be a registered callback origin. */
+  returnUrl?: string;
+};
+
+export type PortalSessionResult = {
+  sessionId: string;
+  portalUrl: string;
+  expiresAt: string;
+};
+
 export type CustomerInput = {
   externalCustomerId: string;
   email?: string | null;

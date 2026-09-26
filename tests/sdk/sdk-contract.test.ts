@@ -340,6 +340,7 @@ describe("MonetPlane SDK", () => {
         "captureReservation",
         "checkEntitlement",
         "createCheckout",
+        "createCustomerPortalSession",
         "debitCredits",
         "getCreditBalance",
         "releaseReservation",

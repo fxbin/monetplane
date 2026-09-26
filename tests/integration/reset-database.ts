@@ -7,6 +7,6 @@ import { getSqlClient } from "../../src/db/client";
  */
 export async function resetIntegrationDatabase(): Promise<void> {
   await getSqlClient().unsafe(
-    'TRUNCATE TABLE "applications", "customers", "operators", "operator_invitations" RESTART IDENTITY CASCADE',
+    'TRUNCATE TABLE "applications", "customers", "operators", "operator_invitations", "portal_sessions" RESTART IDENTITY CASCADE',
   );
 }

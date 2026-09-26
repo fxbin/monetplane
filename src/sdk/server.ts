@@ -38,6 +38,8 @@ import type {
   EntitlementCheckResult,
   Environment,
   MonetPlaneClientOptions,
+  PortalSessionInput,
+  PortalSessionResult,
   ReleaseReservationInput,
   ReleaseReservationResult,
   ReportUsageInput,
@@ -48,6 +50,9 @@ import type {
 
 type Client = {
   createCheckout(input: CheckoutInput): Promise<CheckoutResult>;
+  createCustomerPortalSession(
+    input: PortalSessionInput,
+  ): Promise<PortalSessionResult>;
   upsertCustomer(input: CustomerInput): Promise<CustomerResult>;
   getCreditBalance(
     externalCustomerId: string,
@@ -146,6 +151,13 @@ export function createMonetPlaneClient(
     async createCheckout(input: CheckoutInput): Promise<CheckoutResult> {
       const data = await call("/api/checkout", input);
       return data as CheckoutResult;
+    },
+
+    async createCustomerPortalSession(
+      input: PortalSessionInput,
+    ): Promise<PortalSessionResult> {
+      const data = await call("/api/portal/sessions", input);
+      return data as PortalSessionResult;
     },
 
     async upsertCustomer(input: CustomerInput): Promise<CustomerResult> {
