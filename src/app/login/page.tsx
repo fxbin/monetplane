@@ -16,14 +16,20 @@ function LoginForm() {
   const emailId = useId();
   const passwordId = useId();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
+    // Read the real DOM values: browser autofill can populate the inputs
+    // without firing React onChange, leaving the controlled state empty.
+    const formValues = new FormData(e.currentTarget);
+    const submittedEmail = String(formValues.get("email") ?? email);
+    const submittedPassword = String(formValues.get("password") ?? password);
+
     const result = await signIn("credentials", {
-      email,
-      password,
+      email: submittedEmail,
+      password: submittedPassword,
       redirect: false,
     });
 
@@ -52,6 +58,7 @@ function LoginForm() {
             </label>
             <input
               id={emailId}
+              name="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -69,6 +76,7 @@ function LoginForm() {
             </label>
             <input
               id={passwordId}
+              name="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
