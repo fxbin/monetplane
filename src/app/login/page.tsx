@@ -1,46 +1,41 @@
-"use client";
+import { AuthError } from "next-auth";
+import { redirect } from "next/navigation";
+import { signIn } from "@/auth";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { signIn } from "next-auth/react";
-import { Suspense, useId, useState } from "react";
+/**
+ * Operator sign-in (#70).
+ *
+ * Uses a Server Action form so sign-in works with JavaScript disabled
+ * (progressive enhancement): a browser that never hydrates the page still
+ * performs a real POST and lands on the console. Client-side autofill
+ * quirks therefore cannot trap the operator on this page, and credentials
+ * never leak into the URL (a plain HTML form would send them as query
+ * params).
+ */
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const failed = typeof params.error === "string";
+  const redirectTo =
+    typeof params.callbackUrl === "string" && params.callbackUrl.startsWith("/")
+      ? params.callbackUrl
+      : "/overview";
 
-function LoginForm() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/overview";
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const emailId = useId();
-  const passwordId = useId();
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-
-    // Read the real DOM values: browser autofill can populate the inputs
-    // without firing React onChange, leaving the controlled state empty.
-    const formValues = new FormData(e.currentTarget);
-    const submittedEmail = String(formValues.get("email") ?? email);
-    const submittedPassword = String(formValues.get("password") ?? password);
-
-    const result = await signIn("credentials", {
-      email: submittedEmail,
-      password: submittedPassword,
-      redirect: false,
-    });
-
-    if (result?.error) {
-      setError("Invalid email or password");
-      setLoading(false);
-      return;
+  async function authenticate(formData: FormData) {
+    "use server";
+    try {
+      await signIn("credentials", formData);
+    } catch (error) {
+      // NEXT_REDIRECT (successful sign-in) must propagate; only credential
+      // failures bounce back to the form.
+      if (error instanceof AuthError) {
+        redirect("/login?error=credentials");
+      }
+      throw error;
     }
-
-    router.push(callbackUrl);
-    router.refresh();
   }
 
   return (
@@ -51,58 +46,46 @@ function LoginForm() {
           <p className="login-subtitle">Operator console</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="login-form">
+        <form action={authenticate} className="login-form">
           <div className="form-field">
-            <label htmlFor={emailId} className="form-label">
+            <label htmlFor="email" className="form-label">
               Email
             </label>
             <input
-              id={emailId}
+              id="email"
               name="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               className="form-input"
               placeholder="operator@yourcompany.com"
               autoComplete="email"
               required
-              disabled={loading}
             />
           </div>
 
           <div className="form-field">
-            <label htmlFor={passwordId} className="form-label">
+            <label htmlFor="password" className="form-label">
               Password
             </label>
             <input
-              id={passwordId}
+              id="password"
               name="password"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
               className="form-input"
               placeholder="Enter your password"
               autoComplete="current-password"
               required
-              disabled={loading}
             />
           </div>
 
-          {error && <p className="form-error">{error}</p>}
+          {failed && <p className="form-error">Invalid email or password</p>}
 
-          <button type="submit" className="login-btn" disabled={loading}>
-            {loading ? "Signing in…" : "Sign in"}
+          <input type="hidden" name="redirectTo" value={redirectTo} />
+
+          <button type="submit" className="login-btn">
+            Sign in
           </button>
         </form>
       </div>
     </div>
-  );
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense fallback={null}>
-      <LoginForm />
-    </Suspense>
   );
 }
