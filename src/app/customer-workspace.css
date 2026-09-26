@@ -1,5 +1,8 @@
 .customer-toolbar {
   display: flex;
+  /* .card lays out as a column; the toolbar is a horizontal control row. */
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 14px;
@@ -8,6 +11,12 @@
 
 .customer-search-field {
   flex: 1;
+  min-width: 220px;
+}
+
+.customer-search-field input,
+.customer-filter-field select {
+  width: 100%;
 }
 
 .customer-search-field input,
@@ -367,4 +376,15 @@
   .customer-action-fields .span-two {
     grid-column: auto;
   }
+}
+
+.customer-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.customer-table th {
+  white-space: nowrap;
 }

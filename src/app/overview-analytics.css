@@ -187,3 +187,8 @@
     grid-template-columns: 1fr;
   }
 }
+
+.empty-state-guided {
+  text-align: center;
+  padding: 32px 24px;
+}
