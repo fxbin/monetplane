@@ -2,7 +2,8 @@
 
 Date: 2026-09-26 · Environment: real PayPal **sandbox** API
 (`api-m.sandbox.paypal.com`) with real sandbox REST credentials owned by the
-operator. Adapter: `src/modules/providers/adapters/paypal.ts` (PSP model —
+operator, plus the real sandbox buyer approval flow completed in a browser
+(personal sandbox account). Adapter: `src/modules/providers/adapters/paypal.ts` (PSP model —
 Orders API for one-time, Billing Subscriptions for recurring).
 
 Credentials used (redacted): client id `AQIqdINjvXUE…KscE0`, client secret
@@ -31,17 +32,28 @@ verification via `POST /v1/notifications/verify-webhook-signature`.
 | One-time order | `71B07043FK731281H` via `POST /v2/checkout/orders` with `custom_id: monetplane_order_id:…\|monetplane_customer_id:…` (84 chars — fits the 127-char limit) |
 | Checkout link shape | The approve link is `rel: "payer-action"` on current responses (older docs say `approve`); the adapter accepts both rels |
 | Subscription | `I-3C1C23VAAS5T` via `POST /v1/billing/subscriptions` on the monthly plan → status `APPROVAL_PENDING`, hosted approval URL at `www.sandbox.paypal.com/webapps/billing/subscriptions` |
-| Cancel endpoint | `POST /v1/billing/subscriptions/{id}/cancel` — route+auth verified; PayPal returned "not found/not cancellable" because the subscription was `APPROVAL_PENDING` (only `ACTIVE` subscriptions are cancellable) |
+| Cancel endpoint | `POST /v1/billing/subscriptions/{id}/cancel` — route+auth verified; PayPal returned "not cancellable" for `APPROVAL_PENDING` subscriptions (only `ACTIVE` is cancellable) |
 | Webhook verification | Contract-tested against the `verify-webhook-signature` request shape; `webhookId` is a connection credential (console field added) |
+
+## Buyer-approval journey (live, browser + API)
+
+| Step | Evidence |
+|---|---|
+| One-time approval | Order `49L12542FE518390U` ($12.00) approved by the sandbox buyer (`sb-…@personal.example.com`) through the hosted checkout (`/checkoutnow` → login → 「完成购物」); redirected to `return_url?token=…&PayerID=X3BKGR6FG2CMQ` |
+| Real capture | `POST /v2/checkout/orders/{id}/capture` → **201**, capture `7AV91188T0463123J` `COMPLETED` $12.00 — **`custom_id` echoed verbatim** (`monetplane_order_id:ord_buyer_evidence_1\|monetplane_customer_id:cus_buyer_evidence`), proving the webhook correlation contract end-to-end |
+| Real refund | `POST /v2/payments/captures/{id}/refund` → **201**, refund `9R083634CD4158109` `COMPLETED`; capture status flipped to `REFUNDED` (matches the adapter's `mapPaymentStatus`) |
+| Subscription first payment | Subscription `I-KCYB5XN8J1NX` approved through the hosted flow; first $19.00 charge executed (`billing_info.last_payment`) — PayPal's plan schema **defaults `total_cycles` to 1**, so the subscription then EXPIRED naturally (`failed_payments_count: 0`). Plans intended to auto-renew must set `total_cycles: 0` |
+| Subscription ACTIVE | Auto-renew plan `P-4V955578YC8930518NK33FYQ` (`total_cycles: 0`) → subscription `I-MN88MMVNENFM` approved → **ACTIVE** with `next_billing_time` 2026-10-26 |
+| Real cancel | `POST /v1/billing/subscriptions/{id}/cancel` → **204**; subscription status → **`CANCELLED`** |
 
 ## Capability mapping (post-verification)
 
 `one_time_checkout`, `recurring_subscription`, `monthly_interval`,
 `annual_interval`, `weekly_interval`, `trial_periods`,
-`provider_hosted_checkout` — verified by the live calls above.
-`subscription_cancel`, `refund` — endpoint contracts exercised (cancel) and
-schema-stable (refund); see qualifications. `subscription_update`
-(`/revise`) and `customer_portal` — not supported by this adapter v1.
+`provider_hosted_checkout`, `subscription_cancel` (real ACTIVE → CANCELLED),
+`refund` (real COMPLETED refund) — all verified by the live calls above.
+`subscription_update` (`/revise`) and `customer_portal` — not supported by
+this adapter v1.
 
 ## Setup walkthrough (sandbox)
 
@@ -60,15 +72,17 @@ schema-stable (refund); see qualifications. `subscription_update`
 ## Qualifications (honest limits)
 
 - **Sandbox only**; live-mode endpoints were not exercised.
-- The buyer-approval step (real `PAYMENT.CAPTURE.COMPLETED` capture, refund
-  execution on a real capture, and cancel of a truly `ACTIVE` subscription)
-  requires the sandbox buyer account to complete the hosted flow; the
-  webhook delivery leg additionally needs a public tunnel. The request
-  shapes are contract-tested (`tests/provider-contract/paypal-adapter.test.ts`)
-  and the creation-side endpoints above were exercised live. To finish the
-  loop: run step 4 with the sandbox buyer account and append the captured
-  evidence here.
+- **Webhook delivery** was not observed end-to-end (requires a public tunnel
+  for PayPal to POST to). The verification request shape is contract-tested
+  (`tests/provider-contract/paypal-adapter.test.ts`) and the correlation
+  contract is proven live by the capture `custom_id` echo — same
+  qualification the Creem evidence shipped with. To observe delivery: point
+  a webhook at a tunnel → `/api/webhooks/<connectionId>` and trigger
+  sandbox events (or use the dashboard webhook simulator).
 - `subscription_update` intentionally unsupported (PayPal revise supports
   quantity/shipping and plan migration; no MonetPlane demand yet).
 - PayPal requires `webhookId` for signature verification — connections
   without it fail webhook verification closed (by design).
+- Operator gotcha worth restating: plans default `total_cycles` to 1 (the
+  subscription expires after the first charge). Auto-renewing plans need
+  `total_cycles: 0`.
