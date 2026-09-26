@@ -3,7 +3,8 @@
 Date: 2026-09-26 · Environment: real PayPal **sandbox** API
 (`api-m.sandbox.paypal.com`) with real sandbox REST credentials owned by the
 operator, plus the real sandbox buyer approval flow completed in a browser
-(personal sandbox account). Adapter: `src/modules/providers/adapters/paypal.ts` (PSP model —
+(personal sandbox account), and real webhook delivery through a public
+ngrok tunnel into a running MonetPlane dev server. Adapter: `src/modules/providers/adapters/paypal.ts` (PSP model —
 Orders API for one-time, Billing Subscriptions for recurring).
 
 Credentials used (redacted): client id `AQIqdINjvXUE…KscE0`, client secret
@@ -46,6 +47,25 @@ verification via `POST /v1/notifications/verify-webhook-signature`.
 | Subscription ACTIVE | Auto-renew plan `P-4V955578YC8930518NK33FYQ` (`total_cycles: 0`) → subscription `I-MN88MMVNENFM` approved → **ACTIVE** with `next_billing_time` 2026-10-26 |
 | Real cancel | `POST /v1/billing/subscriptions/{id}/cancel` → **204**; subscription status → **`CANCELLED`** |
 
+## Webhook delivery journey (live, end-to-end through MonetPlane)
+
+Setup: console-driven (bootstrapped owner → application → PayPal connection
+with clientId/clientSecret → products/prices → connection
+`catalog[priceId] = {productId, planId}` mapping → console API key → ngrok
+tunnel → `POST /v1/notifications/webhooks` registering
+`https://<tunnel>/api/webhooks/<connectionId>` for the CAPTURE/SALE/
+BILLING.SUBSCRIPTION event families → real `WH-…` id written back into the
+connection credentials via the console reconfigure API).
+
+| Step | Evidence |
+|---|---|
+| Subscription via SDK | `POST /api/checkout` (mp_app_* bearer) → adapter created PayPal subscription `I-EHDPHD596XTR` for order `ord_133fb635…`; buyer approved in the hosted flow |
+| 3 webhooks delivered | `BILLING.SUBSCRIPTION.CREATED` → `subscription.created`, `BILLING.SUBSCRIPTION.ACTIVATED` → `subscription.activated`, `PAYMENT.SALE.COMPLETED` → `subscription.renewed` — all **signature-verified via the verify-webhook-signature API** (~1s per delivery incl. verification round-trip) and marked **processed** in the webhook inbox |
+| Control-plane state | subscriptions row `I-EHDPHD596XTR` → **active**, matching PayPal |
+| Fail-closed probe | A POST to the webhook URL with an empty body → **401** (rejected before processing) |
+| One-time via SDK | `POST /api/checkout` → PayPal order `1KN476418L4787713`; buyer approved; merchant capture `5TX960442V340890N` **201 COMPLETED** |
+| Capture webhook | `PAYMENT.CAPTURE.COMPLETED` delivered through the tunnel → **processed** as `payment.succeeded`; order `ord_9f383552…` → **paid**; payments row `5TX960442V340890N` succeeded $12.00 |
+
 ## Capability mapping (post-verification)
 
 `one_time_checkout`, `recurring_subscription`, `monthly_interval`,
@@ -72,17 +92,16 @@ this adapter v1.
 ## Qualifications (honest limits)
 
 - **Sandbox only**; live-mode endpoints were not exercised.
-- **Webhook delivery** was not observed end-to-end (requires a public tunnel
-  for PayPal to POST to). The verification request shape is contract-tested
-  (`tests/provider-contract/paypal-adapter.test.ts`) and the correlation
-  contract is proven live by the capture `custom_id` echo — same
-  qualification the Creem evidence shipped with. To observe delivery: point
-  a webhook at a tunnel → `/api/webhooks/<connectionId>` and trigger
-  sandbox events (or use the dashboard webhook simulator).
+- One-time capture is merchant-driven (`POST /v2/checkout/orders/{id}/capture`
+  after buyer approval); PayPal has no auto-capture-on-approval for the
+  redirect flow and the adapter does not perform captures inside webhook
+  processing. `CHECKOUT.ORDER.APPROVED` events are normalized as `unknown`
+  today.
 - `subscription_update` intentionally unsupported (PayPal revise supports
   quantity/shipping and plan migration; no MonetPlane demand yet).
 - PayPal requires `webhookId` for signature verification — connections
-  without it fail webhook verification closed (by design).
+  without it fail webhook verification closed (verified live by the 401
+  probe above).
 - Operator gotcha worth restating: plans default `total_cycles` to 1 (the
   subscription expires after the first charge). Auto-renewing plans need
   `total_cycles: 0`.
