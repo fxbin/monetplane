@@ -222,6 +222,33 @@ export async function refundProviderPayment(
   return adapter.refundPayment(connection, input);
 }
 
+/**
+ * Hosted payment-management redirect (#71). Only callable when the adapter
+ * implements createCustomerPortalSession AND claims the customer_portal
+ * capability — the portal never offers an unsupported action.
+ */
+export async function createProviderCustomerPortalSession(
+  applicationId: string,
+  connectionId: string,
+  input: { providerCustomerId?: string; returnUrl?: string },
+  db: Database = getDb(),
+) {
+  const connection = await loadProviderConnectionContext(
+    applicationId,
+    connectionId,
+    db,
+  );
+  const adapter = resolveProviderAdapter(connection.provider);
+  const capabilities = adapter.getCapabilities(connection);
+  if (!capabilities.customer_portal || !adapter.createCustomerPortalSession) {
+    throw new UnsupportedProviderCapabilityError(
+      connection.provider,
+      "customer_portal",
+    );
+  }
+  return adapter.createCustomerPortalSession(connection, input);
+}
+
 export async function verifyAndNormalizeProviderWebhook(
   applicationId: string,
   connectionId: string,

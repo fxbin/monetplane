@@ -101,6 +101,20 @@ export type NormalizedRefund = {
   amountMinor?: number;
 };
 
+/**
+ * Optional hosted payment-management redirect (#71). Providers that expose a
+ * native customer billing portal may implement this; the customer portal only
+ * offers the redirect when the active connection both implements the method
+ * and claims the `customer_portal` capability.
+ */
+export type CreateCustomerPortalSessionInput = {
+  providerCustomerId?: string;
+  returnUrl?: string;
+};
+export type CustomerPortalSessionResult = {
+  url: string;
+};
+
 export type VerifyWebhookInput = {
   rawBody: string;
   headers: Readonly<Record<string, string | undefined>>;
@@ -175,6 +189,15 @@ export interface PaymentProviderAdapter {
     connection: ProviderConnectionContext,
     input: RefundPaymentInput,
   ): Promise<NormalizedRefund>;
+  /**
+   * Optional: hosted payment-management redirect for end customers (#71).
+   * Capability gating is enforced by the runtime — callers must check
+   * `customer_portal` and must treat a missing implementation as unsupported.
+   */
+  createCustomerPortalSession?(
+    connection: ProviderConnectionContext,
+    input: CreateCustomerPortalSessionInput,
+  ): Promise<CustomerPortalSessionResult>;
   verifyWebhook(
     connection: ProviderConnectionContext,
     input: VerifyWebhookInput,

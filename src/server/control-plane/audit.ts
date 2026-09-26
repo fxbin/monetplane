@@ -64,6 +64,8 @@ export async function recordAuditEntry(
     metadata?: Record<string, unknown>;
     request?: Request;
     actor?: { id: string; label?: string | null };
+    /** Defaults to admin_session; portal-initiated actions use customer_portal (#71). */
+    actorType?: "admin_session" | "customer_portal";
   },
   db: Database = getDb(),
 ) {
@@ -88,7 +90,7 @@ export async function recordAuditEntry(
       id: `audit_${randomUUID()}`,
       applicationId: input.applicationId,
       environment: input.environment ?? null,
-      actorType: "admin_session",
+      actorType: input.actorType ?? "admin_session",
       actorId: actor.id,
       actorLabel: actor.label ?? null,
       action: input.action,

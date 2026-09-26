@@ -3,6 +3,8 @@ import type {
   CancelSubscriptionInput,
   CheckoutResult,
   CreateCheckoutInput,
+  CreateCustomerPortalSessionInput,
+  CustomerPortalSessionResult,
   GetPaymentInput,
   GetSubscriptionInput,
   NormalizedPayment,
@@ -33,7 +35,7 @@ export const MOCK_CAPABILITIES: ProviderCapabilities = {
   refund: true,
   subscription_cancel: true,
   subscription_update: true,
-  customer_portal: false,
+  customer_portal: true,
   provider_hosted_checkout: true,
 };
 
@@ -154,6 +156,15 @@ export const mockProviderAdapter: PaymentProviderAdapter = {
       providerSubscriptionId: input.providerSubscriptionId,
       status: "active",
       cancelAtPeriodEnd: false,
+    };
+  },
+
+  async createCustomerPortalSession(
+    _connection: ProviderConnectionContext,
+    input: CreateCustomerPortalSessionInput,
+  ): Promise<CustomerPortalSessionResult> {
+    return {
+      url: `https://mock.monetplane.test/portal/${input.providerCustomerId ?? "anonymous"}`,
     };
   },
 
