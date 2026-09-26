@@ -14,6 +14,12 @@ const connection: ProviderConnectionContext = {
   credentials: { webhookSecret: "contract-secret" },
 };
 
+const unknownBody = JSON.stringify({
+  id: "evt_unknown_contract",
+  type: "definitely.not.a.real.event",
+  occurred_at: "2026-08-18T12:00:00.000Z",
+});
+
 const rawBody = JSON.stringify({
   id: "evt_contract_1",
   type: "payment.succeeded",
@@ -62,6 +68,16 @@ defineProviderAdapterContractTests({
     rawBody: "{not-valid-json",
     headers: { "x-monetplane-mock-signature": "00" },
   },
+  unknownWebhook: {
+    rawBody: unknownBody,
+    headers: {
+      "x-monetplane-mock-signature": signMockWebhookPayload(
+        unknownBody,
+        "contract-secret",
+      ),
+    },
+  },
   expectedEventId: "evt_contract_1",
   expectedEventType: "payment.succeeded",
+  expectedUnknownEventName: "definitely.not.a.real.event",
 });

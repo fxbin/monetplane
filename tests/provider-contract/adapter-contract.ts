@@ -5,7 +5,10 @@ import type {
   ProviderConnectionContext,
   VerifyWebhookInput,
 } from "../../src/modules/providers/contract";
-import { InvalidProviderWebhookSignatureError } from "../../src/modules/providers/contract";
+import {
+  InvalidProviderWebhookSignatureError,
+  NORMALIZED_PROVIDER_EVENT_TYPES,
+} from "../../src/modules/providers/contract";
 
 export function defineProviderAdapterContractTests(input: {
   name: string;
@@ -14,8 +17,12 @@ export function defineProviderAdapterContractTests(input: {
   checkout: CreateCheckoutInput;
   validWebhook: VerifyWebhookInput;
   invalidWebhook: VerifyWebhookInput;
+  /** A correctly signed webhook whose event type no adapter can map. */
+  unknownWebhook: VerifyWebhookInput;
   expectedEventId: string;
   expectedEventType: string;
+  /** The provider-level event name carried by `unknownWebhook`. */
+  expectedUnknownEventName: string;
 }) {
   describe(`${input.name} provider contract`, () => {
     it("declares explicit boolean capabilities", () => {
@@ -93,6 +100,36 @@ export function defineProviderAdapterContractTests(input: {
       expect(first).not.toHaveProperty("rawBody");
       expect(first).not.toHaveProperty("raw");
       expect(first).not.toHaveProperty("data");
+    });
+
+    it("normalizes events into the shared event-type catalog with consistent provider identity", async () => {
+      const verified = await input.adapter.verifyWebhook(
+        input.connection,
+        input.validWebhook,
+      );
+      const event = await input.adapter.normalizeWebhook(
+        input.connection,
+        verified,
+      );
+
+      expect(NORMALIZED_PROVIDER_EVENT_TYPES).toContain(event.type);
+      expect(event.provider).toBe(input.adapter.provider);
+      expect(event.occurredAt).toBeTruthy();
+      expect(new Date(event.occurredAt).toString()).not.toBe("Invalid Date");
+      expect(event.rawEventReference).toBeTruthy();
+    });
+
+    it("classifies unknown events as unknown instead of inventing types", async () => {
+      const verified = await input.adapter.verifyWebhook(
+        input.connection,
+        input.unknownWebhook,
+      );
+      const event = await input.adapter.normalizeWebhook(
+        input.connection,
+        verified,
+      );
+      expect(event.type).toBe("unknown");
+      expect(event.providerEventName).toBe(input.expectedUnknownEventName);
     });
   });
 }

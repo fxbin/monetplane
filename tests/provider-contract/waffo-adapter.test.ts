@@ -80,6 +80,26 @@ export function adapterWith(fake: ReturnType<typeof pancakeFake>) {
 const fake = pancakeFake();
 const adapter = adapterWith(fake);
 
+const unknownEventBody = JSON.stringify({
+  id: "wh_delivery_unknown_1",
+  timestamp: "2026-09-19T00:00:00.000Z",
+  eventType: "definitely.not.a.real.event",
+  eventId: "PAY_unknown_1",
+  storeId: "STO_contracttest",
+  storeName: "Contract Store",
+  mode: "test",
+  data: {
+    orderId: "ORD_unknown_1",
+    orderStatus: "completed",
+    buyerEmail: "buyer@test",
+    currency: "USD",
+    amount: "29.00",
+    taxAmount: "0.00",
+    total: "29.00",
+    productName: "Contract Pro",
+  },
+});
+
 const orderCompletedBody = JSON.stringify({
   id: "wh_delivery_contract_1",
   timestamp: "2026-09-19T00:00:00.000Z",
@@ -133,6 +153,11 @@ defineProviderAdapterContractTests({
     rawBody: orderCompletedBody,
     headers: {},
   },
+  unknownWebhook: {
+    rawBody: unknownEventBody,
+    headers: { "x-waffo-signature": "t=1,v1=contract" },
+  },
   expectedEventId: "wh_delivery_contract_1",
   expectedEventType: "payment.succeeded",
+  expectedUnknownEventName: "definitely.not.a.real.event",
 });

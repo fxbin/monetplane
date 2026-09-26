@@ -1,5 +1,9 @@
 # Payment Provider Adapter Contract
 
+> Adding a new provider? Start with the step-by-step
+> [Provider Adapter Author Guide](provider-adapter-guide.md) — this document
+> is the background rationale for the contract itself.
+
 MonetPlane must keep payment-provider behavior outside the core domain. Provider adapters translate provider-specific requests/events into a stable MonetPlane contract.
 
 ## Goals
