@@ -1066,3 +1066,11 @@
     border-left: 0;
   }
 }
+
+.currency-field {
+  flex: 0 0 120px;
+}
+
+.quantity-field {
+  flex: 0 0 110px;
+}

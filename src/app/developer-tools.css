@@ -549,3 +549,12 @@
     grid-column: 2;
   }
 }
+
+.webhook-url-field {
+  flex: 2;
+  min-width: 220px;
+}
+
+.developer-log-copy {
+  flex-shrink: 0;
+}

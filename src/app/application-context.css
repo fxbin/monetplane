@@ -488,3 +488,11 @@
     gap: 3px;
   }
 }
+
+.detail-list.compact {
+  gap: 6px;
+}
+
+.project-form-security {
+  border-left: 3px solid var(--color-info);
+}
