@@ -37,13 +37,11 @@ const PAYPAL_CAPABILITIES: ProviderCapabilities = {
   annual_interval: true,
   weekly_interval: true,
   trial_periods: true,
-  // POST /v2/payments/captures/{id}/refund — endpoint contract exercised
-  // live; capture-dependent execution pending the buyer-approval evidence
-  // step (docs/paypal-live-evidence.md qualifications).
+  // Live-verified: real refund 9R083634CD4158109 COMPLETED on capture
+  // 7AV91188T0463123J (docs/paypal-live-evidence.md).
   refund: true,
-  // POST /v1/billing/subscriptions/{id}/cancel — route/auth exercised live;
-  // only ACTIVE subscriptions are cancellable and the evidence subscription
-  // stayed APPROVAL_PENDING without a buyer approval.
+  // Live-verified: real cancel of ACTIVE subscription I-MN88MMVNENFM →
+  // CANCELLED (docs/paypal-live-evidence.md).
   subscription_cancel: true,
   subscription_update: false,
   customer_portal: false,
