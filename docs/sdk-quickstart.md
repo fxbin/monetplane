@@ -32,7 +32,7 @@ const credential = await issueApplicationCredential(app.id, "production-api");
 
 ## 2. Configure a provider connection
 
-Register a provider connection (Creem, Waffo, or mock) in the MonetPlane admin or via the API. Checkout does NOT need a `providerConnectionId`: MonetPlane's payment router resolves the provider from your product and environment configuration.
+Register a provider connection (Creem, Waffo, PayPal, or the test-only mock) in the MonetPlane admin or via the API. Checkout does NOT need a `providerConnectionId`: MonetPlane's payment router resolves the provider from your product and environment configuration.
 
 ## 3. Create products and prices
 
@@ -167,12 +167,15 @@ try {
 - The `appSecret` is sent as a `Bearer` token in the `Authorization` header.
 - All credit mutations require an idempotency key to prevent double-charging.
 - Application isolation is enforced at the database level — one application cannot query or mutate another application's customers, credits, or entitlements.
+- **All money-mutating endpoints require the application credential.** Host-header-only access is read-only by design: checkout, credit mutations, usage reporting, portal sessions, and customer creation answer `401 credential_required` without a valid `mp_app_*` bearer.
 
 ## SDK method reference
 
 | Method | Description |
 |---|---|
 | `upsertCustomer` | Create or find a customer by external ID |
+| `createCustomerPortalSession` | Mint a short-lived, one-time customer portal session |
+| `reportUsage` | Report metered usage against a meter (idempotent) |
 | `createCheckout` | Create a provider-hosted checkout session |
 | `getCreditBalance` | Check available and reserved credit balance |
 | `debitCredits` | Deduct credits for usage (idempotent) |

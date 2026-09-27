@@ -34,9 +34,9 @@ billing.product-a.com  billing.product-b.com  billing.product-n.com
            │                    │                     │
       PostgreSQL          Provider adapters      Hosted pages/API
                                │
-                        ┌───────┴────────┐
-                        │                │
-                      Creem           Waffo
+                  ┌──────┬────────┼────────┐
+                  │      │        │        │
+                Creem  Waffo   PayPal   mock (tests only)
 ```
 
 A custom host does **not** imply a separate deployment. The host is resolved to an `Application` and that application context drives branding, catalog, payment-provider connection, callbacks, and authorization boundaries.
@@ -101,7 +101,7 @@ Provider redirects are user-experience signals only. **Signed provider webhooks 
 
 ### Provider Adapter Layer
 
-Provider-specific APIs, event names, signatures, and identifiers stay behind a common contract. P0 targets Creem and Waffo to prove that the core is not coupled to one provider.
+Provider-specific APIs, event names, signatures, and identifiers stay behind a common contract. Shipped adapters: Creem, Waffo, and PayPal (plus a contract-conformance `mock` used by tests), proving that the core is not coupled to one provider. Adapter authors reuse the shared kit in `src/modules/providers/adapters/shared.ts` (guards, credential classification, fetch with timeout) and the currency registry in `src/lib/money.ts` — adapters must not re-implement these locally.
 
 See [provider contract](provider-contract.md).
 
@@ -141,6 +141,21 @@ P0 supports:
 
 See [credits ledger](credits-ledger.md).
 
+### Billing Operations Journal
+
+Operator-driven mutations (console refunds, cancellations, retries) are recorded
+in a billing-operations journal before the provider call, with idempotency keys,
+explicit retry semantics, and reconciliation for uncertain outcomes. The journal
+operation layer also owns the operator audit entry: the audit row commits in the
+same transaction as the journal completion, so every money mutation is exactly
+once-audited.
+
+### Developer Lifecycle Events
+
+Committed provider webhook effects fan out to developer-configured webhook
+endpoints as signed, provider-neutral events (deterministic event identity;
+deliveries unique per endpoint + event). Publisher: `src/server/control-plane/billing-events.ts`.
+
 ### Webhook Inbox
 
 Every provider event is first persisted into an inbox with a unique provider event identifier before business effects are applied.
@@ -160,6 +175,11 @@ mark processed
 ```
 
 Duplicate deliveries must return success without duplicating effects.
+
+Response policy (post #118): permanent validation failures answer `422 {permanent: true}`
+(deterministic — retrying cannot fix them); transient failures answer `503` so the
+provider's redelivery acts as the automatic retry path (failed inbox rows are
+reprocessable); signature failures stay 401 and unregistered adapters 404.
 
 ## 4. Core domain model
 
@@ -196,7 +216,7 @@ Product backend
    ↓ authenticated create-checkout
 MonetPlane
    ↓ provider adapter
-Creem / Waffo checkout
+Provider-hosted checkout
    ↓ payment
 provider webhook
    ↓ signature + idempotency
@@ -247,6 +267,9 @@ Long-running/variable-cost work uses reserve/capture/release instead of an uncon
 7. Entitlement activation is derived from normalized commercial events, never from browser redirects.
 8. Secrets are never returned by public/admin APIs after creation.
 9. Provider credentials stored by MonetPlane must be encrypted at rest with an installation-level encryption key.
+10. A provider event's currency must match the recorded payment/order currency; mismatches fail the event before any write.
+11. A settled payment's `amountMinor`/`currency` are immutable — later events never overwrite them (drift is logged for inspection).
+12. Refunds are capped at the captured amount minus already-succeeded refunds; only a cumulative-full refund flips payment/order to `refunded` and revokes entitlements.
 
 ## 7. P0 reference stack
 
@@ -292,6 +315,6 @@ The architecture is proven when:
 - invoices/accounting ledger
 - affiliate/referral system
 - multi-currency wallet
-- credit expiration/rollover policy engine
+- credit expiration/rollover **policy engine** (basic scheduled expiry of expiring credit buckets ships via the protected cron route `GET /api/cron/credit-expiry`)
 - complex usage metering aggregation
 - asynchronous event bus / distributed services

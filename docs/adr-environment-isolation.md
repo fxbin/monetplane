@@ -3,6 +3,11 @@
 Status: Accepted (decision gate for #49; implementation in #74) ·
 Date: 2026-09-17
 
+> Related (2026-09): analytics revenue/usage filtering pins the fact-table
+> `environment` columns (not `providerConnections.mode`) as the canonical
+> query dimension — see
+> `.agents/notes/implemented/architecture/2026-09-26-canonical-environment-filter.md`.
+
 ## 1. Chosen model — "Shared definitions, environment-scoped runtime"
 
 The application (project) remains the global isolation boundary. Within a

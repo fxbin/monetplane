@@ -28,6 +28,12 @@ src/app/**                 Next.js routes / server components
 - `src/sdk` remains the public integration contract and never imports
   console internals.
 
+These rules are enforced mechanically by `tests/module-boundaries.test.ts`
+(dashboard pages/components may not import module services, domain modules may
+not import `next/*`/`react`, control-plane may not import concrete provider
+adapters). The test contains a small reviewed allowlist — each entry is a
+decision, not an invitation; add entries only with the same scrutiny.
+
 ## Console UI primitives
 
 `src/components/ui/console.tsx` and `src/components/ui/DataTable.tsx` are

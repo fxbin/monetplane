@@ -11,7 +11,7 @@ MonetPlane gives teams one place to manage monetization across multiple products
 - **Applications** — register multiple products in one deployment
 - **Domains & branding** — resolve application context from custom checkout/account domains
 - **Payment orchestration** — one-time purchases, monthly/yearly subscriptions, refunds, and provider-normalized webhooks
-- **Provider adapters** — isolate Creem, Waffo, and future payment providers behind one contract
+- **Provider adapters** — isolate Creem, Waffo, PayPal, and future payment providers behind one contract
 - **Entitlements** — answer what a customer is allowed to use
 - **Credits** — grant, purchase, reserve, capture, release, debit, refund, and audit usage credits
 - **Idempotency & auditability** — prevent duplicate webhook grants and duplicate credit consumption
@@ -22,7 +22,8 @@ MonetPlane gives teams one place to manage monetization across multiple products
 Product A ─┐
 Product B ─┼──► MonetPlane ───► Creem
 Product C ─┤                 ├► Waffo
-Product N ─┘                 └► future providers
+Product N ─┘                 ├► PayPal
+                             └► future providers
 
             one implementation
             many domains / brands
@@ -57,20 +58,24 @@ Requirements:
 - PostgreSQL (local PostgreSQL or a Neon-compatible connection string)
 
 ```bash
-cp .env.example .env
-npm install
-npm run db:migrate
-npm run dev
+cp .env.example .env   # then set DATABASE_URL, AUTH_SECRET (required), MONETPLANE_ENCRYPTION_KEY
+pnpm install
+pnpm db:migrate
+pnpm dev
 ```
+
+`AUTH_SECRET` is required at build and runtime (fail-fast). `CRON_SECRET`
+protects the credit-expiry cron route (`GET /api/cron/credit-expiry`, schedule
+every 5-15 min — see `docs/credits-ledger.md`).
 
 Verification:
 
 ```bash
-npm run lint
-npm run typecheck
-npm test
-npm run db:migrate
-npm run build
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm db:migrate
+pnpm build
 ```
 
 CI provisions a fresh PostgreSQL database, applies migrations twice to verify repeatability, then starts the production build and verifies `GET /api/health` against that database.
@@ -80,6 +85,14 @@ CI provisions a fresh PostgreSQL database, applies migrations twice to verify re
 - [System architecture](docs/architecture.md)
 - [Payment provider contract](docs/provider-contract.md)
 - [Credits and usage ledger](docs/credits-ledger.md)
+- [Console layering](docs/p1-console-architecture.md)
+
+Decision records (why things are the way they are) live in
+[`.agents/notes/`](.agents/notes/README.md) — the audit-remediation decisions
+(money invariants, currency registry, credential gating, webhook retry policy,
+explicit scope cuts) are the first entries. Operations tooling:
+`scripts/reconcile-currency-decimals.mts` (read-only report of rows possibly
+mis-scaled by pre-unification currency tables).
 
 ## Design references
 
