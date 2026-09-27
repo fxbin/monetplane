@@ -1,11 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
-import {
-  prices,
-  productGrantConfigs,
-  products,
-} from "@/modules/catalog/schema";
+import { prices, products } from "@/modules/catalog/schema";
 import {
   orderItems,
   orders,
@@ -15,17 +11,11 @@ import {
   subscriptions,
   webhookEvents,
 } from "@/modules/commerce/schema";
-import { getBucketSummary } from "@/modules/credits/buckets";
 import { creditAccounts, creditTransactions } from "@/modules/credits/schema";
 import { grantCredits } from "@/modules/credits/service";
 import { applicationCustomers } from "@/modules/customers/schema";
 import { entitlementGrants } from "@/modules/entitlements/schema";
-import { revokeEntitlementsBySource } from "@/modules/entitlements/service";
-import {
-  cancelProviderSubscription,
-  getProviderCapabilities,
-  refundProviderPayment,
-} from "@/modules/providers/runtime";
+import { getProviderCapabilities } from "@/modules/providers/runtime";
 import { providerConnections } from "@/modules/providers/schema";
 import { usageEvents, usageMeters } from "@/modules/usage/schema";
 
@@ -518,190 +508,4 @@ export async function grantCustomerCredits(
     idempotencyKey: `admin-credit:${sourceId}`,
     metadata: { note: input.note?.trim() || undefined },
   });
-}
-
-export async function cancelCustomerSubscription(
-  applicationId: string,
-  applicationCustomerId: string,
-  subscriptionId: string,
-) {
-  const db = getDb();
-  await requireApplicationCustomer(applicationId, applicationCustomerId);
-  const [subscription] = await db
-    .select()
-    .from(subscriptions)
-    .where(
-      and(
-        eq(subscriptions.id, subscriptionId),
-        eq(subscriptions.applicationId, applicationId),
-        eq(subscriptions.applicationCustomerId, applicationCustomerId),
-      ),
-    )
-    .limit(1);
-  if (!subscription)
-    throw new Error("Subscription not found for this customer");
-  if (["cancelled", "expired"].includes(subscription.status)) {
-    throw new Error("Subscription is already in a terminal state");
-  }
-
-  const result = await cancelProviderSubscription(
-    applicationId,
-    subscription.providerConnectionId,
-    { providerSubscriptionId: subscription.providerSubscriptionId },
-  );
-
-  await db
-    .update(subscriptions)
-    .set({
-      status: result.status,
-      currentPeriodStart: result.currentPeriodStart
-        ? new Date(result.currentPeriodStart)
-        : subscription.currentPeriodStart,
-      currentPeriodEnd: result.currentPeriodEnd
-        ? new Date(result.currentPeriodEnd)
-        : subscription.currentPeriodEnd,
-      cancelAtPeriodEnd: result.cancelAtPeriodEnd,
-      updatedAt: new Date(),
-    })
-    .where(
-      and(
-        eq(subscriptions.id, subscription.id),
-        eq(subscriptions.applicationId, applicationId),
-      ),
-    );
-
-  if (result.status === "cancelled" && !result.cancelAtPeriodEnd) {
-    await revokeEntitlementsBySource(
-      applicationId,
-      "subscription",
-      subscription.id,
-    );
-  }
-
-  return result;
-}
-
-export async function refundCustomerPayment(
-  applicationId: string,
-  applicationCustomerId: string,
-  paymentId: string,
-) {
-  const db = getDb();
-  const customer = await requireApplicationCustomer(
-    applicationId,
-    applicationCustomerId,
-  );
-  const [payment] = await db
-    .select({
-      id: payments.id,
-      orderId: payments.orderId,
-      providerConnectionId: payments.providerConnectionId,
-      providerPaymentId: payments.providerPaymentId,
-      status: payments.status,
-      amountMinor: payments.amountMinor,
-      currency: payments.currency,
-    })
-    .from(payments)
-    .where(
-      and(
-        eq(payments.id, paymentId),
-        eq(payments.applicationId, applicationId),
-        eq(payments.customerId, customer.customerId),
-      ),
-    )
-    .limit(1);
-  if (!payment) throw new Error("Payment not found for this customer");
-  if (payment.status !== "succeeded") {
-    throw new Error("Only succeeded payments can be refunded");
-  }
-  if (!payment.orderId) {
-    throw new Error("Refund requires a payment linked to a MonetPlane order");
-  }
-
-  const [order] = await db
-    .select()
-    .from(orders)
-    .where(
-      and(
-        eq(orders.id, payment.orderId),
-        eq(orders.applicationId, applicationId),
-        eq(orders.applicationCustomerId, applicationCustomerId),
-      ),
-    )
-    .limit(1);
-  if (!order) throw new Error("Payment order was not found for this customer");
-  if (order.billingMode !== "one_time") {
-    throw new Error(
-      "Subscription payment refunds are handled from the subscription operations flow",
-    );
-  }
-
-  const purchasedItems = await db
-    .select({ productId: orderItems.productId })
-    .from(orderItems)
-    .where(eq(orderItems.orderId, order.id));
-  const productIds = [...new Set(purchasedItems.map((item) => item.productId))];
-  if (productIds.length > 0) {
-    const creditGrants = await db
-      .select({ id: productGrantConfigs.id })
-      .from(productGrantConfigs)
-      .where(
-        and(
-          inArray(productGrantConfigs.productId, productIds),
-          eq(productGrantConfigs.grantType, "credit"),
-        ),
-      )
-      .limit(1);
-    if (creditGrants.length > 0) {
-      throw new Error(
-        "Refund is blocked because this purchase granted credits and no safe credit clawback policy is configured",
-      );
-    }
-  }
-
-  const result = await refundProviderPayment(
-    applicationId,
-    payment.providerConnectionId,
-    {
-      providerPaymentId: payment.providerPaymentId,
-      amountMinor: payment.amountMinor,
-    },
-  );
-
-  await db.transaction(async (tx) => {
-    await tx
-      .insert(refunds)
-      .values({
-        id: `ref_${randomUUID()}`,
-        applicationId,
-        orderId: order.id,
-        paymentId: payment.id,
-        providerConnectionId: payment.providerConnectionId,
-        providerRefundId: result.providerRefundId,
-        status: result.status,
-        amountMinor: result.amountMinor ?? payment.amountMinor,
-      })
-      .onConflictDoUpdate({
-        target: [refunds.providerConnectionId, refunds.providerRefundId],
-        set: {
-          status: result.status,
-          amountMinor: result.amountMinor ?? payment.amountMinor,
-          updatedAt: new Date(),
-        },
-      });
-
-    if (result.status === "succeeded") {
-      await tx
-        .update(payments)
-        .set({ status: "refunded", updatedAt: new Date() })
-        .where(eq(payments.id, payment.id));
-      await tx
-        .update(orders)
-        .set({ status: "refunded", updatedAt: new Date() })
-        .where(eq(orders.id, order.id));
-      await revokeEntitlementsBySource(applicationId, "order", order.id, tx);
-    }
-  });
-
-  return result;
 }

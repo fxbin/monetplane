@@ -1,9 +1,9 @@
 import { and, count, desc, eq, sum } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { applications } from "@/modules/applications/schema";
-import { prices, products } from "@/modules/catalog/schema";
+import { products } from "@/modules/catalog/schema";
 import { orders } from "@/modules/commerce/schema";
-import { creditAccounts, creditTransactions } from "@/modules/credits/schema";
+import { creditTransactions } from "@/modules/credits/schema";
 import { applicationCustomers } from "@/modules/customers/schema";
 import { providerConnections } from "@/modules/providers/schema";
 
@@ -136,25 +136,6 @@ export async function getProductList(applicationId?: string) {
   return rows;
 }
 
-export async function getProductPrices(productId: string) {
-  const db = getDb();
-
-  return db
-    .select({
-      id: prices.id,
-      key: prices.key,
-      currency: prices.currency,
-      amountMinor: prices.amountMinor,
-      billingType: prices.billingType,
-      recurringInterval: prices.recurringInterval,
-      intervalCount: prices.intervalCount,
-      status: prices.status,
-    })
-    .from(prices)
-    .where(eq(prices.productId, productId))
-    .orderBy(desc(prices.createdAt));
-}
-
 export async function getProviderList(
   applicationId?: string,
   mode?: "test" | "live",
@@ -217,20 +198,6 @@ export async function getCustomerList(limit = 50, applicationId?: string) {
     .limit(limit);
 
   return rows;
-}
-
-export async function getCustomerCreditBalances(applicationCustomerId: string) {
-  const db = getDb();
-
-  return db
-    .select({
-      id: creditAccounts.id,
-      creditType: creditAccounts.creditType,
-      availableBalance: creditAccounts.availableBalance,
-      reservedBalance: creditAccounts.reservedBalance,
-    })
-    .from(creditAccounts)
-    .where(eq(creditAccounts.applicationCustomerId, applicationCustomerId));
 }
 
 export async function getApplicationList() {
