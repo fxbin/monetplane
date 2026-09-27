@@ -1,11 +1,12 @@
 import { PageContainer } from "@/components/layout/PageContainer";
+import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
 import { formatAmount } from "@/lib/format";
 import {
+  getRevenueAnalytics,
   getRevenueAnalyticsV1,
   getSubscriptionAnalytics,
 } from "@/server/control-plane/analytics";
 import { getConsoleContext } from "@/server/control-plane/context";
-import { getRevenueAnalytics } from "@/server/control-plane/overview";
 
 export const dynamic = "force-dynamic";
 
@@ -38,22 +39,28 @@ export default async function RevenuePage() {
     );
   }
 
-  const analytics = await getRevenueAnalytics(
-    application.id,
-    context.environment,
-  );
   const now = new Date();
-  const [operational, subscriptions] = await Promise.all([
+  const [analytics, operational, subscriptions] = await Promise.all([
+    getRevenueAnalytics(application.id, context.environment),
     getRevenueAnalyticsV1(application.id, context.environment, {
       from: new Date(now.getTime() - 30 * 24 * 3600 * 1000),
       to: new Date(now.getTime() + 60_000),
     }),
     getSubscriptionAnalytics(application.id, context.environment),
   ]);
-  const maxRevenue = Math.max(
-    ...analytics.monthly.map((entry) => entry.revenueMinor),
-    1,
-  );
+  // The chart renders the dominant currency's series; other currencies are
+  // listed so the view is honest about the mix (amounts are never summed
+  // across currencies).
+  const dominantCurrency = analytics.totals.byCurrency[0];
+  const monthly = dominantCurrency
+    ? analytics.monthly.filter(
+        (entry) => entry.currency === dominantCurrency.currency,
+      )
+    : [];
+  const otherCurrencies = analytics.totals.byCurrency
+    .slice(1)
+    .map((entry) => entry.currency);
+  const maxRevenue = Math.max(...monthly.map((entry) => entry.revenueMinor), 1);
 
   return (
     <PageContainer
@@ -64,7 +71,12 @@ export default async function RevenuePage() {
         <div className="stat-card">
           <span className="stat-label">Total revenue (12 months)</span>
           <span className="stat-value">
-            {formatAmount(analytics.totals.revenueMinor, "USD")}
+            <CurrencyBreakdown
+              amounts={analytics.totals.byCurrency.map((entry) => ({
+                currency: entry.currency,
+                amountMinor: entry.revenueMinor,
+              }))}
+            />
           </span>
         </div>
         <div className="stat-card">
@@ -74,7 +86,12 @@ export default async function RevenuePage() {
         <div className="stat-card">
           <span className="stat-label">Average payment</span>
           <span className="stat-value">
-            {formatAmount(analytics.totals.averagePaymentMinor, "USD")}
+            <CurrencyBreakdown
+              amounts={analytics.totals.byCurrency.map((entry) => ({
+                currency: entry.currency,
+                amountMinor: entry.averagePaymentMinor,
+              }))}
+            />
           </span>
         </div>
         <div className="stat-card">
@@ -143,24 +160,38 @@ export default async function RevenuePage() {
       </div>
 
       <div className="card">
-        <h2 className="card-title">Monthly revenue</h2>
-        {analytics.totals.payments > 0 ? (
-          <div className="chart-bars">
-            {analytics.monthly.map((entry) => (
-              <div key={entry.month} className="chart-bar-col">
+        <h2 className="card-title">
+          Monthly revenue
+          {dominantCurrency ? ` · ${dominantCurrency.currency}` : ""}
+        </h2>
+        {dominantCurrency ? (
+          <>
+            {otherCurrencies.length > 0 && (
+              <p className="cell-muted">
+                Also in {otherCurrencies.join(", ")} — see the per-currency
+                totals above.
+              </p>
+            )}
+            <div className="chart-bars">
+              {monthly.map((entry) => (
                 <div
-                  className="chart-bar chart-bar-revenue"
-                  style={{
-                    height: `${Math.max((entry.revenueMinor / maxRevenue) * 100, entry.revenueMinor > 0 ? 3 : 0)}%`,
-                  }}
-                  title={`${entry.month}: ${formatAmount(entry.revenueMinor, "USD")}`}
-                />
-                <span className="chart-bar-label">
-                  {formatMonth(entry.month)}
-                </span>
-              </div>
-            ))}
-          </div>
+                  key={`${entry.currency}:${entry.month}`}
+                  className="chart-bar-col"
+                >
+                  <div
+                    className="chart-bar chart-bar-revenue"
+                    style={{
+                      height: `${Math.max((entry.revenueMinor / maxRevenue) * 100, entry.revenueMinor > 0 ? 3 : 0)}%`,
+                    }}
+                    title={`${entry.month}: ${formatAmount(entry.revenueMinor, entry.currency)}`}
+                  />
+                  <span className="chart-bar-label">
+                    {formatMonth(entry.month)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
         ) : (
           <p className="cell-muted">
             No succeeded payments in {environmentLabel} yet.
@@ -176,6 +207,7 @@ export default async function RevenuePage() {
               <thead>
                 <tr>
                   <th>Product</th>
+                  <th>Currency</th>
                   <th>Orders</th>
                   <th>Units</th>
                   <th>Revenue</th>
@@ -183,11 +215,14 @@ export default async function RevenuePage() {
               </thead>
               <tbody>
                 {analytics.byProduct.map((product) => (
-                  <tr key={product.productId}>
+                  <tr key={`${product.productId}:${product.currency}`}>
                     <td>{product.productName}</td>
+                    <td className="cell-mono">{product.currency}</td>
                     <td>{product.orders}</td>
                     <td>{product.units}</td>
-                    <td>{formatAmount(product.revenueMinor, "USD")}</td>
+                    <td>
+                      {formatAmount(product.revenueMinor, product.currency)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

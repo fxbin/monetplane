@@ -5,6 +5,7 @@ import { getDb, getSqlClient } from "../../src/db/client";
 import { createApplication } from "../../src/modules/applications/service";
 import { createPrice, createProduct } from "../../src/modules/catalog/service";
 import {
+  orderItems,
   orders,
   payments,
   subscriptionItems,
@@ -17,6 +18,7 @@ import { createUsageMeter, reportUsage } from "../../src/modules/usage/service";
 import { webhookDeliveries } from "../../src/modules/webhooks/schema";
 import {
   getProviderHealthAnalytics,
+  getRevenueAnalytics,
   getRevenueAnalyticsV1,
   getSubscriptionAnalytics,
   getUsageTrends,
@@ -391,5 +393,297 @@ describe("analytics v1 (#67)", () => {
     expect(subs.mrrByCurrency).toHaveLength(0);
     expect(usage.byMeter).toHaveLength(0);
     expect(usage.topConsumers).toHaveLength(0);
+  });
+});
+
+describe("consolidated revenue trend (audit A3)", () => {
+  it("pins the canonical environment filter: payments.environment decides, not providerConnections.mode", async () => {
+    const slug = `analytics-trend-${Math.random().toString(36).slice(2, 8)}`;
+    const app = await createApplication({ slug, name: slug }, db);
+    const customer = await createApplicationCustomer(
+      { applicationId: app.id, externalCustomerId: "user-1", email: "a@test" },
+      db,
+    );
+    const product = await createProduct(
+      { applicationId: app.id, key: "pro", name: "Pro" },
+      db,
+    );
+    const connection = await createProviderConnection(
+      {
+        applicationId: app.id,
+        provider: "mock",
+        name: "primary",
+        mode: "test",
+        credentials: { webhookSecret: `${slug}-secret` },
+      },
+      db,
+    );
+    const usdPrice = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "usd",
+        currency: "USD",
+        amountMinor: 2500,
+        billingType: "one_time",
+      },
+      db,
+    );
+    const eurPrice = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "eur",
+        currency: "EUR",
+        amountMinor: 2000,
+        billingType: "one_time",
+      },
+      db,
+    );
+
+    const [usdOrder] = await db
+      .insert(orders)
+      .values({
+        id: `ord_${randomUUID()}`,
+        applicationId: app.id,
+        applicationCustomerId: customer.id,
+        billingMode: "one_time",
+        status: "paid",
+        currency: "USD",
+        totalAmountMinor: 5000,
+        environment: "test",
+      })
+      .returning();
+    await db.insert(orderItems).values({
+      id: `oi_${randomUUID()}`,
+      orderId: usdOrder.id,
+      productId: product.id,
+      priceId: usdPrice.id,
+      quantity: 2,
+      unitAmountMinor: 2500,
+    });
+    const [eurOrder] = await db
+      .insert(orders)
+      .values({
+        id: `ord_${randomUUID()}`,
+        applicationId: app.id,
+        applicationCustomerId: customer.id,
+        billingMode: "one_time",
+        status: "paid",
+        currency: "EUR",
+        totalAmountMinor: 4000,
+        environment: "live",
+      })
+      .returning();
+    await db.insert(orderItems).values({
+      id: `oi_${randomUUID()}`,
+      orderId: eurOrder.id,
+      productId: product.id,
+      priceId: eurPrice.id,
+      quantity: 2,
+      unitAmountMinor: 2000,
+    });
+
+    await db.insert(payments).values([
+      {
+        id: `pay_${randomUUID()}`,
+        applicationId: app.id,
+        orderId: usdOrder.id,
+        providerConnectionId: connection.id,
+        providerPaymentId: `pp_${randomUUID()}`,
+        status: "succeeded",
+        amountMinor: 5000,
+        currency: "USD",
+        environment: "test",
+      },
+      // Disagreement pin (audit A3): succeeded payment recorded under a
+      // TEST-mode connection but stamped payments.environment = 'live'.
+      // The denormalized column is canonical — it counts as LIVE.
+      {
+        id: `pay_${randomUUID()}`,
+        applicationId: app.id,
+        orderId: eurOrder.id,
+        providerConnectionId: connection.id,
+        providerPaymentId: `pp_${randomUUID()}`,
+        status: "succeeded",
+        amountMinor: 4000,
+        currency: "EUR",
+        environment: "live",
+      },
+    ]);
+
+    // Test view: only the genuinely-test payment, in BOTH implementations —
+    // the unified filter is what makes them agree.
+    const trend = await getRevenueAnalytics(app.id, "test", db);
+    const v1 = await getRevenueAnalyticsV1(app.id, "test", range(), db);
+    expect(trend.totals.byCurrency).toEqual([
+      {
+        currency: "USD",
+        revenueMinor: 5000,
+        payments: 1,
+        averagePaymentMinor: 5000,
+      },
+    ]);
+    expect(v1.volumeByCurrency).toEqual([
+      { currency: "USD", amountMinor: 5000, payments: 1 },
+    ]);
+
+    // Live view: exactly the disagreement payment.
+    const trendLive = await getRevenueAnalytics(app.id, "live", db);
+    const v1Live = await getRevenueAnalyticsV1(app.id, "live", range(), db);
+    expect(trendLive.totals.byCurrency).toEqual([
+      {
+        currency: "EUR",
+        revenueMinor: 4000,
+        payments: 1,
+        averagePaymentMinor: 4000,
+      },
+    ]);
+    expect(v1Live.volumeByCurrency).toEqual([
+      { currency: "EUR", amountMinor: 4000, payments: 1 },
+    ]);
+
+    // Product breakdown follows the same canonical order-environment filter
+    // and is keyed by (product, currency).
+    expect(trend.byProduct).toEqual([
+      {
+        productId: product.id,
+        productName: "Pro",
+        currency: "USD",
+        revenueMinor: 5000,
+        units: 2,
+        orders: 1,
+      },
+    ]);
+    // Monthly buckets: zero-filled 12-month series per observed currency.
+    expect(trend.monthly).toHaveLength(12);
+    expect(trend.monthly.at(-1)).toMatchObject({
+      currency: "USD",
+      revenueMinor: 5000,
+      payments: 1,
+    });
+  });
+
+  it("keeps byProduct and totals per currency instead of summing across currencies", async () => {
+    const slug = `analytics-mc-${Math.random().toString(36).slice(2, 8)}`;
+    const app = await createApplication({ slug, name: slug }, db);
+    const customer = await createApplicationCustomer(
+      { applicationId: app.id, externalCustomerId: "user-1", email: "a@test" },
+      db,
+    );
+    const product = await createProduct(
+      { applicationId: app.id, key: "pro", name: "Pro" },
+      db,
+    );
+    const connection = await createProviderConnection(
+      {
+        applicationId: app.id,
+        provider: "mock",
+        name: "primary",
+        mode: "test",
+        credentials: { webhookSecret: `${slug}-secret` },
+      },
+      db,
+    );
+    const usdPrice = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "usd",
+        currency: "USD",
+        amountMinor: 2500,
+        billingType: "one_time",
+      },
+      db,
+    );
+    const eurPrice = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "eur",
+        currency: "EUR",
+        amountMinor: 2000,
+        billingType: "one_time",
+      },
+      db,
+    );
+
+    for (const [orderEnv, price, orderCurrency, total] of [
+      ["test", usdPrice, "USD", 5000],
+      ["test", eurPrice, "EUR", 4000],
+    ] as const) {
+      const [order] = await db
+        .insert(orders)
+        .values({
+          id: `ord_${randomUUID()}`,
+          applicationId: app.id,
+          applicationCustomerId: customer.id,
+          billingMode: "one_time",
+          status: "paid",
+          currency: orderCurrency,
+          totalAmountMinor: total,
+          environment: orderEnv,
+        })
+        .returning();
+      await db.insert(orderItems).values({
+        id: `oi_${randomUUID()}`,
+        orderId: order.id,
+        productId: product.id,
+        priceId: price.id,
+        quantity: 2,
+        unitAmountMinor: price.amountMinor,
+      });
+      await db.insert(payments).values({
+        id: `pay_${randomUUID()}`,
+        applicationId: app.id,
+        orderId: order.id,
+        providerConnectionId: connection.id,
+        providerPaymentId: `pp_${randomUUID()}`,
+        status: "succeeded",
+        amountMinor: total,
+        currency: orderCurrency,
+        environment: orderEnv,
+      });
+    }
+
+    const trend = await getRevenueAnalytics(app.id, "test", db);
+
+    // One row per (product, currency) — never a cross-currency sum.
+    expect(trend.byProduct).toEqual([
+      {
+        productId: product.id,
+        productName: "Pro",
+        currency: "USD",
+        revenueMinor: 5000,
+        units: 2,
+        orders: 1,
+      },
+      {
+        productId: product.id,
+        productName: "Pro",
+        currency: "EUR",
+        revenueMinor: 4000,
+        units: 2,
+        orders: 1,
+      },
+    ]);
+    // Totals are per-currency, dominant currency first; payment counts are
+    // currency-independent.
+    expect(trend.totals.byCurrency).toEqual([
+      {
+        currency: "USD",
+        revenueMinor: 5000,
+        payments: 1,
+        averagePaymentMinor: 5000,
+      },
+      {
+        currency: "EUR",
+        revenueMinor: 4000,
+        payments: 1,
+        averagePaymentMinor: 4000,
+      },
+    ]);
+    expect(trend.totals.payments).toBe(2);
+    expect(trend.monthly).toHaveLength(24); // 12 months × 2 currencies
   });
 });

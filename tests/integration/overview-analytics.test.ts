@@ -13,10 +13,10 @@ import { debitCredits, grantCredits } from "../../src/modules/credits/service";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 import { createProviderConnection } from "../../src/modules/providers/service";
 import {
-  getOverviewCommandCenter,
   getRevenueAnalytics,
   getUsageAnalytics,
-} from "../../src/server/control-plane/overview";
+} from "../../src/server/control-plane/analytics";
+import { getOverviewCommandCenter } from "../../src/server/control-plane/overview";
 
 const db = getDb();
 const encryptionKey = Buffer.from(
@@ -149,7 +149,7 @@ describe("overview command center analytics", () => {
     const overview = await getOverviewCommandCenter(app.id, "test");
 
     expect(overview.kpis).toEqual({
-      revenueMinor: 0,
+      revenueByCurrency: [],
       payments: 0,
       activeSubscriptions: 0,
       creditsGranted: 0,
@@ -167,12 +167,9 @@ describe("overview command center analytics", () => {
     });
 
     const revenue = await getRevenueAnalytics(app.id, "test");
-    expect(revenue.totals).toEqual({
-      revenueMinor: 0,
-      payments: 0,
-      averagePaymentMinor: 0,
-    });
-    expect(revenue.monthly).toHaveLength(12);
+    expect(revenue.totals).toEqual({ payments: 0, byCurrency: [] });
+    expect(revenue.monthly).toHaveLength(0);
+    expect(revenue.byProduct).toHaveLength(0);
 
     const usage = await getUsageAnalytics(app.id);
     expect(usage.byCreditType).toHaveLength(0);
@@ -184,7 +181,9 @@ describe("overview command center analytics", () => {
 
     const overview = await getOverviewCommandCenter(seed.app.id, "test");
 
-    expect(overview.kpis.revenueMinor).toBe(5000);
+    expect(overview.kpis.revenueByCurrency).toEqual([
+      { currency: "USD", amountMinor: 5000 },
+    ]);
     expect(overview.kpis.payments).toBe(1);
     expect(overview.kpis.activeSubscriptions).toBe(1);
     expect(overview.kpis.creditsGranted).toBe(1000);
@@ -193,6 +192,7 @@ describe("overview command center analytics", () => {
     expect(overview.topProducts).toHaveLength(1);
     expect(overview.topProducts[0]).toMatchObject({
       productName: "Pro Plan",
+      currency: "USD",
       revenueMinor: 5000,
       units: 2,
     });
@@ -224,13 +224,24 @@ describe("overview command center analytics", () => {
     expect(overview.warnings).toHaveLength(0);
 
     const revenue = await getRevenueAnalytics(seed.app.id, "test");
-    expect(revenue.totals.revenueMinor).toBe(5000);
+    expect(revenue.totals.byCurrency).toEqual([
+      {
+        currency: "USD",
+        revenueMinor: 5000,
+        payments: 1,
+        averagePaymentMinor: 5000,
+      },
+    ]);
     expect(revenue.totals.payments).toBe(1);
-    expect(revenue.totals.averagePaymentMinor).toBe(5000);
     const currentMonth = revenue.monthly.at(-1);
-    expect(currentMonth).toMatchObject({ revenueMinor: 5000, payments: 1 });
+    expect(currentMonth).toMatchObject({
+      currency: "USD",
+      revenueMinor: 5000,
+      payments: 1,
+    });
     expect(revenue.byProduct[0]).toMatchObject({
       productName: "Pro Plan",
+      currency: "USD",
       revenueMinor: 5000,
       units: 2,
       orders: 1,
@@ -251,11 +262,12 @@ describe("overview command center analytics", () => {
     expect(usage.monthly.at(-1)?.debited).toBe(300);
   });
 
-  it("scopes KPIs to the selected environment via provider connection mode", async () => {
+  it("scopes money KPIs by the denormalized environment column, not connection mode (audit A3)", async () => {
     const seed: Seed = await seedBillingFixture();
 
+    // Baseline isolation: live sees nothing, test sees the fixture.
     const live = await getOverviewCommandCenter(seed.app.id, "live");
-    expect(live.kpis.revenueMinor).toBe(0);
+    expect(live.kpis.revenueByCurrency).toEqual([]);
     expect(live.kpis.payments).toBe(0);
     expect(live.kpis.activeSubscriptions).toBe(0);
     // Live has no provider connected -> missing-provider warning appears.
@@ -263,6 +275,52 @@ describe("overview command center analytics", () => {
 
     const test = await getOverviewCommandCenter(seed.app.id, "test");
     expect(test.kpis.payments).toBe(1);
+
+    // Disagreement pin: a succeeded payment recorded under the TEST-mode
+    // connection but stamped payments.environment = 'live' counts as LIVE
+    // — the denormalized column is canonical; connection mode is not.
+    await db.insert(payments).values({
+      id: `pay_${randomUUID()}`,
+      applicationId: seed.app.id,
+      providerConnectionId: seed.providerConnection.id,
+      providerPaymentId: `pp_${randomUUID()}`,
+      status: "succeeded",
+      amountMinor: 7000,
+      currency: "EUR",
+      environment: "live",
+    });
+
+    const testAfter = await getOverviewCommandCenter(seed.app.id, "test");
+    expect(testAfter.kpis.revenueByCurrency).toEqual([
+      { currency: "USD", amountMinor: 5000 },
+    ]);
+    expect(testAfter.kpis.payments).toBe(1);
+
+    const liveAfter = await getOverviewCommandCenter(seed.app.id, "live");
+    expect(liveAfter.kpis.revenueByCurrency).toEqual([
+      { currency: "EUR", amountMinor: 7000 },
+    ]);
+    expect(liveAfter.kpis.payments).toBe(1);
+
+    // The consolidated revenue trend (same read service) agrees.
+    const revenueLive = await getRevenueAnalytics(seed.app.id, "live");
+    expect(revenueLive.totals.byCurrency).toEqual([
+      {
+        currency: "EUR",
+        revenueMinor: 7000,
+        payments: 1,
+        averagePaymentMinor: 7000,
+      },
+    ]);
+    const revenueTest = await getRevenueAnalytics(seed.app.id, "test");
+    expect(revenueTest.totals.byCurrency).toEqual([
+      {
+        currency: "USD",
+        revenueMinor: 5000,
+        payments: 1,
+        averagePaymentMinor: 5000,
+      },
+    ]);
   });
 
   it("surfaces failed payments as a danger warning", async () => {

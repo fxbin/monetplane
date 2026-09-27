@@ -22,7 +22,7 @@ import {
 import { mockProviderAdapter } from "../../src/modules/providers/adapters/mock";
 import { registerProviderAdapter } from "../../src/modules/providers/registry";
 import { createProviderConnection } from "../../src/modules/providers/service";
-import { getUsageAnalytics } from "../../src/server/control-plane/overview";
+import { getUsageAnalytics } from "../../src/server/control-plane/analytics";
 
 const db = getDb();
 const encryptionKey = Buffer.from(

@@ -1,6 +1,6 @@
 import { PageContainer } from "@/components/layout/PageContainer";
+import { getUsageAnalytics } from "@/server/control-plane/analytics";
 import { getConsoleContext } from "@/server/control-plane/context";
-import { getUsageAnalytics } from "@/server/control-plane/overview";
 
 export const dynamic = "force-dynamic";
 

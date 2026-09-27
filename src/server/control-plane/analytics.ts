@@ -1,6 +1,7 @@
-import { and, count, desc, eq, gte, isNull, lt, sql, sum } from "drizzle-orm";
+import { and, count, desc, eq, gte, lt, sql, sum } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
+import { products } from "@/modules/catalog/schema";
 import {
   orderItems,
   orders,
@@ -8,6 +9,8 @@ import {
   subscriptionItems,
   subscriptions,
 } from "@/modules/commerce/schema";
+import { creditTransactions } from "@/modules/credits/schema";
+import { applicationCustomers } from "@/modules/customers/schema";
 import { billingOperations } from "@/modules/operations/schema";
 import { providerConnections } from "@/modules/providers/schema";
 import { usageEvents, usageMeters } from "@/modules/usage/schema";
@@ -15,15 +18,25 @@ import { webhookDeliveries } from "@/modules/webhooks/schema";
 import type { ConsoleEnvironment } from "./context";
 
 /**
- * Operational analytics v1 (#67).
+ * Operational analytics v1 (#67) and the consolidated dashboard trend
+ * views (audit A3).
  *
  * Metric definitions are documented in docs/analytics-definitions.md and
  * mirrored by the integration fixtures in
- * tests/integration/analytics-v1.test.ts.
+ * tests/integration/analytics-v1.test.ts and
+ * tests/integration/overview-analytics.test.ts.
  *
  * Currency policy: amounts are NEVER summed across currencies. Every
  * revenue/MRR aggregate is grouped by currency; the UI renders one entry
  * per currency and labels mixed-currency views explicitly.
+ *
+ * Environment policy (audit A3): fact-table aggregates (payments, orders,
+ * subscriptions, credit transactions) are scoped by their own
+ * denormalized `environment` column — the historically-accurate record of
+ * where the money moved. A provider connection's `mode` may change after
+ * the fact and is therefore only used for current connection state, never
+ * as an analytics filter. Integration tests pin this with payments whose
+ * `payments.environment` disagrees with their connection mode.
  */
 
 export type AnalyticsRange = { from: Date; to: Date };
@@ -392,6 +405,270 @@ export async function getUsageTrends(
       externalCustomerId: row.externalCustomerId,
       measuredQuantity: Number(row.measured ?? 0),
       events: Number(row.events ?? 0),
+    })),
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Dashboard trend views (audit A3 — consolidated from overview.ts)    */
+/* ------------------------------------------------------------------ */
+
+function monthStart(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function monthsBack(n: number): Date[] {
+  const now = new Date();
+  const months: Date[] = [];
+  for (let i = n - 1; i >= 0; i -= 1) {
+    months.push(
+      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)),
+    );
+  }
+  return months;
+}
+
+/**
+ * 12-month revenue trend for the Revenue page (audit A3 consolidation of
+ * the former overview.getRevenueAnalytics).
+ *
+ * Environment: `payments.environment` (canonical — see the module header),
+ * superseding the former `providerConnections.mode` filter.
+ *
+ * Currency: monthly buckets, product breakdown, and totals are all grouped
+ * by currency; nothing is ever summed across currencies. `monthly` is
+ * zero-filled per observed currency so each currency renders a full
+ * 12-month series; `totals.byCurrency` is sorted by revenue (dominant
+ * currency first) so KPI cards can lead with it and label the chart.
+ */
+export async function getRevenueAnalytics(
+  applicationId: string,
+  environment: ConsoleEnvironment,
+  db: Database = getDb(),
+) {
+  const since = monthStart(monthsBack(12)[0]);
+
+  const monthlyRows = await db
+    .select({
+      month: sql<string>`to_char(date_trunc('month', ${payments.createdAt}), 'YYYY-MM')`,
+      currency: payments.currency,
+      total: sum(payments.amountMinor),
+      paymentCount: count(),
+    })
+    .from(payments)
+    .where(
+      and(
+        eq(payments.applicationId, applicationId),
+        eq(payments.status, "succeeded"),
+        eq(payments.environment, environment),
+        gte(payments.createdAt, since),
+      ),
+    )
+    .groupBy(sql`date_trunc('month', ${payments.createdAt})`, payments.currency)
+    .orderBy(sql`date_trunc('month', ${payments.createdAt})`);
+
+  const byMonthCurrency = new Map<
+    string,
+    { revenueMinor: number; payments: number }
+  >();
+  for (const row of monthlyRows) {
+    byMonthCurrency.set(`${row.month}|${row.currency}`, {
+      revenueMinor: Number(row.total ?? 0),
+      payments: Number(row.paymentCount ?? 0),
+    });
+  }
+  const currencies = [
+    ...new Set(monthlyRows.map((row) => row.currency)),
+  ].sort();
+  const monthKeys = monthsBack(12).map(
+    (month) =>
+      `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, "0")}`,
+  );
+  const monthly = currencies.flatMap((currency) =>
+    monthKeys.map((month) => {
+      const entry =
+        byMonthCurrency.get(`${month}|${currency}`) ??
+        ({ revenueMinor: 0, payments: 0 } as const);
+      return { month, currency, ...entry };
+    }),
+  );
+
+  // Product breakdown grouped by (product, currency) — a product sold in
+  // two currencies yields two rows instead of a meaningless cross-currency
+  // sum (audit A3).
+  const productRows = await db
+    .select({
+      productId: products.id,
+      productName: products.name,
+      currency: orders.currency,
+      revenueMinor: sql<number>`sum(${orderItems.unitAmountMinor} * ${orderItems.quantity})`,
+      units: sum(orderItems.quantity),
+      orderCount: count(),
+    })
+    .from(orderItems)
+    .innerJoin(orders, eq(orders.id, orderItems.orderId))
+    .innerJoin(products, eq(products.id, orderItems.productId))
+    .where(
+      and(
+        eq(orders.applicationId, applicationId),
+        eq(orders.status, "paid"),
+        eq(orders.environment, environment),
+      ),
+    )
+    .groupBy(products.id, products.name, orders.currency)
+    .orderBy(
+      desc(
+        sql<number>`sum(${orderItems.unitAmountMinor} * ${orderItems.quantity})`,
+      ),
+      orders.currency,
+    );
+
+  const byCurrency = currencies
+    .map((currency) => {
+      const rows = monthly.filter((entry) => entry.currency === currency);
+      const revenueMinor = rows.reduce(
+        (total, entry) => total + entry.revenueMinor,
+        0,
+      );
+      const payments = rows.reduce((total, entry) => total + entry.payments, 0);
+      return {
+        currency,
+        revenueMinor,
+        payments,
+        averagePaymentMinor:
+          payments > 0 ? Math.round(revenueMinor / payments) : 0,
+      };
+    })
+    .sort((a, b) => b.revenueMinor - a.revenueMinor);
+
+  return {
+    monthly,
+    byProduct: productRows.map((row) => ({
+      productId: row.productId,
+      productName: row.productName,
+      currency: row.currency,
+      revenueMinor: Number(row.revenueMinor ?? 0),
+      units: Number(row.units ?? 0),
+      orders: Number(row.orderCount ?? 0),
+    })),
+    totals: {
+      // Payment counts are currency-independent; amounts never are.
+      payments: byCurrency.reduce((total, entry) => total + entry.payments, 0),
+      byCurrency,
+    },
+  };
+}
+
+/**
+ * Credit consumption analytics for the Usage page (audit A3 consolidation
+ * of the former overview.getUsageAnalytics).
+ *
+ * NOTE: this is a DIFFERENT metric from getUsageTrends above — credit
+ * ledger debits/grants (credit_transactions) vs metered usage events
+ * (usage_events). They were never duplicates; they now simply live in the
+ * one read service. Credit scoping uses the ledger's own environment
+ * column (canonical), as before.
+ */
+export async function getUsageAnalytics(
+  applicationId: string,
+  environment: ConsoleEnvironment = "test",
+  db: Database = getDb(),
+) {
+  const since = monthStart(monthsBack(12)[0]);
+
+  const [byCreditType, monthlyDebits, topCustomers] = await Promise.all([
+    db
+      .select({
+        creditType: sql<string>`account.credit_type`,
+        granted: sql<number>`coalesce(sum(${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('grant.purchase', 'grant.subscription', 'grant.promotion')), 0)`,
+        debited: sql<number>`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
+        transactionCount: count(),
+      })
+      .from(creditTransactions)
+      .innerJoin(
+        sql`credit_accounts account`,
+        sql`account.id = ${creditTransactions.creditAccountId}`,
+      )
+      .where(
+        and(
+          eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
+        ),
+      )
+      .groupBy(sql`account.credit_type`)
+      .orderBy(
+        desc(
+          sql`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
+        ),
+      ),
+    db
+      .select({
+        month: sql<string>`to_char(date_trunc('month', ${creditTransactions.createdAt}), 'YYYY-MM')`,
+        debited: sql<number>`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
+      })
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
+          gte(creditTransactions.createdAt, since),
+        ),
+      )
+      .groupBy(sql`date_trunc('month', ${creditTransactions.createdAt})`),
+    db
+      .select({
+        applicationCustomerId: applicationCustomers.id,
+        externalCustomerId: applicationCustomers.externalCustomerId,
+        email: applicationCustomers.email,
+        debited: sql<number>`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
+        transactionCount: count(),
+      })
+      .from(creditTransactions)
+      .innerJoin(
+        applicationCustomers,
+        eq(applicationCustomers.id, creditTransactions.applicationCustomerId),
+      )
+      .where(
+        and(
+          eq(creditTransactions.applicationId, applicationId),
+          eq(creditTransactions.environment, environment),
+        ),
+      )
+      .groupBy(
+        applicationCustomers.id,
+        applicationCustomers.externalCustomerId,
+        applicationCustomers.email,
+      )
+      .orderBy(
+        desc(
+          sql`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
+        ),
+      )
+      .limit(8),
+  ]);
+
+  const byMonth = new Map(
+    monthlyDebits.map((row) => [row.month, Number(row.debited ?? 0)]),
+  );
+  const monthly = monthsBack(12).map((month) => {
+    const key = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, "0")}`;
+    return { month: key, debited: byMonth.get(key) ?? 0 };
+  });
+
+  return {
+    monthly,
+    byCreditType: byCreditType.map((row) => ({
+      creditType: row.creditType,
+      granted: Number(row.granted ?? 0),
+      debited: Number(row.debited ?? 0),
+      transactions: Number(row.transactionCount ?? 0),
+    })),
+    topCustomers: topCustomers.map((row) => ({
+      applicationCustomerId: row.applicationCustomerId,
+      externalCustomerId: row.externalCustomerId,
+      email: row.email,
+      debited: Number(row.debited ?? 0),
+      transactions: Number(row.transactionCount ?? 0),
     })),
   };
 }

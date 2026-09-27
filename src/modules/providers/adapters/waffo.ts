@@ -33,6 +33,16 @@ import {
   ProviderOperationError,
   UnsupportedProviderCapabilityError,
 } from "../contract";
+// Shared adapter kit (audit A8): JSON guards, credential access, and
+// webhook JSON scaffolding live in ./shared for all adapters.
+import {
+  headerValue,
+  isRecord,
+  type JsonRecord,
+  parseWebhookJson,
+  requiredCredential,
+  stringValue,
+} from "./shared";
 
 /**
  * Waffo Pancake MoR adapter (#93).
@@ -81,8 +91,6 @@ const WAFFO_CAPABILITIES: ProviderCapabilities = {
   provider_hosted_checkout: true,
 };
 
-type JsonRecord = Record<string, unknown>;
-
 /** Subset of the SDK surface this adapter uses (also the test seam). */
 type PancakeClientLike = {
   onetimeProducts: {
@@ -126,29 +134,6 @@ type WaffoAdapterOptions = {
   clientFactory?: (connection: ProviderConnectionContext) => PancakeClientLike;
   verifyWebhookImpl?: VerifyWebhookImpl;
 };
-
-function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function requiredCredential(
-  connection: ProviderConnectionContext,
-  field: string,
-): string {
-  const credentials = connection.credentials as Record<string, unknown>;
-  const value = stringValue(credentials?.[field]);
-  if (!value) {
-    throw new ProviderOperationError(
-      `Waffo connection is missing the ${field} credential`,
-      "rejected",
-    );
-  }
-  return value;
-}
 
 /**
  * Money: Pancake uses display-value strings ("29.00" USD, "1000" JPY);
@@ -205,8 +190,8 @@ function clientFor(
   options: WaffoAdapterOptions,
 ): PancakeClientLike {
   if (options.clientFactory) return options.clientFactory(connection);
-  const merchantId = requiredCredential(connection, "merchantId");
-  const privateKey = requiredCredential(connection, "privateKey");
+  const merchantId = requiredCredential(connection, "merchantId", "Waffo");
+  const privateKey = requiredCredential(connection, "privateKey", "Waffo");
   return new WaffoPancake({
     merchantId,
     privateKey,
@@ -217,31 +202,10 @@ function clientFor(
 /* Webhook normalization                                               */
 /* ------------------------------------------------------------------ */
 
-function headerValue(
-  headers: Readonly<Record<string, string | undefined>>,
-  target: string,
-): string | undefined {
-  const direct = headers[target];
-  if (direct) return direct;
-  const normalizedTarget = target.toLowerCase();
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === normalizedTarget && value) return value;
-  }
-  return undefined;
-}
-
 type ParsedPancakeEvent = WebhookEvent & { data: WebhookEventData };
 
 function parsePancakeEvent(rawBody: string): ParsedPancakeEvent {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(rawBody);
-  } catch {
-    throw new Error("Waffo Pancake webhook body is not valid JSON");
-  }
-  if (!isRecord(parsed)) {
-    throw new Error("Waffo Pancake webhook must be a JSON object");
-  }
+  const parsed = parseWebhookJson(rawBody, "Waffo Pancake");
   const eventType = stringValue(parsed.eventType);
   const id = stringValue(parsed.id);
   const timestamp = stringValue(parsed.timestamp);
@@ -424,7 +388,7 @@ export function createWaffoProviderAdapter(
         );
       }
       const client = clientFor(connection, options);
-      const storeId = requiredCredential(connection, "storeId");
+      const storeId = requiredCredential(connection, "storeId", "Waffo");
       const item = input.items[0];
       const currency = input.currency.toUpperCase();
       const lineTotalMinor = item.unitAmountMinor * item.quantity;
@@ -529,7 +493,7 @@ export function createWaffoProviderAdapter(
       input: RefundPaymentInput,
     ): Promise<NormalizedRefund> {
       const client = clientFor(connection, options);
-      const storeId = requiredCredential(connection, "storeId");
+      const storeId = requiredCredential(connection, "storeId", "Waffo");
       const currency = "USD";
       try {
         const { token } = await client.auth.issueSessionToken({
@@ -589,7 +553,7 @@ export function createWaffoProviderAdapter(
 
     async validateConnection(connection: ProviderConnectionContext) {
       const client = clientFor(connection, options);
-      const storeId = requiredCredential(connection, "storeId");
+      const storeId = requiredCredential(connection, "storeId", "Waffo");
       try {
         // Cheap, side-effect-free probe: issuing a short-lived customer
         // session token exercises merchant auth + signing end to end.

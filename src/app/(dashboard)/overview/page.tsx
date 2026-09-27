@@ -1,4 +1,5 @@
 import { PageContainer } from "@/components/layout/PageContainer";
+import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
 import { StatusBadge } from "@/components/ui/console";
 import { formatAmount } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -75,7 +76,7 @@ export default async function OverviewPage() {
         <div className="stat-card">
           <span className="stat-label">Revenue ({environmentLabel})</span>
           <span className="stat-value">
-            {formatAmount(kpis.revenueMinor, "USD")}
+            <CurrencyBreakdown amounts={kpis.revenueByCurrency} />
           </span>
         </div>
         <div className="stat-card">
@@ -172,10 +173,12 @@ export default async function OverviewPage() {
               </thead>
               <tbody>
                 {overview.topProducts.map((product) => (
-                  <tr key={product.productId}>
+                  <tr key={`${product.productId}:${product.currency}`}>
                     <td>{product.productName}</td>
                     <td>{product.units}</td>
-                    <td>{formatAmount(product.revenueMinor, "USD")}</td>
+                    <td>
+                      {formatAmount(product.revenueMinor, product.currency)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

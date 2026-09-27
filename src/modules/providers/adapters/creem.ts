@@ -20,6 +20,21 @@ import {
   InvalidProviderWebhookSignatureError,
   UnsupportedProviderCapabilityError,
 } from "../contract";
+// Shared adapter kit (audit A8): JSON guards, credential access, base URL
+// resolution, and fetch-JSON boilerplate live in ./shared for all adapters.
+import {
+  headerValue,
+  isRecord,
+  type JsonRecord,
+  numberValue,
+  parseWebhookJson,
+  providerBaseUrl,
+  providerErrorMessage,
+  providerFetchJson,
+  recordValue,
+  requiredCredential,
+  stringValue,
+} from "./shared";
 
 const CREEM_PRODUCTION_API = "https://api.creem.io";
 const CREEM_TEST_API = "https://test-api.creem.io";
@@ -51,65 +66,21 @@ type CreemAdapterOptions = {
   };
 };
 
-type JsonRecord = Record<string, unknown>;
-
-function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function recordValue(value: unknown): JsonRecord | undefined {
-  return isRecord(value) ? value : undefined;
-}
-
 function providerObjectId(value: unknown): string | undefined {
   if (typeof value === "string") return value || undefined;
   if (!isRecord(value)) return undefined;
   return stringValue(value.id);
 }
 
-function headerValue(
-  headers: Readonly<Record<string, string | undefined>>,
-  target: string,
-): string | undefined {
-  const direct = headers[target];
-  if (direct) return direct;
-  const normalizedTarget = target.toLowerCase();
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === normalizedTarget && value) return value;
-  }
-  return undefined;
-}
-
-function requiredCredential(
-  connection: ProviderConnectionContext,
-  key: string,
-): string {
-  const value = connection.credentials[key]?.trim();
-  if (!value) throw new Error(`Creem credential ${key} is required`);
-  return value;
-}
-
 function baseUrl(
   connection: ProviderConnectionContext,
   options: CreemAdapterOptions,
 ): string {
-  const configured =
-    connection.mode === "test"
-      ? options.baseUrls?.test
-      : options.baseUrls?.live;
-  const official =
-    connection.mode === "test" ? CREEM_TEST_API : CREEM_PRODUCTION_API;
-  return (configured ?? official).replace(/\/+$/, "");
+  return providerBaseUrl(
+    connection,
+    { test: CREEM_TEST_API, live: CREEM_PRODUCTION_API },
+    options.baseUrls,
+  );
 }
 
 async function creemRequest(
@@ -118,37 +89,28 @@ async function creemRequest(
   path: string,
   init?: RequestInit,
 ): Promise<JsonRecord> {
-  const fetchImpl = options.fetchImpl ?? fetch;
-  const response = await fetchImpl(`${baseUrl(connection, options)}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": requiredCredential(connection, "apiKey"),
-      ...(init?.headers ?? {}),
+  const { status, statusText, payload } = await providerFetchJson(
+    `${baseUrl(connection, options)}${path}`,
+    {
+      ...init,
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": requiredCredential(connection, "apiKey", "Creem"),
+        ...(init?.headers ?? {}),
+      },
     },
-  });
-  const text = await response.text();
-  let body: unknown = {};
-  if (text) {
-    try {
-      body = JSON.parse(text) as unknown;
-    } catch {
-      throw new Error(
-        `Creem returned invalid JSON (${response.status} ${response.statusText})`,
-      );
-    }
-  }
+    { provider: "Creem", fetchImpl: options.fetchImpl },
+  );
 
-  if (!response.ok) {
-    const record = recordValue(body);
-    const message =
-      stringValue(record?.message) ??
-      stringValue(record?.error) ??
-      `Creem request failed (${response.status} ${response.statusText})`;
-    throw new Error(message);
+  if (status < 200 || status >= 300) {
+    throw new Error(
+      providerErrorMessage(
+        payload,
+        `Creem request failed (${statusText ? `${status} ${statusText}` : `${status}`})`,
+      ),
+    );
   }
-  if (!isRecord(body)) throw new Error("Creem response must be a JSON object");
-  return body;
+  return payload;
 }
 
 function catalogProductId(
@@ -224,13 +186,7 @@ function parseWebhook(input: VerifiedWebhook): {
   occurredAt: string;
   object: JsonRecord;
 } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(input.rawBody) as unknown;
-  } catch {
-    throw new Error("Creem webhook body is not valid JSON");
-  }
-  if (!isRecord(parsed)) throw new Error("Creem webhook must be a JSON object");
+  const parsed = parseWebhookJson(input.rawBody, "Creem");
   const providerEventId = stringValue(parsed.id);
   const providerEventName = stringValue(parsed.eventType);
   const createdAt = numberValue(parsed.created_at);
@@ -650,7 +606,7 @@ export function createCreemProviderAdapter(
       input: VerifyWebhookInput,
     ): Promise<VerifiedWebhook> {
       const signature = headerValue(input.headers, "creem-signature")?.trim();
-      const secret = requiredCredential(connection, "webhookSecret");
+      const secret = requiredCredential(connection, "webhookSecret", "Creem");
       if (!signature || !/^[a-fA-F0-9]{64}$/.test(signature)) {
         throw new InvalidProviderWebhookSignatureError();
       }
