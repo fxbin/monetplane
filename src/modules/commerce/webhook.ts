@@ -5,6 +5,7 @@ import { getDb } from "../../db/client";
 import { prices } from "../catalog/schema";
 import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
 import { applicationCustomers } from "../customers/schema";
+import { entitlementGrants } from "../entitlements/schema";
 import {
   expireEntitlementsBySource,
   grantConfiguredEntitlements,
@@ -428,22 +429,12 @@ export async function processProviderWebhook(
           };
         }
 
-        const nextPaymentStatus = (() => {
-          if (event.type === "payment.succeeded") return "succeeded";
-          if (event.type === "payment.failed") return "failed";
-          // payment.refunded: a partial refund keeps the payment's current
-          // status; only a cumulative-full refund flips it to `refunded`.
-          // A refund creating a brand-new payment row (out-of-order
-          // delivery) lands on `succeeded` — never terminal on insert.
-          return refundPlan?.fullyRefunded
-            ? "refunded"
-            : (existingPayment?.status ?? "succeeded");
-        })();
-
         // Invariant B (audit B5): a settled payment's amount is immutable.
         // Surface amount drift on a succeeded payment without failing the
         // event or overwriting the stored value. (Refund events carry the
         // refund amount, not the payment amount, so they are excluded.)
+        // Runs before the replay guards so a replayed event still surfaces
+        // amount drift.
         if (
           existingPayment?.status === "succeeded" &&
           event.type !== "payment.refunded" &&
@@ -454,6 +445,98 @@ export async function processProviderWebhook(
             `[monetplane] provider event ${event.providerEventId} reports amountMinor ${event.amountMinor} for settled payment ${event.providerPaymentId} (stored ${existingPayment.amountMinor}); keeping stored amount`,
           );
         }
+
+        // MP-REV-03: a duplicate success event for an already-succeeded
+        // payment is a replay of a settled fact. Re-running the grant
+        // pipeline with a new event timestamp would trip the entitlement
+        // idempotency conflict (EntitlementIdempotencyConflictError) and put
+        // the event into a permanent retry loop. Grants fire only if they
+        // never fired for this order (refund-first seeded the payment before
+        // any success event arrived); otherwise acknowledge as replay.
+        if (
+          event.type === "payment.succeeded" &&
+          existingPayment?.status === "succeeded"
+        ) {
+          let grantsAlreadyApplied = false;
+          if (order) {
+            const [existingGrant] = await tx
+              .select({ id: entitlementGrants.id })
+              .from(entitlementGrants)
+              .where(
+                and(
+                  eq(entitlementGrants.applicationId, applicationId),
+                  eq(entitlementGrants.sourceType, "order"),
+                  eq(entitlementGrants.sourceId, order.id),
+                ),
+              )
+              .limit(1);
+            grantsAlreadyApplied = Boolean(existingGrant);
+          }
+          if (!order || grantsAlreadyApplied) {
+            await tx
+              .update(webhookEvents)
+              .set({
+                status: "ignored",
+                errorMessage:
+                  "success event replayed for an already-succeeded payment",
+                processedAt: new Date(),
+              })
+              .where(eq(webhookEvents.id, webhookEventId));
+            return {
+              webhookEventId,
+              duplicate: Boolean(!inserted),
+              status: "ignored" as const,
+              normalizedType: event.type,
+            };
+          }
+          // No grants yet (refund-first seed): fall through so the late
+          // success applies them exactly once.
+        }
+
+        // MP-REV-03: refunded is a terminal state. A late success event for
+        // an already-refunded payment must not resurrect it or re-fire
+        // grants — record the anomaly and acknowledge without state change.
+        if (
+          event.type === "payment.succeeded" &&
+          existingPayment?.status === "refunded"
+        ) {
+          console.error(
+            `[monetplane] provider event ${event.providerEventId} reports success for refunded payment ${event.providerPaymentId}; keeping refunded state`,
+          );
+          await tx
+            .update(webhookEvents)
+            .set({
+              status: "ignored",
+              errorMessage: "success event arrived after terminal refund",
+              processedAt: new Date(),
+            })
+            .where(eq(webhookEvents.id, webhookEventId));
+          return {
+            webhookEventId,
+            duplicate: Boolean(!inserted),
+            status: "ignored" as const,
+            normalizedType: event.type,
+          };
+        }
+
+        const nextPaymentStatus = (() => {
+          if (event.type === "payment.succeeded") return "succeeded";
+          if (event.type === "payment.failed") {
+            // A failure never erases a settled fact: only a pending (or
+            // absent) payment transitions to failed; succeeded and refunded
+            // payments keep their status (MP-REV-03).
+            return !existingPayment || existingPayment.status === "pending"
+              ? "failed"
+              : existingPayment.status;
+          }
+          // payment.refunded: a partial refund keeps the payment's current
+          // status; only a cumulative-full refund flips it to `refunded`.
+          // A refund creating a brand-new payment row (out-of-order
+          // delivery) lands on `succeeded` — never terminal on insert.
+          return refundPlan?.fullyRefunded
+            ? "refunded"
+            : (existingPayment?.status ?? "succeeded");
+        })();
 
         const [payment] = await tx
           .insert(payments)
@@ -486,7 +569,10 @@ export async function processProviderWebhook(
 
         if (order) {
           const nextOrderStatus = (() => {
-            if (event.type === "payment.succeeded") return "paid";
+            if (event.type === "payment.succeeded") {
+              // refunded is terminal for orders too (MP-REV-03).
+              return order.status === "refunded" ? "refunded" : "paid";
+            }
             if (event.type === "payment.failed") {
               return order.status === "pending" ? "failed" : order.status;
             }

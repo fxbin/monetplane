@@ -1087,6 +1087,160 @@ describe("refund fact idempotency & serialization (MP-REV-01/02)", () => {
   });
 });
 
+describe("payment/order state machine monotonicity (MP-REV-03)", () => {
+  function lifecycleEvent(
+    fixture: Fixture,
+    overrides: {
+      id: string;
+      type: "payment.succeeded" | "payment.failed" | "payment.refunded";
+      providerRefundId?: string;
+      amountMinor?: number;
+    },
+  ) {
+    return {
+      id: overrides.id,
+      type: overrides.type,
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_sm_1",
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        amount_minor: overrides.amountMinor ?? 1000,
+        currency: "USD",
+        ...(overrides.providerRefundId
+          ? { provider_refund_id: overrides.providerRefundId }
+          : {}),
+      },
+    };
+  }
+
+  async function paymentState(paymentId: string) {
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, paymentId))
+      .limit(1);
+    return row;
+  }
+
+  it("keeps a refunded payment terminal when a late success arrives (MP-REV-03)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, { id: "evt_sm_ok", type: "payment.succeeded" }),
+    );
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, {
+        id: "evt_sm_refund",
+        type: "payment.refunded",
+        providerRefundId: "RSM",
+        amountMinor: 1000,
+      }),
+    );
+    const before = await paymentState("pay_sm_1");
+    expect(before?.status).toBe("refunded");
+
+    const result = await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, { id: "evt_sm_late", type: "payment.succeeded" }),
+    );
+    expect(result.status).toBe("ignored");
+
+    const after = await paymentState("pay_sm_1");
+    expect(after?.status).toBe("refunded");
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("refunded");
+
+    // No duplicate grants fire on the late success.
+    const grants = await db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, fixture.app.id),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, fixture.checkout.orderId),
+        ),
+      );
+    expect(grants.every((grant) => grant.status === "revoked")).toBe(true);
+
+    const [late] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.providerEventId, "evt_sm_late"))
+      .limit(1);
+    expect(late?.status).toBe("ignored");
+    expect(late?.errorMessage).toContain("terminal refund");
+  });
+
+  it("never regresses a succeeded payment to failed on a late failure event (MP-REV-03)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, { id: "evt_sm_ok2", type: "payment.succeeded" }),
+    );
+
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, { id: "evt_sm_fail", type: "payment.failed" }),
+    );
+
+    const row = await paymentState("pay_sm_1");
+    expect(row?.status).toBe("succeeded");
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+  });
+
+  it("grants fire exactly once across success → partial refund → late duplicate success (MP-REV-03)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, { id: "evt_sm_ok3", type: "payment.succeeded" }),
+    );
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, {
+        id: "evt_sm_p50",
+        type: "payment.refunded",
+        providerRefundId: "RP50",
+        amountMinor: 500,
+      }),
+    );
+
+    await processFixtureWebhook(
+      fixture,
+      lifecycleEvent(fixture, {
+        id: "evt_sm_late2",
+        type: "payment.succeeded",
+      }),
+    );
+
+    const row = await paymentState("pay_sm_1");
+    expect(row?.status).toBe("succeeded");
+    const grants = await db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, fixture.app.id),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, fixture.checkout.orderId),
+        ),
+      );
+    expect(grants.length).toBeGreaterThan(0);
+    expect(grants.every((grant) => grant.status === "active")).toBe(true);
+  });
+});
+
 describe("subscription lifecycle", () => {
   it("applies activation, failed renewal, recovery, cancellation, and expiration idempotently", async () => {
     const fixture = await createFixture("subscription");
