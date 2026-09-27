@@ -487,7 +487,19 @@ export async function getCustomerWorkspace(
 export async function grantCustomerCredits(
   applicationId: string,
   applicationCustomerId: string,
-  input: { creditType: string; amount: number; note?: string },
+  input: {
+    creditType: string;
+    amount: number;
+    note?: string;
+    /**
+     * Client-supplied retry token (audit M5). Without one, every call
+     * generates a fresh idempotency key, so a network retry after a
+     * successful grant double-credits the customer. When provided, the
+     * same retry of the same logical grant resolves to the same ledger
+     * entry. Scoped per customer inside the composed key.
+     */
+    idempotencyKey?: string;
+  },
   environment: "test" | "live" = "test",
 ) {
   await requireApplicationCustomer(applicationId, applicationCustomerId);
@@ -495,7 +507,8 @@ export async function grantCustomerCredits(
     throw new Error("Credit amount must be a positive whole number");
   }
 
-  const sourceId = `admin_${randomUUID()}`;
+  const clientKey = input.idempotencyKey?.trim();
+  const sourceId = clientKey ? `admin_${clientKey}` : `admin_${randomUUID()}`;
   return grantCredits({
     applicationId,
     applicationCustomerId,
@@ -505,7 +518,7 @@ export async function grantCustomerCredits(
     sourceType: "admin",
     sourceId,
     environment,
-    idempotencyKey: `admin-credit:${sourceId}`,
+    idempotencyKey: `admin-credit:${applicationCustomerId}:${sourceId}`,
     metadata: { note: input.note?.trim() || undefined },
   });
 }

@@ -23,6 +23,7 @@ export async function POST(request: Request, { params }: RouteContext) {
         creditType?: unknown;
         amount?: unknown;
         note?: unknown;
+        idempotencyKey?: unknown;
       }>,
     ]);
     if (!context.selectedApplication) {
@@ -40,12 +41,26 @@ export async function POST(request: Request, { params }: RouteContext) {
 
     const creditType =
       typeof body.creditType === "string" ? body.creditType.trim() : "";
+    // Strict number (audit M6): string coercion ("5" or "abc" -> NaN) is
+    // inconsistent with every other money entry point.
     const amount =
-      typeof body.amount === "number" ? body.amount : Number(body.amount);
+      typeof body.amount === "number" && Number.isSafeInteger(body.amount)
+        ? body.amount
+        : Number.NaN;
     const note = typeof body.note === "string" ? body.note : undefined;
+    const idempotencyKey =
+      typeof body.idempotencyKey === "string" && body.idempotencyKey.trim()
+        ? body.idempotencyKey.trim().slice(0, 200)
+        : undefined;
     if (!creditType) {
       return NextResponse.json(
         { error: "Credit type is required" },
+        { status: 400 },
+      );
+    }
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
+      return NextResponse.json(
+        { error: "Amount must be a positive whole number" },
         { status: 400 },
       );
     }
@@ -53,7 +68,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const result = await grantCustomerCredits(
       context.selectedApplication.id,
       customerId,
-      { creditType, amount, note },
+      { creditType, amount, note, idempotencyKey },
       context.environment,
     );
     await recordAuditEntry({

@@ -80,7 +80,7 @@ describe("inbound provider webhook receiver (#95)", () => {
     expect(response.status).toBe(404);
   });
 
-  it("parks permanently-unprocessable events with 200 processed:false", async () => {
+  it("answers 422 permanent and parks permanently-unprocessable events in the inbox", async () => {
     const slug = `receiver-park-${Math.random().toString(36).slice(2, 6)}`;
     const app = await createApplication({ slug, name: slug }, db);
     const connection = await createProviderConnection(
@@ -114,12 +114,20 @@ describe("inbound provider webhook receiver (#95)", () => {
       }),
       { params: Promise.resolve({ connectionId: connection.id }) },
     );
-    expect(response.status).toBe(200);
+    // PR9 retry policy: deterministic validation failures answer 422
+    // (no provider retry can fix them) instead of the old blanket 200; the
+    // event stays parked as `failed` in the inbox for inspection.
+    expect(response.status).toBe(422);
     const body = (await response.json()) as {
       received: boolean;
       processed: boolean;
+      permanent: boolean;
     };
-    expect(body).toMatchObject({ received: true, processed: false });
+    expect(body).toMatchObject({
+      received: true,
+      processed: false,
+      permanent: true,
+    });
   });
 
   it("rejects invalid signatures with 401", async () => {
