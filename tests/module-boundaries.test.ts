@@ -71,7 +71,112 @@ describe("module boundaries", () => {
       }
     }
   });
+
+  it("keeps dashboard pages and components off module services (layering)", async () => {
+    // Documented layering (docs/p1-console-architecture.md):
+    // app/(dashboard) + components -> server/control-plane -> modules -> db.
+    // `import type` is always fine. Any value import from the module layer
+    // needs an entry in UI_MODULE_IMPORT_ALLOWLIST — each entry is a
+    // reviewed decision, not an invitation.
+    const uiDirectories = [
+      path.join(process.cwd(), "src/app/(dashboard)"),
+      path.join(process.cwd(), "src/components"),
+    ];
+
+    for (const directory of uiDirectories) {
+      const files = await collectTypeScriptFiles(directory);
+      for (const file of files) {
+        const relative = path.relative(process.cwd(), file);
+        const source = await readFile(file, "utf8");
+        const moduleImports = [
+          ...source.matchAll(
+            /import\s+(type\s+)?[^;]*?from\s+"@(\/modules\/[^"]+)"/g,
+          ),
+        ];
+        for (const match of moduleImports) {
+          const [, typeMarker, modulePath] = match;
+          if (typeMarker) continue;
+          const allowed = UI_MODULE_IMPORT_ALLOWLIST.some(
+            (entry) =>
+              relative === entry.file && modulePath.startsWith(entry.module),
+          );
+          expect(
+            allowed,
+            `${relative} imports ${modulePath} from the module layer directly — route it through src/server/control-plane or add a reviewed allowlist entry`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("keeps domain modules free of framework imports", async () => {
+    // Domain modules own business rules and must stay runnable outside
+    // Next.js (integration tests import them directly). A module that is
+    // genuinely web middleware needs a FRAMEWORK_IMPORT_ALLOWLIST entry
+    // plus a follow-up to relocate it.
+    const modulesDirectory = path.join(process.cwd(), "src/modules");
+    const files = await collectTypeScriptFiles(modulesDirectory);
+
+    for (const file of files) {
+      const relative = path.relative(process.cwd(), file);
+      const source = await readFile(file, "utf8");
+      const frameworkImports = [
+        ...source.matchAll(
+          /import\s+(type\s+)?[^;]*?from\s+"(next\/[^"]*|react(?:\/[^"]*)?)"/g,
+        ),
+      ];
+      for (const match of frameworkImports) {
+        const [, typeMarker, modulePath] = match;
+        if (typeMarker) continue;
+        const allowed = FRAMEWORK_IMPORT_ALLOWLIST.includes(relative);
+        expect(
+          allowed,
+          `${relative} imports "${modulePath}" — domain modules must not depend on the web framework`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("keeps control-plane off concrete provider adapters", async () => {
+    // The control plane reaches providers through runtime.ts/contract.ts
+    // only; concrete adapters belong to the registry facade.
+    const controlPlaneDirectory = path.join(
+      process.cwd(),
+      "src/server/control-plane",
+    );
+    const files = await collectTypeScriptFiles(controlPlaneDirectory);
+
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      expect(source, `${file} imports a concrete provider adapter`).not.toMatch(
+        /providers[\\/]adapters/,
+      );
+    }
+  });
 });
+
+// Value imports from the module layer that the UI layer is allowed to make.
+// Sidebar gates navigation on session/permission helpers (no data access);
+// ProviderConnectForm consumes static credential-form metadata (no I/O).
+const UI_MODULE_IMPORT_ALLOWLIST = [
+  {
+    file: "src/components/layout/Sidebar.tsx",
+    module: "/modules/admin/guard",
+  },
+  {
+    file: "src/components/layout/Sidebar.tsx",
+    module: "/modules/team/permissions",
+  },
+  {
+    file: "src/components/providers/ProviderConnectForm.tsx",
+    module: "/modules/providers/setup",
+  },
+];
+
+// Web-middleware modules inside src/modules. admin/guard returns
+// NextResponse for route guards; relocating it out of modules is a
+// documented follow-up (audit C2).
+const FRAMEWORK_IMPORT_ALLOWLIST = ["src/modules/admin/guard.ts"];
 
 /**
  * Concrete provider names — extend this list when adding an adapter so the
