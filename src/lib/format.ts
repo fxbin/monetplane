@@ -2,10 +2,16 @@
  * Formatting helpers for dashboard display.
  */
 
+import { minorToDisplayString } from "./money";
+
+/**
+ * Render a minor-unit amount with its currency symbol, decimal-aware via
+ * the money registry (audit A1): zero-decimal currencies (JPY, ISK, …)
+ * render as whole units — e.g. JPY 1000 → "¥1000", not "¥10.00".
+ */
 export function formatAmount(amountMinor: number, currency: string): string {
-  const major = amountMinor / 100;
   const symbol = currencySymbols[currency.toUpperCase()] ?? currency;
-  return `${symbol}${major.toFixed(2)}`;
+  return `${symbol}${minorToDisplayString(amountMinor, currency)}`;
 }
 
 export function formatDate(date: Date | string): string {

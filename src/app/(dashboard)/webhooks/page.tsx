@@ -1,11 +1,8 @@
 import Link from "next/link";
 import { WebhookManager } from "@/components/developer/WebhookManager";
 import { PageContainer } from "@/components/layout/PageContainer";
-import {
-  listWebhookDeliveries,
-  listWebhookEndpoints,
-} from "@/modules/webhooks";
 import { getConsoleContext } from "@/server/control-plane/context";
+import { getWebhookConsoleData } from "@/server/control-plane/webhooks";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +11,9 @@ export default async function WebhooksPage() {
   const application = context.selectedApplication;
   const environmentLabel =
     context.environment === "test" ? "Sandbox" : "Production";
+  const webhookData = application
+    ? await getWebhookConsoleData(application.id, context)
+    : null;
 
   return (
     <PageContainer
@@ -50,14 +50,8 @@ export default async function WebhooksPage() {
           </div>
           <WebhookManager
             environmentLabel={environmentLabel}
-            endpoints={
-              await listWebhookEndpoints(application.id, context.environment)
-            }
-            deliveries={
-              await listWebhookDeliveries(application.id, context.environment, {
-                limit: 50,
-              })
-            }
+            endpoints={webhookData?.endpoints ?? []}
+            deliveries={webhookData?.deliveries ?? []}
           />
         </>
       )}

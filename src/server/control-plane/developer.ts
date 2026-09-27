@@ -17,7 +17,6 @@ import { providerConnections } from "@/modules/providers/schema";
 import {
   listWebhookDeliveries,
   listWebhookEndpoints,
-  webhookDeliveries,
 } from "@/modules/webhooks";
 import type { ConsoleEnvironment } from "./context";
 
@@ -513,22 +512,4 @@ export async function getDeveloperLogs(
     })
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
     .slice(0, Math.min(Math.max(filters.limit ?? 100, 1), 200));
-}
-
-export async function countFailedDeveloperWebhookDeliveries(
-  applicationId: string,
-  environment: ConsoleEnvironment,
-) {
-  const db = getDb();
-  const rows = await db
-    .select({ id: webhookDeliveries.id })
-    .from(webhookDeliveries)
-    .where(
-      and(
-        eq(webhookDeliveries.applicationId, applicationId),
-        eq(webhookDeliveries.mode, environment),
-        eq(webhookDeliveries.status, "failed"),
-      ),
-    );
-  return rows.length;
 }

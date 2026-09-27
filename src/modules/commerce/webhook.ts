@@ -239,20 +239,150 @@ export async function processProviderWebhook(
           );
         }
 
-        const amountMinor = event.amountMinor ?? order?.totalAmountMinor;
-        const currency = event.currency ?? order?.currency;
+        // Lock any existing payment row first: it is the serialization point
+        // for refund accounting and settled-value immutability (audit B5).
+        const [existingPayment] = await tx
+          .select()
+          .from(payments)
+          .where(
+            and(
+              eq(payments.providerConnectionId, providerConnectionId),
+              eq(payments.providerPaymentId, event.providerPaymentId),
+            ),
+          )
+          .for("update")
+          .limit(1);
+
+        // Invariant A (audit B5): a payment event that carries a currency
+        // must match the currency the order/payment was captured in.
+        // Comparison is case-insensitive; stored currency is canonical
+        // uppercase. A mismatched event is rejected without touching the
+        // recorded payment/order rows (the tx rolls back).
+        const eventCurrency = event.currency?.trim().toUpperCase();
+        const expectedCurrency = (
+          order?.currency ?? existingPayment?.currency
+        )?.toUpperCase();
+        if (
+          eventCurrency &&
+          expectedCurrency &&
+          eventCurrency !== expectedCurrency
+        ) {
+          throw new InvalidNormalizedCommerceEventError(
+            `currency mismatch: event currency ${eventCurrency} does not match recorded currency ${expectedCurrency}`,
+          );
+        }
+
+        // For a refund arriving before any success event (missed or
+        // out-of-order delivery), the event amount is the refund amount, not
+        // the captured amount — seed the payment row from the order total so
+        // the refund cap has the right base (verifier finding on B5).
+        const amountMinor =
+          event.type === "payment.refunded" && !existingPayment
+            ? (order?.totalAmountMinor ?? event.amountMinor)
+            : (event.amountMinor ??
+              order?.totalAmountMinor ??
+              existingPayment?.amountMinor);
+        const currency = (
+          event.currency ??
+          order?.currency ??
+          existingPayment?.currency
+        )?.toUpperCase();
         if (amountMinor === undefined || !currency) {
           throw new InvalidNormalizedCommerceEventError(
             "Payment event is missing amount or currency",
           );
         }
 
-        const paymentStatus =
-          event.type === "payment.succeeded"
-            ? "succeeded"
-            : event.type === "payment.failed"
-              ? "failed"
-              : "refunded";
+        // Invariants C & D (audit B5): cap the refund at the payment's
+        // captured amount and only treat a cumulative-full refund as
+        // terminal. The locked payment row serializes concurrent refunds.
+        let refundPlan: { amountMinor: number; fullyRefunded: boolean } | null =
+          null;
+        if (event.type === "payment.refunded") {
+          const capturedAmountMinor =
+            existingPayment?.amountMinor ?? amountMinor;
+          let alreadyRefunded = 0;
+          let unknownRefundAmount = false;
+          if (existingPayment) {
+            const refundRows = await tx
+              .select({
+                status: refunds.status,
+                amountMinor: refunds.amountMinor,
+              })
+              .from(refunds)
+              .where(eq(refunds.paymentId, existingPayment.id))
+              .for("update");
+            for (const row of refundRows) {
+              if (row.status === "failed") continue;
+              if (row.amountMinor === null) {
+                // A legacy refund row without an amount recorded a full
+                // refund under the previous ingest; treat the remaining
+                // amount as consumed (fail-closed).
+                unknownRefundAmount = true;
+              } else {
+                alreadyRefunded += row.amountMinor;
+              }
+            }
+          }
+          const remaining = unknownRefundAmount
+            ? 0
+            : capturedAmountMinor - alreadyRefunded;
+          if (remaining <= 0) {
+            // Nothing left to refund: durable idempotent skip that changes
+            // no payment/order/refund rows.
+            await tx
+              .update(webhookEvents)
+              .set({
+                status: "ignored",
+                errorMessage: "refund exceeds payment amount",
+                processedAt: new Date(),
+              })
+              .where(eq(webhookEvents.id, webhookEventId));
+
+            return {
+              webhookEventId,
+              duplicate: Boolean(!inserted),
+              status: "ignored" as const,
+              normalizedType: event.type,
+            };
+          }
+          const appliedRefundMinor =
+            event.amountMinor === undefined
+              ? remaining
+              : Math.min(event.amountMinor, remaining);
+          refundPlan = {
+            amountMinor: appliedRefundMinor,
+            fullyRefunded:
+              alreadyRefunded + appliedRefundMinor >= capturedAmountMinor,
+          };
+        }
+
+        const nextPaymentStatus = (() => {
+          if (event.type === "payment.succeeded") return "succeeded";
+          if (event.type === "payment.failed") return "failed";
+          // payment.refunded: a partial refund keeps the payment's current
+          // status; only a cumulative-full refund flips it to `refunded`.
+          // A refund creating a brand-new payment row (out-of-order
+          // delivery) lands on `succeeded` — never terminal on insert.
+          return refundPlan?.fullyRefunded
+            ? "refunded"
+            : (existingPayment?.status ?? "succeeded");
+        })();
+
+        // Invariant B (audit B5): a settled payment's amount is immutable.
+        // Surface amount drift on a succeeded payment without failing the
+        // event or overwriting the stored value. (Refund events carry the
+        // refund amount, not the payment amount, so they are excluded.)
+        if (
+          existingPayment?.status === "succeeded" &&
+          event.type !== "payment.refunded" &&
+          event.amountMinor !== undefined &&
+          event.amountMinor !== existingPayment.amountMinor
+        ) {
+          console.error(
+            `[monetplane] provider event ${event.providerEventId} reports amountMinor ${event.amountMinor} for settled payment ${event.providerPaymentId} (stored ${existingPayment.amountMinor}); keeping stored amount`,
+          );
+        }
 
         const [payment] = await tx
           .insert(payments)
@@ -264,19 +394,19 @@ export async function processProviderWebhook(
             providerConnectionId,
             providerPaymentId: event.providerPaymentId,
             environment,
-            status: paymentStatus,
+            status: nextPaymentStatus,
             amountMinor,
             currency,
           })
           .onConflictDoUpdate({
             target: [payments.providerConnectionId, payments.providerPaymentId],
             set: {
-              status: paymentStatus,
+              status: nextPaymentStatus,
               orderId: order?.id ?? null,
               customerId: mappedApplicationCustomer?.customerId ?? null,
-              amountMinor,
-              currency,
               updatedAt: new Date(),
+              // amountMinor/currency intentionally omitted: once recorded, a
+              // payment's captured amount and currency are immutable (B5).
             },
           })
           .returning();
@@ -284,14 +414,15 @@ export async function processProviderWebhook(
         if (!payment) throw new Error("Failed to persist payment");
 
         if (order) {
-          const nextOrderStatus =
-            event.type === "payment.succeeded"
-              ? "paid"
-              : event.type === "payment.failed"
-                ? order.status === "pending"
-                  ? "failed"
-                  : order.status
-                : "refunded";
+          const nextOrderStatus = (() => {
+            if (event.type === "payment.succeeded") return "paid";
+            if (event.type === "payment.failed") {
+              return order.status === "pending" ? "failed" : order.status;
+            }
+            // payment.refunded: only a cumulative-full refund closes the
+            // order; a partial refund keeps the current status.
+            return refundPlan?.fullyRefunded ? "refunded" : order.status;
+          })();
 
           await tx
             .update(orders)
@@ -355,7 +486,7 @@ export async function processProviderWebhook(
           }
         }
 
-        if (event.type === "payment.refunded") {
+        if (refundPlan) {
           const providerRefundId =
             event.providerRefundId ?? `event:${event.providerEventId}`;
           await tx
@@ -369,18 +500,20 @@ export async function processProviderWebhook(
               providerRefundId,
               environment,
               status: "succeeded",
-              amountMinor: event.amountMinor ?? null,
+              amountMinor: refundPlan.amountMinor,
             })
             .onConflictDoUpdate({
               target: [refunds.providerConnectionId, refunds.providerRefundId],
               set: {
                 status: "succeeded",
-                amountMinor: event.amountMinor ?? null,
+                amountMinor: refundPlan.amountMinor,
                 updatedAt: new Date(),
               },
             });
 
-          if (order) {
+          // Invariant D (audit B5): entitlements are only revoked once the
+          // cumulative refunded amount reaches the captured payment amount.
+          if (refundPlan.fullyRefunded && order) {
             await revokeEntitlementsBySource(
               applicationId,
               "order",

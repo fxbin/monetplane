@@ -37,6 +37,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
       context.selectedApplication.id,
       operationId,
       context.environment,
+      { id: guard.operatorId, label: guard.name || guard.email },
     );
     await recordAuditEntry({
       applicationId: context.selectedApplication?.id ?? null,

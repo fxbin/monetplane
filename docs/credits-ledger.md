@@ -268,10 +268,67 @@ Product browsers must not possess credentials that can perform credit mutations.
 9. A customer cannot spend credits belonging to another application or credit type.
 10. Reserved credits cannot be spent by unrelated direct debits.
 
+## Credit bucket expiry (cron)
+
+Every grant creates one auditable bucket (`credit_buckets`). Expired buckets do
+not transition themselves: the only writer that moves due buckets out of
+`active` (and reverses their remaining amount through a `grant.expired` ledger
+entry) is `expireDueCreditBuckets()`. Until it runs, expired credits remain
+spendable and the documented invariant drifts:
+
+```text
+sum(active bucket remaining) == availableBalance + reservedBalance
+```
+
+Production deployments must therefore schedule the protected cron endpoint:
+
+```text
+GET|POST /api/cron/credit-expiry
+Authorization: Bearer ${CRON_SECRET}
+```
+
+- Auth is a shared secret compared with `timingSafeEqual`; the endpoint fails
+  closed (401) when `CRON_SECRET` is unset or mismatched.
+- A successful run returns `{ "expiredBuckets": <count>, "expiredAmountMinor":
+  <sum> }`; failures return 500 with `{ "error": "..." }`. Both are safe to
+  retry: expiry re-validates every bucket under row lock, so overlapping runs
+  (or a run racing a debit) never double-reverse.
+- Schedule every 5–15 minutes. Example manual invocation:
+
+```bash
+curl -X POST https://your-host/api/cron/credit-expiry \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+Scheduling options:
+
+- **Generic scheduler** (system crontab, Kubernetes CronJob, GitHub Actions
+  scheduled workflow, uptime pinger): hit the endpoint on a `*/10 * * * *`
+  schedule with the header above. This works on any host, including the plain
+  Node runtime deployment this repo targets.
+- **Vercel Cron**: add to `vercel.json` (this repo currently has none — there
+  are no Vercel deployment signals beyond a "Vercel-compatible" note in
+  docs/architecture.md, so none is checked in):
+
+```json
+{
+  "crons": [{ "path": "/api/cron/credit-expiry", "schedule": "*/10 * * * *" }]
+}
+```
+
+  Note Vercel's plan restrictions: Hobby plans only allow schedules that run
+  once per day (e.g. `0 3 * * *`), Pro and above honor `*/10 * * * *`. If you
+  deploy on Vercel Hobby, prefer the daily schedule or an external scheduler
+  for the 5–15 minute cadence.
+
+Locking note: bucket rows are mutated under `SELECT ... FOR UPDATE` in a
+canonical order (account row first, then buckets ordered by
+`expiresAt ASC NULLS LAST, createdAt ASC, id ASC`). Concurrent debits,
+captures, and expiry runs therefore serialize without deadlocks or lost
+updates.
+
 ## Deferred after P0
 
-- expiring grants
-- FIFO/LIFO credit buckets
 - rollover limits
 - shared cross-application wallets
 - monetary conversion between credit types

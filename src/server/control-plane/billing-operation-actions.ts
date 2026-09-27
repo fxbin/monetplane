@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
+import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
 import {
   orders,
@@ -20,11 +21,56 @@ import {
   refundProviderPayment,
 } from "@/modules/providers/runtime";
 import { providerConnections } from "@/modules/providers/schema";
+import { type AuditEnvironment, recordAuditEntry } from "./audit";
 import {
   getOperationById,
   getPaymentDetail,
   getSubscriptionDetail,
 } from "./billing-operations";
+
+/**
+ * Operator identity for audit attribution on journaled billing operations.
+ * Admin routes derive it from the admin guard (operatorId + display name);
+ * portal flows omit it and audit through their own customer-portal entries.
+ */
+export type BillingOperationActor = { id: string; label?: string | null };
+
+function auditEnvironmentOf(environment: string): AuditEnvironment {
+  return environment === "live" || environment === "test" ? environment : null;
+}
+
+/**
+ * Records the operation OUTCOME audit entry inside the same transaction that
+ * completes the journal row, so the audit log cannot diverge from the journal
+ * (audit A4). Writes only when an operator actor is supplied: admin routes
+ * always supply one, portal flows keep their own customer-portal audit. When
+ * the transaction rolls back (reconciliation failure), no audit entry is
+ * written — failed and needs_reconciliation outcomes stay journal-only.
+ */
+async function recordOperationCompletionAudit(
+  tx: Pick<Database, "insert">,
+  applicationId: string,
+  operation: typeof billingOperations.$inferSelect,
+  actor: BillingOperationActor | undefined,
+) {
+  if (!actor) return;
+  const isRefund = operation.type === "refund";
+  await recordAuditEntry(
+    {
+      applicationId,
+      environment: auditEnvironmentOf(operation.environment),
+      action: isRefund ? "payment.refunded" : "subscription.cancelled",
+      resourceType: "billing_operation",
+      resourceId: operation.id,
+      metadata: isRefund
+        ? { paymentId: operation.resourceId }
+        : { subscriptionId: operation.resourceId },
+      actor,
+      actorType: "admin_session",
+    },
+    tx,
+  );
+}
 
 function requiredString(value: unknown, label: string): string {
   if (typeof value !== "string" || !value) {
@@ -214,6 +260,7 @@ async function resumeExistingOperation(
   applicationId: string,
   operation: typeof billingOperations.$inferSelect,
   providerMode: ProviderMode,
+  actor?: BillingOperationActor,
 ) {
   await assertOperationEnvironment(
     applicationId,
@@ -226,7 +273,12 @@ async function resumeExistingOperation(
     operation.status === "provider_succeeded" ||
     operation.status === "needs_reconciliation"
   ) {
-    return reconcileBillingOperation(applicationId, operation.id, providerMode);
+    return reconcileBillingOperation(
+      applicationId,
+      operation.id,
+      providerMode,
+      actor,
+    );
   }
   throw new Error("Billing operation cannot be resumed automatically");
 }
@@ -235,6 +287,7 @@ export async function refundPaymentWithJournal(
   applicationId: string,
   paymentId: string,
   providerMode: ProviderMode,
+  actor?: BillingOperationActor,
 ) {
   const payment = await getPaymentDetail(
     applicationId,
@@ -247,7 +300,12 @@ export async function refundPaymentWithJournal(
     idempotencyKey,
   );
   if (existing) {
-    return resumeExistingOperation(applicationId, existing, providerMode);
+    return resumeExistingOperation(
+      applicationId,
+      existing,
+      providerMode,
+      actor,
+    );
   }
 
   if (!payment.refundEligibility.eligible) {
@@ -267,7 +325,12 @@ export async function refundPaymentWithJournal(
     idempotencyKey,
   });
   if (!created) {
-    return resumeExistingOperation(applicationId, operation, providerMode);
+    return resumeExistingOperation(
+      applicationId,
+      operation,
+      providerMode,
+      actor,
+    );
   }
 
   let result: NormalizedRefund;
@@ -291,13 +354,19 @@ export async function refundPaymentWithJournal(
     normalizedResult: { ...result },
     errorMessage: null,
   });
-  return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  return reconcileBillingOperation(
+    applicationId,
+    operation.id,
+    providerMode,
+    actor,
+  );
 }
 
 export async function cancelSubscriptionWithJournal(
   applicationId: string,
   subscriptionId: string,
   providerMode: ProviderMode,
+  actor?: BillingOperationActor,
 ) {
   const subscription = await getSubscriptionDetail(
     applicationId,
@@ -310,7 +379,12 @@ export async function cancelSubscriptionWithJournal(
     idempotencyKey,
   );
   if (existing) {
-    return resumeExistingOperation(applicationId, existing, providerMode);
+    return resumeExistingOperation(
+      applicationId,
+      existing,
+      providerMode,
+      actor,
+    );
   }
 
   if (!subscription.cancellationEligibility.eligible) {
@@ -331,7 +405,12 @@ export async function cancelSubscriptionWithJournal(
     idempotencyKey,
   });
   if (!created) {
-    return resumeExistingOperation(applicationId, operation, providerMode);
+    return resumeExistingOperation(
+      applicationId,
+      operation,
+      providerMode,
+      actor,
+    );
   }
 
   let result: NormalizedSubscription;
@@ -352,13 +431,19 @@ export async function cancelSubscriptionWithJournal(
     normalizedResult: { ...result },
     errorMessage: null,
   });
-  return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  return reconcileBillingOperation(
+    applicationId,
+    operation.id,
+    providerMode,
+    actor,
+  );
 }
 
 export async function retryBillingOperation(
   applicationId: string,
   operationId: string,
   providerMode: ProviderMode,
+  actor?: BillingOperationActor,
 ) {
   const source = await getOperationById(applicationId, operationId);
   await assertOperationEnvironment(
@@ -449,7 +534,12 @@ export async function retryBillingOperation(
     attemptNumber,
   });
   if (!created) {
-    return resumeExistingOperation(applicationId, operation, providerMode);
+    return resumeExistingOperation(
+      applicationId,
+      operation,
+      providerMode,
+      actor,
+    );
   }
 
   if (type === "refund") {
@@ -474,7 +564,12 @@ export async function retryBillingOperation(
       normalizedResult: { ...result },
       errorMessage: null,
     });
-    return reconcileBillingOperation(applicationId, operation.id, providerMode);
+    return reconcileBillingOperation(
+      applicationId,
+      operation.id,
+      providerMode,
+      actor,
+    );
   }
 
   let result: NormalizedSubscription;
@@ -495,13 +590,19 @@ export async function retryBillingOperation(
     normalizedResult: { ...result },
     errorMessage: null,
   });
-  return reconcileBillingOperation(applicationId, operation.id, providerMode);
+  return reconcileBillingOperation(
+    applicationId,
+    operation.id,
+    providerMode,
+    actor,
+  );
 }
 
 export async function reconcileBillingOperation(
   applicationId: string,
   operationId: string,
   providerMode: ProviderMode,
+  actor?: BillingOperationActor,
 ) {
   const operation = await getOperationById(applicationId, operationId);
   await assertOperationEnvironment(
@@ -598,6 +699,13 @@ export async function reconcileBillingOperation(
             completedAt: new Date(),
           })
           .where(eq(billingOperations.id, operation.id));
+
+        await recordOperationCompletionAudit(
+          tx,
+          applicationId,
+          operation,
+          actor,
+        );
       });
     } else if (operation.type === "cancel_subscription") {
       const result = operation.normalizedResult;
@@ -657,6 +765,13 @@ export async function reconcileBillingOperation(
             completedAt: new Date(),
           })
           .where(eq(billingOperations.id, operation.id));
+
+        await recordOperationCompletionAudit(
+          tx,
+          applicationId,
+          operation,
+          actor,
+        );
       });
     } else {
       throw new Error(`Unsupported billing operation type: ${operation.type}`);

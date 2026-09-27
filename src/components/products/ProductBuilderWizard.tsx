@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
+// Single money authority (audit A1): currency-aware display-amount parsing —
+// zero-decimal currencies (e.g. JPY) store whole units, not units × 100.
+// Pure functions, so the client component can import them directly.
+import { currencyDecimals, parseDisplayAmountToMinor } from "../../lib/money";
 
 type ProviderOption = {
   id: string;
@@ -71,14 +75,6 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function parseAmountMinor(value: string): number | null {
-  if (!/^\d+(?:\.\d{0,2})?$/.test(value.trim())) return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  const minor = Math.round(parsed * 100);
-  return Number.isSafeInteger(minor) ? minor : null;
-}
-
 function formatPreviewAmount(value: string, currency: string) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return `${currency} —`;
@@ -131,7 +127,7 @@ export function ProductBuilderWizard({
         | { capabilities?: { weeklyInterval?: boolean } }
         | undefined
     )?.capabilities?.weeklyInterval ?? false;
-  const amountMinor = parseAmountMinor(amount);
+  const amountMinor = parseDisplayAmountToMinor(amount, currency);
 
   const typeDefinition = useMemo(
     () => PRODUCT_TYPES.find((type) => type.value === productType),
@@ -168,8 +164,10 @@ export function ProductBuilderWizard({
     }
 
     if (step === 1) {
-      if (amountMinor === null) {
-        return "Enter a valid non-negative price with at most two decimal places.";
+      if (amountMinor === undefined) {
+        return currencyDecimals(currency) === 0
+          ? `Enter a valid whole-number price for ${currency} (no decimals).`
+          : "Enter a valid non-negative price with at most two decimal places.";
       }
       if (isRecurring && !recurringInterval) {
         return "Choose a recurring billing interval.";
@@ -231,7 +229,7 @@ export function ProductBuilderWizard({
       setError(validationError);
       return;
     }
-    if (amountMinor === null) {
+    if (amountMinor === undefined) {
       setError("Enter a valid price before creating the product.");
       return;
     }

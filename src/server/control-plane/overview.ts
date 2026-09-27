@@ -17,29 +17,18 @@ import { getDeveloperHealth } from "./developer";
 /**
  * Overview command-center aggregation.
  *
- * Read-only queries that back the Overview page and the lightweight
- * Revenue / Usage analytics pages.
+ * Read-only queries that back the Overview page. The Revenue / Usage
+ * trend views live in ./analytics (audit A3 consolidation) — this module
+ * owns only the command-center snapshot.
  *
- * Environment semantics follow the console contract: payments,
- * subscriptions, provider health, and webhook activity are scoped to the
- * selected environment through the provider connection mode. Credits are
+ * Environment semantics (audit A3): money and subscription aggregates are
+ * scoped by the fact table's own denormalized `environment` column — the
+ * historically-accurate record of where the money moved (a connection's
+ * mode can be edited after the fact; see ./analytics for the canonical
+ * rule pinned by tests). `providerConnections.mode` is used only for
+ * CURRENT connection state (provider health, setup warnings). Credits are
  * project-wide today and are labeled as such in the UI.
  */
-
-function monthStart(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function monthsBack(n: number): Date[] {
-  const now = new Date();
-  const months: Date[] = [];
-  for (let i = n - 1; i >= 0; i -= 1) {
-    months.push(
-      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1)),
-    );
-  }
-  return months;
-}
 
 export type OverviewWarning = {
   level: "danger" | "warning";
@@ -65,35 +54,29 @@ export async function getOverviewCommandCenter(
   ] = await Promise.all([
     db
       .select({
+        currency: payments.currency,
         total: sum(payments.amountMinor),
         paymentCount: count(),
       })
       .from(payments)
-      .innerJoin(
-        providerConnections,
-        eq(providerConnections.id, payments.providerConnectionId),
-      )
       .where(
         and(
           eq(payments.applicationId, applicationId),
           eq(payments.status, "succeeded"),
-          eq(providerConnections.mode, environment),
+          eq(payments.environment, environment),
         ),
-      ),
+      )
+      .groupBy(payments.currency),
     db
       .select({
         active: sql<number>`count(*) filter (where ${subscriptions.status} = 'active')`,
         pastDue: sql<number>`count(*) filter (where ${subscriptions.status} = 'past_due')`,
       })
       .from(subscriptions)
-      .innerJoin(
-        providerConnections,
-        eq(providerConnections.id, subscriptions.providerConnectionId),
-      )
       .where(
         and(
           eq(subscriptions.applicationId, applicationId),
-          eq(providerConnections.mode, environment),
+          eq(subscriptions.environment, environment),
         ),
       ),
     db
@@ -130,6 +113,7 @@ export async function getOverviewCommandCenter(
       .select({
         productId: products.id,
         productName: products.name,
+        currency: orders.currency,
         revenueMinor: sql<number>`sum(${orderItems.unitAmountMinor} * ${orderItems.quantity})`,
         units: sum(orderItems.quantity),
       })
@@ -139,40 +123,33 @@ export async function getOverviewCommandCenter(
       .where(
         and(eq(orders.applicationId, applicationId), eq(orders.status, "paid")),
       )
-      .groupBy(products.id, products.name)
+      .groupBy(products.id, products.name, orders.currency)
       .orderBy(
         desc(
           sql<number>`sum(${orderItems.unitAmountMinor} * ${orderItems.quantity})`,
         ),
+        orders.currency,
       )
       .limit(5),
     db
       .select({ count: count() })
       .from(payments)
-      .innerJoin(
-        providerConnections,
-        eq(providerConnections.id, payments.providerConnectionId),
-      )
       .where(
         and(
           eq(payments.applicationId, applicationId),
           eq(payments.status, "failed"),
-          eq(providerConnections.mode, environment),
+          eq(payments.environment, environment),
           gte(payments.createdAt, sql`now() - interval '7 days'`),
         ),
       ),
     db
       .select({ count: count() })
       .from(subscriptions)
-      .innerJoin(
-        providerConnections,
-        eq(providerConnections.id, subscriptions.providerConnectionId),
-      )
       .where(
         and(
           eq(subscriptions.applicationId, applicationId),
           eq(subscriptions.status, "past_due"),
-          eq(providerConnections.mode, environment),
+          eq(subscriptions.environment, environment),
         ),
       ),
     db
@@ -295,8 +272,20 @@ export async function getOverviewCommandCenter(
   return {
     environment,
     kpis: {
-      revenueMinor: Number(succeededPaymentStats[0]?.total ?? 0),
-      payments: Number(succeededPaymentStats[0]?.paymentCount ?? 0),
+      // Per-currency revenue: amounts are never summed across currencies;
+      // the UI renders one entry per currency (dominant first).
+      revenueByCurrency: succeededPaymentStats
+        .map((row) => ({
+          currency: row.currency,
+          amountMinor: Number(row.total ?? 0),
+        }))
+        .sort((a, b) => b.amountMinor - a.amountMinor),
+      payments: Number(
+        succeededPaymentStats.reduce(
+          (total, row) => total + Number(row.paymentCount ?? 0),
+          0,
+        ),
+      ),
       activeSubscriptions: Number(subscriptionStats[0]?.active ?? 0),
       creditsGranted: Number(creditStats[0]?.granted ?? 0),
       creditsDebited: Number(creditStats[0]?.debited ?? 0),
@@ -305,6 +294,7 @@ export async function getOverviewCommandCenter(
     topProducts: topProducts.map((row) => ({
       productId: row.productId,
       productName: row.productName,
+      currency: row.currency,
       revenueMinor: Number(row.revenueMinor ?? 0),
       units: Number(row.units ?? 0),
     })),
@@ -312,204 +302,5 @@ export async function getOverviewCommandCenter(
     warnings,
     setupSteps,
     developerHealth,
-  };
-}
-
-export async function getRevenueAnalytics(
-  applicationId: string,
-  environment: ConsoleEnvironment,
-) {
-  const db = getDb();
-
-  const since = monthStart(monthsBack(12)[0]);
-
-  const monthlyRows = await db
-    .select({
-      month: sql<string>`to_char(date_trunc('month', ${payments.createdAt}), 'YYYY-MM')`,
-      total: sum(payments.amountMinor),
-      paymentCount: count(),
-    })
-    .from(payments)
-    .innerJoin(
-      providerConnections,
-      eq(providerConnections.id, payments.providerConnectionId),
-    )
-    .where(
-      and(
-        eq(payments.applicationId, applicationId),
-        eq(payments.status, "succeeded"),
-        eq(providerConnections.mode, environment),
-        gte(payments.createdAt, since),
-      ),
-    )
-    .groupBy(sql`date_trunc('month', ${payments.createdAt})`)
-    .orderBy(sql`date_trunc('month', ${payments.createdAt})`);
-
-  const byMonth = new Map(
-    monthlyRows.map((row) => [
-      row.month,
-      {
-        revenueMinor: Number(row.total ?? 0),
-        payments: Number(row.paymentCount ?? 0),
-      },
-    ]),
-  );
-
-  const monthly = monthsBack(12).map((month) => {
-    const key = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, "0")}`;
-    const entry = byMonth.get(key) ?? { revenueMinor: 0, payments: 0 };
-    return { month: key, ...entry };
-  });
-
-  const productRows = await db
-    .select({
-      productId: products.id,
-      productName: products.name,
-      revenueMinor: sql<number>`sum(${orderItems.unitAmountMinor} * ${orderItems.quantity})`,
-      units: sum(orderItems.quantity),
-      orderCount: count(),
-    })
-    .from(orderItems)
-    .innerJoin(orders, eq(orders.id, orderItems.orderId))
-    .innerJoin(products, eq(products.id, orderItems.productId))
-    .where(
-      and(eq(orders.applicationId, applicationId), eq(orders.status, "paid")),
-    )
-    .groupBy(products.id, products.name)
-    .orderBy(
-      desc(
-        sql<number>`sum(${orderItems.unitAmountMinor} * ${orderItems.quantity})`,
-      ),
-    );
-
-  const totalRevenueMinor = monthly.reduce(
-    (total, entry) => total + entry.revenueMinor,
-    0,
-  );
-  const totalPayments = monthly.reduce(
-    (total, entry) => total + entry.payments,
-    0,
-  );
-
-  return {
-    monthly,
-    byProduct: productRows.map((row) => ({
-      productId: row.productId,
-      productName: row.productName,
-      revenueMinor: Number(row.revenueMinor ?? 0),
-      units: Number(row.units ?? 0),
-      orders: Number(row.orderCount ?? 0),
-    })),
-    totals: {
-      revenueMinor: totalRevenueMinor,
-      payments: totalPayments,
-      averagePaymentMinor:
-        totalPayments > 0 ? Math.round(totalRevenueMinor / totalPayments) : 0,
-    },
-  };
-}
-
-export async function getUsageAnalytics(
-  applicationId: string,
-  environment: ConsoleEnvironment = "test",
-) {
-  const db = getDb();
-
-  const since = monthStart(monthsBack(12)[0]);
-
-  const [byCreditType, monthlyDebits, topCustomers] = await Promise.all([
-    db
-      .select({
-        creditType: sql<string>`account.credit_type`,
-        granted: sql<number>`coalesce(sum(${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('grant.purchase', 'grant.subscription', 'grant.promotion')), 0)`,
-        debited: sql<number>`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
-        transactionCount: count(),
-      })
-      .from(creditTransactions)
-      .innerJoin(
-        sql`credit_accounts account`,
-        sql`account.id = ${creditTransactions.creditAccountId}`,
-      )
-      .where(
-        and(
-          eq(creditTransactions.applicationId, applicationId),
-          eq(creditTransactions.environment, environment),
-        ),
-      )
-      .groupBy(sql`account.credit_type`)
-      .orderBy(
-        desc(
-          sql`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
-        ),
-      ),
-    db
-      .select({
-        month: sql<string>`to_char(date_trunc('month', ${creditTransactions.createdAt}), 'YYYY-MM')`,
-        debited: sql<number>`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
-      })
-      .from(creditTransactions)
-      .where(
-        and(
-          eq(creditTransactions.applicationId, applicationId),
-          eq(creditTransactions.environment, environment),
-          gte(creditTransactions.createdAt, since),
-        ),
-      )
-      .groupBy(sql`date_trunc('month', ${creditTransactions.createdAt})`),
-    db
-      .select({
-        applicationCustomerId: applicationCustomers.id,
-        externalCustomerId: applicationCustomers.externalCustomerId,
-        email: applicationCustomers.email,
-        debited: sql<number>`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
-        transactionCount: count(),
-      })
-      .from(creditTransactions)
-      .innerJoin(
-        applicationCustomers,
-        eq(applicationCustomers.id, creditTransactions.applicationCustomerId),
-      )
-      .where(
-        and(
-          eq(creditTransactions.applicationId, applicationId),
-          eq(creditTransactions.environment, environment),
-        ),
-      )
-      .groupBy(
-        applicationCustomers.id,
-        applicationCustomers.externalCustomerId,
-        applicationCustomers.email,
-      )
-      .orderBy(
-        desc(
-          sql`coalesce(sum(-${creditTransactions.amount}) filter (where ${creditTransactions.type} in ('debit.usage', 'capture.usage')), 0)`,
-        ),
-      )
-      .limit(8),
-  ]);
-
-  const byMonth = new Map(
-    monthlyDebits.map((row) => [row.month, Number(row.debited ?? 0)]),
-  );
-  const monthly = monthsBack(12).map((month) => {
-    const key = `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, "0")}`;
-    return { month: key, debited: byMonth.get(key) ?? 0 };
-  });
-
-  return {
-    monthly,
-    byCreditType: byCreditType.map((row) => ({
-      creditType: row.creditType,
-      granted: Number(row.granted ?? 0),
-      debited: Number(row.debited ?? 0),
-      transactions: Number(row.transactionCount ?? 0),
-    })),
-    topCustomers: topCustomers.map((row) => ({
-      applicationCustomerId: row.applicationCustomerId,
-      externalCustomerId: row.externalCustomerId,
-      email: row.email,
-      debited: Number(row.debited ?? 0),
-      transactions: Number(row.transactionCount ?? 0),
-    })),
   };
 }

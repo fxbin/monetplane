@@ -50,7 +50,9 @@ export const operatorAuditLog = pgTable(
     ),
     check(
       "operator_audit_actor_check",
-      sql`${table.actorType} IN ('admin_session', 'system')`,
+      // Keep in sync with migration 0016_customer_portal.sql, which widened
+      // this constraint for portal-initiated audit entries.
+      sql`${table.actorType} IN ('admin_session', 'system', 'customer_portal')`,
     ),
   ],
 );

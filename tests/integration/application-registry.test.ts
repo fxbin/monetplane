@@ -3,7 +3,9 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import {
   ApplicationContextMismatchError,
+  ApplicationCredentialRequiredError,
   resolveApplicationContext,
+  resolveCredentialApplicationContext,
 } from "../../src/modules/applications/context";
 import {
   applicationCredentials,
@@ -170,6 +172,51 @@ describe("application registry integration", () => {
         source: "host",
       },
     );
+  });
+
+  it("keeps the host fallback read-only: mutations require a credential", async () => {
+    const app = await createApplication({ slug: "gated", name: "Gated" }, db);
+    await registerApplicationDomain(app.id, "billing.gated.test", {}, db);
+
+    const hostRequest = new Request(
+      "https://billing.gated.test/api/application-context",
+      {
+        headers: {
+          host: "billing.gated.test",
+        },
+      },
+    );
+
+    // Host resolution still works for read surfaces...
+    await expect(
+      resolveApplicationContext(hostRequest, db),
+    ).resolves.toMatchObject({
+      application: { id: app.id },
+      source: "host",
+    });
+
+    // ...but money-mutating routes must not accept it.
+    await expect(
+      resolveCredentialApplicationContext(hostRequest, db),
+    ).rejects.toBeInstanceOf(ApplicationCredentialRequiredError);
+
+    const credential = await issueApplicationCredential(app.id, "server", db);
+    const credentialedRequest = new Request(
+      "https://billing.gated.test/api/application-context",
+      {
+        headers: {
+          host: "billing.gated.test",
+          authorization: `Bearer ${credential.secret}`,
+        },
+      },
+    );
+
+    await expect(
+      resolveCredentialApplicationContext(credentialedRequest, db),
+    ).resolves.toMatchObject({
+      application: { id: app.id },
+      source: "credential",
+    });
   });
 
   it("cascades application-owned routing and credential data", async () => {

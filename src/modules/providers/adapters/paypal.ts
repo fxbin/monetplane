@@ -1,3 +1,11 @@
+// Single money authority (audit A1): the unified zero-decimal registry —
+// ISK is 0-decimal here, intentionally superseding PayPal's old 2-decimal
+// ISK handling (see src/lib/money.ts). Relative import: adapters are also
+// imported by unit tests that run without a tsconfig-path resolver.
+import {
+  minorToDisplayString,
+  parseProviderAmountToMinor,
+} from "../../../lib/money";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
@@ -18,8 +26,24 @@ import type {
 } from "../contract";
 import {
   InvalidProviderWebhookSignatureError,
+  ProviderOperationError,
   UnsupportedProviderCapabilityError,
 } from "../contract";
+// Shared adapter kit (audit A8): JSON guards, credential access, base URL
+// resolution, and fetch-JSON boilerplate live in ./shared for all adapters.
+import {
+  headerValue,
+  type JsonRecord,
+  numberValue,
+  optionalString,
+  parseWebhookJson,
+  providerBaseUrl,
+  providerErrorMessage,
+  providerFetchJson,
+  recordValue,
+  requiredCredential,
+  stringValue,
+} from "./shared";
 
 /**
  * PayPal adapter (#72) — third real provider, PSP model (Orders + Billing
@@ -55,27 +79,7 @@ type PayPalAdapterOptions = {
   baseUrls?: { test?: string; live?: string };
 };
 
-type JsonRecord = Record<string, unknown>;
-
 type CachedToken = { token: string; expiresAt: number };
-
-function isRecord(value: unknown): value is JsonRecord {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
-function stringValue(value: unknown): string | undefined {
-  return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value)
-    ? value
-    : undefined;
-}
-
-function recordValue(value: unknown): JsonRecord | undefined {
-  return isRecord(value) ? value : undefined;
-}
 
 function linkHref(payload: JsonRecord, ...rels: string[]): string | undefined {
   const links = Array.isArray(payload.links) ? payload.links : [];
@@ -91,73 +95,15 @@ function linkHref(payload: JsonRecord, ...rels: string[]): string | undefined {
   return undefined;
 }
 
-function headerValue(
-  headers: Readonly<Record<string, string | undefined>>,
-  target: string,
-): string | undefined {
-  const direct = headers[target];
-  if (direct) return direct;
-  const normalizedTarget = target.toLowerCase();
-  for (const [key, value] of Object.entries(headers)) {
-    if (key.toLowerCase() === normalizedTarget && value) return value;
-  }
-  return undefined;
-}
-
-function requiredCredential(
-  connection: ProviderConnectionContext,
-  key: string,
-): string {
-  const value = connection.credentials[key]?.trim();
-  if (!value) throw new Error(`PayPal credential ${key} is required`);
-  return value;
-}
-
 function baseUrl(
   connection: ProviderConnectionContext,
   options: PayPalAdapterOptions,
 ): string {
-  const configured =
-    connection.mode === "test"
-      ? options.baseUrls?.test
-      : options.baseUrls?.live;
-  const official =
-    connection.mode === "test" ? PAYPAL_TEST_API : PAYPAL_PRODUCTION_API;
-  return (configured ?? official).replace(/\/+$/, "");
-}
-
-const ZERO_DECIMAL_CURRENCIES = new Set([
-  "BIF",
-  "CLP",
-  "DJF",
-  "GNF",
-  "JPY",
-  "KMF",
-  "KRW",
-  "MGA",
-  "PYG",
-  "RWF",
-  "UGX",
-  "VND",
-  "VUV",
-  "XAF",
-  "XOF",
-  "XPF",
-]);
-
-function currencyDecimals(currency: string): number {
-  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : 2;
-}
-
-/** PayPal decimal string ("19.00") → MonetPlane minor units. */
-function parseAmountMinor(
-  value: unknown,
-  currency: string,
-): number | undefined {
-  if (typeof value !== "string" && typeof value !== "number") return undefined;
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return undefined;
-  return Math.round(amount * 10 ** currencyDecimals(currency));
+  return providerBaseUrl(
+    connection,
+    { test: PAYPAL_TEST_API, live: PAYPAL_PRODUCTION_API },
+    options.baseUrls,
+  );
 }
 
 /** MonetPlane correlation payload for PayPal custom_id (≤127 chars). */
@@ -191,8 +137,8 @@ function catalogMapping(
 ): { productId: string; planId: string } {
   const catalog = recordValue(connection.metadata.catalog);
   const mapping = recordValue(catalog?.[monetplanePriceId]);
-  const productId = stringValue(mapping?.productId)?.trim();
-  const planId = stringValue(mapping?.planId)?.trim();
+  const productId = optionalString(mapping?.productId);
+  const planId = optionalString(mapping?.planId);
   if (!productId || !planId) {
     throw new Error(
       `PayPal catalog mapping is missing for MonetPlane price ${monetplanePriceId} (requires productId and planId)`,
@@ -261,14 +207,17 @@ export function createPayPalProviderAdapter(
   async function accessToken(
     connection: ProviderConnectionContext,
   ): Promise<string> {
-    const clientId = requiredCredential(connection, "clientId");
-    const clientSecret = requiredCredential(connection, "clientSecret");
+    const clientId = requiredCredential(connection, "clientId", "PayPal");
+    const clientSecret = requiredCredential(
+      connection,
+      "clientSecret",
+      "PayPal",
+    );
     const cacheKey = `${connection.id}:${clientId}`;
     const cached = tokenCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
 
-    const fetchImpl = options.fetchImpl ?? fetch;
-    const response = await fetchImpl(
+    const { status, payload } = await providerFetchJson(
       `${baseUrl(connection, options)}/v1/oauth2/token`,
       {
         method: "POST",
@@ -278,23 +227,13 @@ export function createPayPalProviderAdapter(
         },
         body: "grant_type=client_credentials",
       },
+      { provider: "PayPal", fetchImpl: options.fetchImpl },
     );
-    const text = await response.text();
-    let body: JsonRecord = {};
-    if (text) {
-      try {
-        body = JSON.parse(text) as JsonRecord;
-      } catch {
-        throw new Error(
-          `PayPal OAuth response is invalid JSON (${response.status})`,
-        );
-      }
-    }
-    const token = stringValue(body.access_token);
-    const expiresIn = numberValue(body.expires_in);
-    if (!response.ok || !token) {
+    const token = stringValue(payload.access_token);
+    const expiresIn = numberValue(payload.expires_in);
+    if (status < 200 || status >= 300 || !token) {
       throw new Error(
-        `PayPal OAuth failed (${response.status}): ${stringValue(body.error) ?? stringValue(body.message) ?? "unknown error"}`,
+        `PayPal OAuth failed (${status}): ${stringValue(payload.error) ?? stringValue(payload.message) ?? "unknown error"}`,
       );
     }
     const cachedToken = {
@@ -309,35 +248,27 @@ export function createPayPalProviderAdapter(
     connection: ProviderConnectionContext,
     path: string,
     init?: RequestInit & { retryAuth?: boolean },
-  ): Promise<{ status: number; payload: JsonRecord }> {
+  ): Promise<{ status: number; statusText: string; payload: JsonRecord }> {
     const token = await accessToken(connection);
-    const fetchImpl = options.fetchImpl ?? fetch;
-    const response = await fetchImpl(`${baseUrl(connection, options)}${path}`, {
-      ...init,
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json",
-        ...(init?.headers ?? {}),
+    const result = await providerFetchJson(
+      `${baseUrl(connection, options)}${path}`,
+      {
+        ...init,
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          ...(init?.headers ?? {}),
+        },
       },
-    });
-    const text = await response.text();
-    let payload: JsonRecord = {};
-    if (text) {
-      try {
-        payload = JSON.parse(text) as JsonRecord;
-      } catch {
-        throw new Error(
-          `PayPal returned invalid JSON (${response.status} ${response.statusText})`,
-        );
-      }
-    }
-    if (response.status === 401 && init?.retryAuth !== false) {
+      { provider: "PayPal", fetchImpl: options.fetchImpl },
+    );
+    if (result.status === 401 && init?.retryAuth !== false) {
       tokenCache.delete(
-        `${connection.id}:${requiredCredential(connection, "clientId")}`,
+        `${connection.id}:${requiredCredential(connection, "clientId", "PayPal")}`,
       );
       return paypalRequest(connection, path, { ...init, retryAuth: false });
     }
-    return { status: response.status, payload };
+    return result;
   }
 
   async function paypalCall(
@@ -347,21 +278,18 @@ export function createPayPalProviderAdapter(
   ): Promise<JsonRecord> {
     const { status, payload } = await paypalRequest(connection, path, init);
     if (status < 200 || status >= 300) {
-      const detail = recordValue(
-        (Array.isArray(payload.details) ? payload.details[0] : undefined) ??
-          recordValue(payload.error),
+      const message = providerErrorMessage(
+        payload,
+        `PayPal request failed (${status})`,
       );
-      const message =
-        stringValue(payload.message) ??
-        stringValue(detail?.description) ??
-        stringValue(payload.error_description) ??
-        `PayPal request failed (${status})`;
       // Deterministic schema/validation rejections are retryable after
       // input fixes; everything else stays outcome-uncertain (fail-safe).
+      // Audit A8: this now throws the CLASSIFIED error so
+      // classifyProviderOperationFailure actually sees "rejected" (the
+      // former bare Error with an attached failureKind property was
+      // silently classified as outcome_uncertain).
       if (status === 400 || status === 422) {
-        const error = new Error(message) as Error & { failureKind?: string };
-        error.failureKind = "rejected";
-        throw error;
+        throw new ProviderOperationError(message, "rejected");
       }
       throw new Error(message);
     }
@@ -390,9 +318,7 @@ export function createPayPalProviderAdapter(
       if (input.billingMode === "one_time") {
         const amountMinor = item.unitAmountMinor * item.quantity;
         const currency = input.currency;
-        const major = (amountMinor / 10 ** currencyDecimals(currency)).toFixed(
-          currencyDecimals(currency),
-        );
+        const major = minorToDisplayString(amountMinor, currency);
         const payload = await paypalCall(connection, "/v2/checkout/orders", {
           method: "POST",
           body: JSON.stringify({
@@ -491,7 +417,7 @@ export function createPayPalProviderAdapter(
       return {
         providerPaymentId: id,
         status: mapPaymentStatus(payload.status),
-        amountMinor: parseAmountMinor(amount?.value, currency) ?? 0,
+        amountMinor: parseProviderAmountToMinor(amount?.value, currency) ?? 0,
         currency,
         providerCustomerId: stringValue(recordValue(payload.payer)?.payer_id),
       };
@@ -553,9 +479,7 @@ export function createPayPalProviderAdapter(
           stringValue(recordValue(capture.amount)?.currency_code) ?? "USD";
         body.amount = {
           currency_code: currency,
-          value: (input.amountMinor / 10 ** currencyDecimals(currency)).toFixed(
-            currencyDecimals(currency),
-          ),
+          value: minorToDisplayString(input.amountMinor, currency),
         };
       }
       const payload = await paypalCall(
@@ -609,13 +533,11 @@ export function createPayPalProviderAdapter(
       ) {
         throw new InvalidProviderWebhookSignatureError();
       }
-      const webhookId = requiredCredential(connection, "webhookId");
+      const webhookId = requiredCredential(connection, "webhookId", "PayPal");
 
       let event: JsonRecord;
       try {
-        const parsed = JSON.parse(input.rawBody) as unknown;
-        if (!isRecord(parsed)) throw new Error("not an object");
-        event = parsed;
+        event = parseWebhookJson(input.rawBody, "PayPal");
       } catch {
         throw new InvalidProviderWebhookSignatureError();
       }
@@ -647,15 +569,7 @@ export function createPayPalProviderAdapter(
       connection: ProviderConnectionContext,
       input: VerifiedWebhook,
     ): Promise<NormalizedProviderEvent> {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(input.rawBody) as unknown;
-      } catch {
-        throw new Error("PayPal webhook body is not valid JSON");
-      }
-      if (!isRecord(parsed)) {
-        throw new Error("PayPal webhook must be a JSON object");
-      }
+      const parsed = parseWebhookJson(input.rawBody, "PayPal");
       const providerEventId = stringValue(parsed.id);
       const providerEventName = stringValue(parsed.event_type);
       const occurredAt = stringValue(parsed.create_time);
@@ -683,7 +597,7 @@ export function createPayPalProviderAdapter(
       const amount = recordValue(resource.amount);
       const currency = stringValue(amount?.currency_code);
       const amountMinor = currency
-        ? parseAmountMinor(amount?.value, currency)
+        ? parseProviderAmountToMinor(amount?.value, currency)
         : undefined;
 
       const amountFields = currency

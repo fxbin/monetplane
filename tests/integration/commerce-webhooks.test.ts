@@ -1,12 +1,16 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import { applications } from "../../src/modules/applications/schema";
 import {
   createApplication,
   registerCallbackOrigin,
 } from "../../src/modules/applications/service";
-import { createPrice, createProduct } from "../../src/modules/catalog/service";
+import {
+  addProductGrantConfig,
+  createPrice,
+  createProduct,
+} from "../../src/modules/catalog/service";
 import { createCommerceCheckout } from "../../src/modules/commerce/checkout";
 import {
   checkoutSessions,
@@ -20,6 +24,7 @@ import {
 import { processProviderWebhook } from "../../src/modules/commerce/webhook";
 import { customers } from "../../src/modules/customers/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
+import { entitlementGrants } from "../../src/modules/entitlements/schema";
 import {
   mockProviderAdapter,
   signMockWebhookPayload,
@@ -55,6 +60,15 @@ async function createFixture(mode: "one_time" | "subscription" = "one_time") {
   );
   const product = await createProduct(
     { applicationId: app.id, key: "pro", name: "Pro" },
+    db,
+  );
+  await addProductGrantConfig(
+    {
+      applicationId: app.id,
+      productId: product.id,
+      grantType: "entitlement",
+      referenceKey: "feature.pro",
+    },
     db,
   );
 
@@ -427,6 +441,426 @@ describe("commerce webhook inbox", () => {
     expect(secondOrder?.status).toBe("pending");
     expect(firstPayment?.orderId).toBeNull();
     expect(firstPayment?.customerId).toBeNull();
+  });
+});
+
+describe("commerce webhook payment invariants (audit B5)", () => {
+  async function orderGrants(applicationId: string, orderId: string) {
+    return db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, applicationId),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, orderId),
+        ),
+      );
+  }
+
+  function paymentEventData(
+    fixture: Fixture,
+    overrides: Record<string, unknown>,
+  ) {
+    return {
+      provider_payment_id: "pay_provider_x",
+      monetplane_order_id: fixture.checkout.orderId,
+      monetplane_customer_id: fixture.applicationCustomer.customerId,
+      amount_minor: 1000,
+      currency: "USD",
+      ...overrides,
+    };
+  }
+
+  it("fails payment events whose currency differs from the recorded currency and changes no rows (A)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(fixture, {
+      id: "evt_cur_success_usd",
+      type: "payment.succeeded",
+      occurred_at: "2026-08-18T14:00:00.000Z",
+      data: paymentEventData(fixture, { provider_payment_id: "pay_cur_1" }),
+    });
+
+    await expect(
+      processFixtureWebhook(fixture, {
+        id: "evt_cur_refund_eur",
+        type: "payment.refunded",
+        occurred_at: "2026-08-18T14:01:00.000Z",
+        data: paymentEventData(fixture, {
+          provider_payment_id: "pay_cur_1",
+          provider_refund_id: "refund_cur_eur",
+          amount_minor: 500,
+          currency: "EUR",
+        }),
+      }),
+    ).rejects.toThrow(/currency mismatch/);
+
+    // Lowercase "eur" must still mismatch (case-insensitive comparison).
+    await expect(
+      processFixtureWebhook(fixture, {
+        id: "evt_cur_success_eur",
+        type: "payment.succeeded",
+        occurred_at: "2026-08-18T14:02:00.000Z",
+        data: paymentEventData(fixture, {
+          provider_payment_id: "pay_cur_2",
+          currency: "eur",
+        }),
+      }),
+    ).rejects.toThrow(/currency mismatch/);
+
+    const paymentRows = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.applicationId, fixture.app.id));
+    expect(paymentRows).toHaveLength(1);
+    expect(paymentRows[0]).toMatchObject({
+      providerPaymentId: "pay_cur_1",
+      status: "succeeded",
+      amountMinor: 1000,
+      currency: "USD",
+    });
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows).toHaveLength(0);
+
+    const [failedEvent] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.providerEventId, "evt_cur_refund_eur"))
+      .limit(1);
+    expect(failedEvent?.status).toBe("failed");
+    expect(failedEvent?.errorMessage).toContain("currency mismatch");
+  });
+
+  it("never overwrites the amount of an already settled payment (B)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(fixture, {
+      id: "evt_amt_first",
+      type: "payment.succeeded",
+      occurred_at: "2026-08-18T14:03:00.000Z",
+      data: paymentEventData(fixture, { provider_payment_id: "pay_amt_1" }),
+    });
+
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      await processFixtureWebhook(fixture, {
+        id: "evt_amt_drift",
+        type: "payment.succeeded",
+        // Same occurred_at as the first event: durable entitlement grants are
+        // keyed on event time, and grant idempotency is not under test here.
+        occurred_at: "2026-08-18T14:03:00.000Z",
+        data: paymentEventData(fixture, {
+          provider_payment_id: "pay_amt_1",
+          amount_minor: 999999,
+        }),
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("evt_amt_drift"),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_amt_1"))
+      .limit(1);
+    expect(payment?.amountMinor).toBe(1000);
+    expect(payment?.currency).toBe("USD");
+    expect(payment?.status).toBe("succeeded");
+  });
+
+  it("records a partial refund but keeps the payment succeeded and entitlements active (C+D)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(fixture, {
+      id: "evt_part_success",
+      type: "payment.succeeded",
+      occurred_at: "2026-08-18T14:05:00.000Z",
+      data: paymentEventData(fixture, { provider_payment_id: "pay_part_1" }),
+    });
+
+    // Lowercase currency must be accepted against the uppercase record.
+    await processFixtureWebhook(fixture, {
+      id: "evt_part_refund",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:06:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_part_1",
+        provider_refund_id: "refund_part_1",
+        amount_minor: 500,
+        currency: "usd",
+      }),
+    });
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_part_1"))
+      .limit(1);
+    expect(payment?.status).toBe("succeeded");
+    expect(payment?.amountMinor).toBe(1000);
+
+    const [refund] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "refund_part_1"))
+      .limit(1);
+    expect(refund).toMatchObject({
+      status: "succeeded",
+      amountMinor: 500,
+      paymentId: payment?.id,
+      orderId: fixture.checkout.orderId,
+    });
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+
+    const grants = await orderGrants(fixture.app.id, fixture.checkout.orderId);
+    expect(grants.length).toBeGreaterThan(0);
+    expect(grants.every((grant) => grant.status === "active")).toBe(true);
+  });
+
+  it("flips payment/order to refunded and revokes entitlements only when cumulative refunds reach the payment amount (D)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(fixture, {
+      id: "evt_cum_success",
+      type: "payment.succeeded",
+      occurred_at: "2026-08-18T14:07:00.000Z",
+      data: paymentEventData(fixture, { provider_payment_id: "pay_cum_1" }),
+    });
+    await processFixtureWebhook(fixture, {
+      id: "evt_cum_refund_1",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:08:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_cum_1",
+        provider_refund_id: "refund_cum_1",
+        amount_minor: 400,
+      }),
+    });
+
+    const [partialPayment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_cum_1"))
+      .limit(1);
+    expect(partialPayment?.status).toBe("succeeded");
+    const partialGrants = await orderGrants(
+      fixture.app.id,
+      fixture.checkout.orderId,
+    );
+    expect(partialGrants.every((grant) => grant.status === "active")).toBe(
+      true,
+    );
+
+    await processFixtureWebhook(fixture, {
+      id: "evt_cum_refund_2",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:09:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_cum_1",
+        provider_refund_id: "refund_cum_2",
+        amount_minor: 600,
+      }),
+    });
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_cum_1"))
+      .limit(1);
+    expect(payment?.status).toBe("refunded");
+    expect(payment?.amountMinor).toBe(1000);
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("refunded");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.paymentId, payment?.id ?? ""));
+    expect(
+      refundRows
+        .map((row) => row.amountMinor)
+        .sort((a, b) => (a ?? 0) - (b ?? 0)),
+    ).toEqual([400, 600]);
+
+    const grants = await orderGrants(fixture.app.id, fixture.checkout.orderId);
+    expect(grants.length).toBeGreaterThan(0);
+    expect(grants.every((grant) => grant.status === "revoked")).toBe(true);
+  });
+
+  it("caps a refund event at the remaining captured amount (C)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(fixture, {
+      id: "evt_cap_success",
+      type: "payment.succeeded",
+      occurred_at: "2026-08-18T14:10:00.000Z",
+      data: paymentEventData(fixture, { provider_payment_id: "pay_cap_1" }),
+    });
+    await processFixtureWebhook(fixture, {
+      id: "evt_cap_refund",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:11:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_cap_1",
+        provider_refund_id: "refund_cap_1",
+        amount_minor: 5000,
+      }),
+    });
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_cap_1"))
+      .limit(1);
+    expect(payment).toMatchObject({ status: "refunded", amountMinor: 1000 });
+
+    const [refund] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "refund_cap_1"))
+      .limit(1);
+    expect(refund?.amountMinor).toBe(1000);
+
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("refunded");
+
+    const grants = await orderGrants(fixture.app.id, fixture.checkout.orderId);
+    expect(grants.every((grant) => grant.status === "revoked")).toBe(true);
+  });
+
+  it("idempotently skips refund events once the payment is already fully refunded (C)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(fixture, {
+      id: "evt_skip_success",
+      type: "payment.succeeded",
+      occurred_at: "2026-08-18T14:12:00.000Z",
+      data: paymentEventData(fixture, { provider_payment_id: "pay_skip_1" }),
+    });
+    await processFixtureWebhook(fixture, {
+      id: "evt_skip_refund_full",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:13:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_skip_1",
+        provider_refund_id: "refund_skip_1",
+        amount_minor: 1000,
+      }),
+    });
+
+    const result = await processFixtureWebhook(fixture, {
+      id: "evt_skip_refund_extra",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:14:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_skip_1",
+        provider_refund_id: "refund_skip_2",
+        amount_minor: 100,
+      }),
+    });
+    expect(result.status).toBe("ignored");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows.map((row) => row.providerRefundId)).toEqual([
+      "refund_skip_1",
+    ]);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_skip_1"))
+      .limit(1);
+    expect(payment).toMatchObject({ status: "refunded", amountMinor: 1000 });
+
+    const [skippedEvent] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.providerEventId, "evt_skip_refund_extra"))
+      .limit(1);
+    expect(skippedEvent?.status).toBe("ignored");
+    expect(skippedEvent?.errorMessage).toContain(
+      "refund exceeds payment amount",
+    );
+  });
+
+  it("seeds an out-of-order refund's payment row from the order total, not the refund amount (C)", async () => {
+    const fixture = await createFixture("one_time");
+
+    // Refund arrives with no prior success event for this payment.
+    await processFixtureWebhook(fixture, {
+      id: "evt_rf_first",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:20:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_rf_1",
+        provider_refund_id: "refund_rf_1",
+        amount_minor: 500,
+      }),
+    });
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_rf_1"))
+      .limit(1);
+    expect(payment?.amountMinor).toBe(1998);
+    expect(payment?.status).toBe("succeeded");
+
+    // A second refund reaching the order total closes it out.
+    await processFixtureWebhook(fixture, {
+      id: "evt_rf_second",
+      type: "payment.refunded",
+      occurred_at: "2026-08-18T14:21:00.000Z",
+      data: paymentEventData(fixture, {
+        provider_payment_id: "pay_rf_1",
+        provider_refund_id: "refund_rf_2",
+        amount_minor: 1498,
+      }),
+    });
+
+    const [refunded] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_rf_1"))
+      .limit(1);
+    expect(refunded?.status).toBe("refunded");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.paymentId, refunded?.id ?? ""));
+    expect(
+      refundRows.map((row) => row.amountMinor ?? 0).sort((a, b) => a - b),
+    ).toEqual([500, 1498]);
   });
 });
 

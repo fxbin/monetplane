@@ -42,10 +42,14 @@ export async function POST(_request: Request, { params }: RouteContext) {
       throw new Error("Payment not found for this customer");
     }
 
+    // The journaled operation owns the payment.refunded audit entry, written
+    // atomically with the journal completion (audit A4 — this route previously
+    // performed the same operation with no audit trail).
     const operation = await refundPaymentWithJournal(
       context.selectedApplication.id,
       paymentId,
       context.environment,
+      { id: guard.operatorId, label: guard.name || guard.email },
     );
     return NextResponse.json({ operation });
   } catch (error) {

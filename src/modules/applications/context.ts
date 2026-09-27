@@ -35,6 +35,13 @@ export class ApplicationContextMismatchError extends Error {
   }
 }
 
+export class ApplicationCredentialRequiredError extends Error {
+  constructor(message = "Application credential required") {
+    super(message);
+    this.name = "ApplicationCredentialRequiredError";
+  }
+}
+
 export async function resolveApplicationContext(
   request: Request,
   db: Database = getDb(),
@@ -83,4 +90,28 @@ export async function resolveApplicationContext(
   }
 
   throw new ApplicationContextNotFoundError();
+}
+
+/**
+ * Resolve the application context and require it to come from an
+ * authenticated application credential (mp_app_* bearer).
+ *
+ * The plain `resolveApplicationContext` keeps a Host-header fallback for
+ * public/hosted read surfaces (branded domains). Money-mutating SDK routes
+ * must NOT trust the Host header: any client that can set the Host to a
+ * registered application domain would otherwise act as that application.
+ * Mutation routes resolve through this guard and fail with a 401
+ * `credential_required` when only the host is present.
+ */
+export async function resolveCredentialApplicationContext(
+  request: Request,
+  db: Database = getDb(),
+): Promise<ApplicationContext> {
+  const context = await resolveApplicationContext(request, db);
+
+  if (context.source !== "credential") {
+    throw new ApplicationCredentialRequiredError();
+  }
+
+  return context;
 }

@@ -2,14 +2,31 @@
 
 Operational analytics for the console (`src/server/control-plane/analytics.ts`).
 Every metric below is implemented by the deterministic fixtures in
-`tests/integration/analytics-v1.test.ts`.
+`tests/integration/analytics-v1.test.ts`. The dashboard trend views
+(`getRevenueAnalytics`, `getUsageAnalytics` — audit A3 consolidation from
+the former `overview.ts`) live in the same service and follow the same
+policies.
 
 ## Currency policy
 
 **Amounts are never summed across currencies.** Every revenue/MRR
 aggregate groups by `currency` and renders as separate entries. Views that
 show more than one currency label the mix explicitly. There is no FX
-conversion (non-goal).
+conversion (non-goal). This includes the dashboard trend views: monthly
+revenue buckets, product breakdowns, and KPI totals are all per-currency;
+multi-currency KPI cards render a per-currency breakdown list instead of a
+single mislabeled sum.
+
+## Environment policy
+
+Fact-table aggregates (payments, orders, subscriptions, credit ledger) are
+scoped by the row's own denormalized `environment` column — the
+historically-accurate record of where the money moved. A provider
+connection's `mode` can be edited after the fact and is used only for
+current connection state (provider health, setup warnings), never as an
+analytics filter. Integration tests pin this by seeding payments whose
+`payments.environment` disagrees with their connection mode and asserting
+the canonical (environment-column) outcome.
 
 ## Revenue and payments
 

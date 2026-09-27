@@ -11,3 +11,13 @@ export function getDatabaseUrl(): string {
 
   return value;
 }
+
+export function getAuthSecret(): string {
+  const value = process.env.AUTH_SECRET?.trim();
+
+  if (!value) {
+    throw new Error("AUTH_SECRET is required");
+  }
+
+  return value;
+}

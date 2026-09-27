@@ -29,6 +29,9 @@ jobs:
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       DATABASE_URL: postgresql://monetplane:monetplane@localhost:5432/monetplane_test
+      # Build-only value: getAuthSecret() (src/config/env.ts) fails fast when
+      # AUTH_SECRET is unset, and `next build` evaluates auth.config.ts.
+      AUTH_SECRET: build-secret
     steps:
       - name: Checkout
         uses: actions/checkout@v7

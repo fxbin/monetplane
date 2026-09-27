@@ -46,10 +46,14 @@ export async function POST(_request: Request, { params }: RouteContext) {
       throw new Error("Subscription not found for this customer");
     }
 
+    // The journaled operation owns the subscription.cancelled audit entry,
+    // written atomically with the journal completion (audit A4 — this route
+    // previously performed the same operation with no audit trail).
     const operation = await cancelSubscriptionWithJournal(
       context.selectedApplication.id,
       subscriptionId,
       context.environment,
+      { id: guard.operatorId, label: guard.name || guard.email },
     );
     return NextResponse.json({ operation });
   } catch (error) {
