@@ -1,7 +1,8 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
-import { webhookEvents } from "@/modules/commerce/schema";
+import { orders, webhookEvents } from "@/modules/commerce/schema";
+import { applicationCustomers } from "@/modules/customers/schema";
 import { dispatchWebhookEvent } from "@/modules/webhooks/service";
 
 /**
@@ -72,15 +73,57 @@ export async function publishBillingLifecycleEvent(
     return { published: false, eventType: event.normalizedType, eventId: null };
   }
 
+  // MP-REV-04: the developer contract's externalCustomerId is the
+  // APPLICATION's customer identifier (application_customers
+  // .external_customer_id) — never the PSP's customer id. Resolve it from
+  // the verified internal customer id, falling back to the order's customer
+  // when the event does not carry one.
+  const monetplaneCustomerId =
+    typeof normalized.monetplaneCustomerId === "string"
+      ? normalized.monetplaneCustomerId
+      : null;
+  let externalCustomerId: string | null = null;
+  if (monetplaneCustomerId) {
+    const [customer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(applicationCustomers)
+      .where(
+        and(
+          eq(applicationCustomers.applicationId, input.applicationId),
+          eq(applicationCustomers.id, monetplaneCustomerId),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = customer?.externalCustomerId ?? null;
+  }
+  if (!externalCustomerId && normalized.monetplaneOrderId) {
+    const [orderCustomer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(applicationCustomers)
+      .innerJoin(
+        orders,
+        eq(orders.applicationCustomerId, applicationCustomers.id),
+      )
+      .where(
+        and(
+          eq(orders.applicationId, input.applicationId),
+          eq(orders.id, String(normalized.monetplaneOrderId)),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = orderCustomer?.externalCustomerId ?? null;
+  }
+
   const context: BillingEventContext = {
     orderId:
       typeof normalized.monetplaneOrderId === "string"
         ? normalized.monetplaneOrderId
         : null,
-    externalCustomerId:
-      typeof normalized.providerCustomerId === "string"
-        ? normalized.providerCustomerId
-        : null,
+    externalCustomerId,
     amountMinor:
       typeof normalized.amountMinor === "number"
         ? normalized.amountMinor

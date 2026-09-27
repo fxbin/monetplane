@@ -1,5 +1,6 @@
 import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import { createApplication } from "../../src/modules/applications/service";
@@ -13,6 +14,7 @@ import {
 } from "../../src/modules/providers/adapters/mock";
 import { registerProviderAdapter } from "../../src/modules/providers/registry";
 import { createProviderConnection } from "../../src/modules/providers/service";
+import { webhookDeliveries } from "../../src/modules/webhooks/schema";
 import {
   createWebhookEndpoint,
   listWebhookDeliveries,
@@ -134,6 +136,125 @@ async function succeedPayment(f: Fixture, eventId: string) {
     db,
   );
 }
+
+describe("developer event externalCustomerId contract (MP-REV-04)", () => {
+  const receivers: Array<() => Promise<void>> = [];
+  afterEach(async () => {
+    for (const close of receivers.splice(0)) await close();
+  });
+
+  function signedSuccess(
+    f: Fixture,
+    eventId: string,
+    providerCustomerId?: string,
+  ) {
+    const rawBody = JSON.stringify({
+      id: eventId,
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: `pay_${eventId}`,
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        provider_customer_id: providerCustomerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    return processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+  }
+
+  it("exposes the application externalCustomerId, never the PSP customer id", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+
+    // The provider event carries a PSP-side customer id that differs from
+    // both the MonetPlane internal id and the application external id.
+    const result = await signedSuccess(f, "evt_xid_1", "cus_psp_9");
+    expect(result.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: result.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    const delivery = deliveries[deliveries.length - 1];
+    expect(published.published).toBe(true);
+    // Fixture customer: external id "user-1", internal id f.customer.customerId.
+    expect(delivery.externalCustomerId).toBe("user-1");
+
+    // The wire payload must carry the application external id and never
+    // leak the PSP customer id.
+    const [rawDelivery] = await db
+      .select()
+      .from(webhookDeliveries)
+      .where(eq(webhookDeliveries.id, delivery.id))
+      .limit(1);
+    const payloadData = (
+      rawDelivery.payload as { data?: Record<string, unknown> }
+    ).data;
+    expect(payloadData?.externalCustomerId).toBe("user-1");
+    expect(JSON.stringify(rawDelivery.payload)).not.toContain("cus_psp_9");
+  });
+
+  it("still resolves externalCustomerId when the event carries no PSP customer id", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+    const result = await signedSuccess(f, "evt_xid_2");
+    expect(result.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: result.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries[deliveries.length - 1].externalCustomerId).toBe("user-1");
+  });
+});
 
 describe("developer billing lifecycle events (#61)", () => {
   const receivers: Array<() => Promise<void>> = [];
