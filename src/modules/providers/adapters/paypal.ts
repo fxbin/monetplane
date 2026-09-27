@@ -1,3 +1,11 @@
+// Single money authority (audit A1): the unified zero-decimal registry —
+// ISK is 0-decimal here, intentionally superseding PayPal's old 2-decimal
+// ISK handling (see src/lib/money.ts). Relative import: adapters are also
+// imported by unit tests that run without a tsconfig-path resolver.
+import {
+  minorToDisplayString,
+  parseProviderAmountToMinor,
+} from "../../../lib/money";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
@@ -124,40 +132,6 @@ function baseUrl(
   const official =
     connection.mode === "test" ? PAYPAL_TEST_API : PAYPAL_PRODUCTION_API;
   return (configured ?? official).replace(/\/+$/, "");
-}
-
-const ZERO_DECIMAL_CURRENCIES = new Set([
-  "BIF",
-  "CLP",
-  "DJF",
-  "GNF",
-  "JPY",
-  "KMF",
-  "KRW",
-  "MGA",
-  "PYG",
-  "RWF",
-  "UGX",
-  "VND",
-  "VUV",
-  "XAF",
-  "XOF",
-  "XPF",
-]);
-
-function currencyDecimals(currency: string): number {
-  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : 2;
-}
-
-/** PayPal decimal string ("19.00") → MonetPlane minor units. */
-function parseAmountMinor(
-  value: unknown,
-  currency: string,
-): number | undefined {
-  if (typeof value !== "string" && typeof value !== "number") return undefined;
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return undefined;
-  return Math.round(amount * 10 ** currencyDecimals(currency));
 }
 
 /** MonetPlane correlation payload for PayPal custom_id (≤127 chars). */
@@ -390,9 +364,7 @@ export function createPayPalProviderAdapter(
       if (input.billingMode === "one_time") {
         const amountMinor = item.unitAmountMinor * item.quantity;
         const currency = input.currency;
-        const major = (amountMinor / 10 ** currencyDecimals(currency)).toFixed(
-          currencyDecimals(currency),
-        );
+        const major = minorToDisplayString(amountMinor, currency);
         const payload = await paypalCall(connection, "/v2/checkout/orders", {
           method: "POST",
           body: JSON.stringify({
@@ -491,7 +463,7 @@ export function createPayPalProviderAdapter(
       return {
         providerPaymentId: id,
         status: mapPaymentStatus(payload.status),
-        amountMinor: parseAmountMinor(amount?.value, currency) ?? 0,
+        amountMinor: parseProviderAmountToMinor(amount?.value, currency) ?? 0,
         currency,
         providerCustomerId: stringValue(recordValue(payload.payer)?.payer_id),
       };
@@ -553,9 +525,7 @@ export function createPayPalProviderAdapter(
           stringValue(recordValue(capture.amount)?.currency_code) ?? "USD";
         body.amount = {
           currency_code: currency,
-          value: (input.amountMinor / 10 ** currencyDecimals(currency)).toFixed(
-            currencyDecimals(currency),
-          ),
+          value: minorToDisplayString(input.amountMinor, currency),
         };
       }
       const payload = await paypalCall(
@@ -683,7 +653,7 @@ export function createPayPalProviderAdapter(
       const amount = recordValue(resource.amount);
       const currency = stringValue(amount?.currency_code);
       const amountMinor = currency
-        ? parseAmountMinor(amount?.value, currency)
+        ? parseProviderAmountToMinor(amount?.value, currency)
         : undefined;
 
       const amountFields = currency

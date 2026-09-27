@@ -280,6 +280,51 @@ describe("waffo pancake adapter", () => {
     expect(event.amountMinor).toBe(4990);
   });
 
+  it("creates zero-decimal shells for JPY/MGA and parses JPY webhook amounts (audit A1)", async () => {
+    // Unified registry (src/lib/money.ts): MGA/XAF were 2-decimal in the
+    // old adapter-local table; they are 0-decimal now, matching JPY/ISK.
+    const fake = pancakeFake();
+    const adapter = adapterWith(fake);
+    for (const currency of ["JPY", "MGA"] as const) {
+      await adapter.createCheckout(connection, {
+        applicationId: connection.applicationId,
+        monetplaneOrderId: `ord_${currency}`,
+        monetplaneCustomerId: "cus_zero",
+        billingMode: "one_time",
+        currency,
+        items: [
+          {
+            productId: "prod_zero",
+            productName: "Zero Decimal Plan",
+            priceId: "price_zero",
+            quantity: 1,
+            unitAmountMinor: 1000,
+          },
+        ],
+        successUrl: "https://product.test/success",
+        cancelUrl: "https://product.test/cancel",
+      });
+    }
+    const shells = fake.calls.filter((c) => c.op === "onetimeProducts.create");
+    expect(shells[0]?.params.prices).toEqual({
+      JPY: { amount: "1000", taxCategory: "saas" },
+    });
+    expect(shells[1]?.params.prices).toEqual({
+      MGA: { amount: "1000", taxCategory: "saas" },
+    });
+
+    const event = await adapter.normalizeWebhook(connection, {
+      rawBody: pancakeEvent("order.completed", {
+        orderId: "ORD_jpy",
+        currency: "JPY",
+        amount: "1000",
+        paymentId: "PAY_jpy",
+      }),
+    });
+    expect(event.amountMinor).toBe(1000);
+    expect(event.currency).toBe("JPY");
+  });
+
   it("verifies x-waffo-signature with the environment pinned from the connection", async () => {
     const seen: Array<string | null | undefined> = [];
     const adapter = createWaffoProviderAdapter({

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 import { createPayPalProviderAdapter } from "../../src/modules/providers/adapters/paypal";
 import type {
   ProviderConnectionContext,
@@ -186,4 +187,132 @@ defineProviderAdapterContractTests({
   expectedEventId: "WH-CONTRACT-1",
   expectedEventType: "payment.succeeded",
   expectedUnknownEventName: "definitely.not.a.real.event",
+});
+
+/**
+ * Unified zero-decimal handling (audit A1): the PayPal adapter now shares
+ * src/lib/money.ts with every other money site. JPY was already 0-decimal
+ * here; ISK used to be 2-decimal in the old local table and is now unified
+ * to 0-decimal (intentional behavioral change).
+ */
+describe("paypal adapter zero-decimal money (audit A1)", () => {
+  const checkoutConnection: ProviderConnectionContext = {
+    ...connection,
+    metadata: {},
+  };
+
+  function capturingFetch() {
+    const orderAmounts: Array<
+      | {
+          currency_code?: string;
+          value?: string;
+        }
+      | undefined
+    > = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/oauth2/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "pp_test_token", expires_in: 32400 }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (url.endsWith("/v2/checkout/orders")) {
+        const parsed = JSON.parse(String(init?.body ?? "{}")) as {
+          purchase_units?: Array<{
+            amount?: { currency_code?: string; value?: string };
+          }>;
+        };
+        orderAmounts.push(parsed.purchase_units?.[0]?.amount);
+        return new Response(
+          JSON.stringify({
+            id: "ORDER_ZERO_1",
+            status: "CREATED",
+            links: [
+              {
+                rel: "payer-action",
+                href: "https://www.sandbox.paypal.com/checkoutnow?token=x",
+              },
+            ],
+          }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      return new Response(JSON.stringify({ message: "unexpected" }), {
+        status: 404,
+      });
+    };
+    return { fetchImpl, orderAmounts };
+  }
+
+  async function checkoutWith(currency: string, unitAmountMinor: number) {
+    const { fetchImpl, orderAmounts } = capturingFetch();
+    const adapter = createPayPalProviderAdapter({ fetchImpl });
+    await adapter.createCheckout(checkoutConnection, {
+      applicationId: checkoutConnection.applicationId,
+      monetplaneOrderId: "ord_zero",
+      monetplaneCustomerId: "cus_zero",
+      billingMode: "one_time",
+      currency,
+      items: [
+        {
+          productId: "prod_zero",
+          priceId: "price_zero",
+          quantity: 1,
+          unitAmountMinor,
+        },
+      ],
+      successUrl: "https://product.test/success",
+      cancelUrl: "https://product.test/cancel",
+    });
+    expect(orderAmounts).toHaveLength(1);
+    return orderAmounts[0];
+  }
+
+  it("sends JPY as whole units (1000 minor → '1000')", async () => {
+    expect(await checkoutWith("JPY", 1000)).toEqual({
+      currency_code: "JPY",
+      value: "1000",
+    });
+  });
+
+  it("sends ISK as whole units after unification (1990 minor → '1990')", async () => {
+    // Pre-unification the PayPal-local table treated ISK as 2-decimal and
+    // produced "19.90"; the registry now pins ISK at 0 decimals.
+    expect(await checkoutWith("ISK", 1990)).toEqual({
+      currency_code: "ISK",
+      value: "1990",
+    });
+  });
+
+  it("keeps USD as 2-decimal (2900 minor → '29.00')", async () => {
+    expect(await checkoutWith("USD", 2900)).toEqual({
+      currency_code: "USD",
+      value: "29.00",
+    });
+  });
+
+  it("normalizes JPY webhook captures without cents", async () => {
+    const body = JSON.stringify({
+      id: "WH-JPY-1",
+      create_time: "2026-09-26T08:00:00.000Z",
+      event_type: "PAYMENT.CAPTURE.COMPLETED",
+      resource: {
+        id: "CAPTURE_JPY_1",
+        status: "COMPLETED",
+        custom_id: "monetplane_order_id:ord_jpy|monetplane_customer_id:cus_jpy",
+        amount: { currency_code: "JPY", value: "1000" },
+      },
+    });
+    const adapter = createPayPalProviderAdapter({
+      fetchImpl: fakeFetch,
+    });
+    const verified = await adapter.verifyWebhook(connection, {
+      rawBody: body,
+      headers: verifyHeaders(body),
+    });
+    const event = await adapter.normalizeWebhook(connection, verified);
+    expect(event.amountMinor).toBe(1000);
+    expect(event.currency).toBe("JPY");
+  });
 });

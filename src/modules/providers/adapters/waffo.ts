@@ -6,6 +6,14 @@ import {
   WaffoPancake,
   WaffoPancakeError,
 } from "@waffo/pancake-ts";
+// Single money authority (audit A1): MGA/XAF are 0-decimal here,
+// intentionally superseding this adapter's old 2-decimal handling (see
+// src/lib/money.ts). Relative import: adapters are also imported by unit
+// tests that run without a tsconfig-path resolver.
+import {
+  minorToDisplayString,
+  parseProviderAmountToMinor,
+} from "../../../lib/money";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
@@ -144,42 +152,10 @@ function requiredCredential(
 
 /**
  * Money: Pancake uses display-value strings ("29.00" USD, "1000" JPY);
- * MonetPlane uses integer minor units. Zero-decimal ISO currencies are
- * converted without cents.
+ * MonetPlane uses integer minor units. Conversion goes through the single
+ * money authority (audit A1) — the unified zero-decimal registry at
+ * src/lib/money.ts, which replaces this adapter's former local table.
  */
-const ZERO_DECIMAL_CURRENCIES = new Set([
-  "BIF",
-  "CLP",
-  "DJF",
-  "GNF",
-  "ISK",
-  "JPY",
-  "KMF",
-  "KRW",
-  "PYG",
-  "RWF",
-  "UGX",
-  "VND",
-  "VUV",
-  "XOF",
-  "XPF",
-]);
-
-function currencyDecimals(currency: string): number {
-  return ZERO_DECIMAL_CURRENCIES.has(currency.toUpperCase()) ? 0 : 2;
-}
-
-function minorToDisplay(amountMinor: number, currency: string): string {
-  const decimals = currencyDecimals(currency);
-  const value = amountMinor / 10 ** decimals;
-  return value.toFixed(decimals);
-}
-
-function displayToMinor(display: string, currency: string): number | undefined {
-  const parsed = Number(display);
-  if (!Number.isFinite(parsed)) return undefined;
-  return Math.round(parsed * 10 ** currencyDecimals(currency));
-}
 
 function pancakeEnvironment(mode: string): "test" | "prod" {
   return mode === "live" ? "prod" : "test";
@@ -338,7 +314,7 @@ function normalizeWaffoPancakeWebhook(
     rawEventReference: event.id,
   });
 
-  const amountMinor = displayToMinor(String(data.amount ?? ""), data.currency);
+  const amountMinor = parseProviderAmountToMinor(data.amount, data.currency);
 
   switch (event.eventType) {
     case "order.completed":
@@ -457,7 +433,7 @@ export function createWaffoProviderAdapter(
       )}`;
       const shellPrices = {
         [currency]: {
-          amount: minorToDisplay(lineTotalMinor, currency),
+          amount: minorToDisplayString(lineTotalMinor, currency),
           taxCategory: TaxCategory.SaaS,
         },
       };
@@ -569,7 +545,7 @@ export function createWaffoProviderAdapter(
             reason: "monetplane operator refund",
             requestedAmount: input.amountMinor
               ? {
-                  amount: minorToDisplay(input.amountMinor, currency),
+                  amount: minorToDisplayString(input.amountMinor, currency),
                   currency,
                 }
               : undefined,
