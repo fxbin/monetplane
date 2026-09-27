@@ -19,7 +19,22 @@ import {
  * Consumption ordering (deterministic, documented):
  *   1. soonest-expiring buckets first (protect nothing from expiry);
  *   2. tie-break by creation time (oldest grant first);
- *   3. never-expiring buckets (purchased credits by default) last.
+ *   3. bucket id as the final tie-break (total order);
+ *   4. never-expiring buckets (purchased credits by default) sort last
+ *      because NULLS LAST pushes them behind every expiring bucket.
+ *
+ * Concurrency / lock order (B4): bucket rows are mutated under
+ * `SELECT ... FOR UPDATE`, and every bucket writer acquires locks in the
+ * same canonical order:
+ *
+ *   credit account row → bucket rows (in the consumption order above)
+ *
+ * Debits and captures establish the account lock first (their account
+ * UPDATE precedes consumption); expiry locks the account row explicitly
+ * before re-reading the bucket. A total ORDER BY (with the id tie-break)
+ * guarantees overlapping consumers lock buckets in identical order, so
+ * concurrent consumption serializes instead of deadlocking or
+ * last-writer-winning.
  *
  * Subscription-period allowances are granted with an explicit expiresAt;
  * rollover is explicit: a new period grants a NEW bucket, and any leftover
@@ -99,6 +114,13 @@ export async function consumeBuckets(
 ) {
   if (amount <= 0) return;
   let remaining = amount;
+  // FOR UPDATE is required: without row locks two transactions consuming
+  // overlapping bucket sets could both compute nextRemaining from the same
+  // stale read and last-writer-win, corrupting the allocation. The ORDER BY
+  // is a total order (expiresAt, createdAt, id) so all consumers acquire
+  // row locks in the identical canonical sequence — no deadlocks. The
+  // consumption loop below iterates rows in this exact order, so the lock
+  // order IS the consumption order.
   const rows = await db
     .select()
     .from(creditBuckets)
@@ -111,7 +133,9 @@ export async function consumeBuckets(
     .orderBy(
       sql`${creditBuckets.expiresAt} ASC NULLS LAST`,
       asc(creditBuckets.createdAt),
-    );
+      asc(creditBuckets.id),
+    )
+    .for("update");
 
   for (const bucket of rows) {
     if (remaining <= 0) break;
@@ -143,6 +167,10 @@ export async function expireDueCreditBuckets(
   db: CreditStore & { transaction: Database["transaction"] },
   now: Date = new Date(),
 ) {
+  // Deterministic scan order (same canonical order as consumption). The
+  // per-bucket transactions below re-validate under lock, so an unlocked
+  // outer read is safe — this ordering only makes concurrent expiry runs
+  // process buckets in a stable, predictable sequence.
   const due = await db
     .select()
     .from(creditBuckets)
@@ -153,11 +181,27 @@ export async function expireDueCreditBuckets(
         lte(creditBuckets.expiresAt, now),
         sql`${creditBuckets.remainingAmount} > 0`,
       ),
+    )
+    .orderBy(
+      sql`${creditBuckets.expiresAt} ASC NULLS LAST`,
+      asc(creditBuckets.createdAt),
+      asc(creditBuckets.id),
     );
 
   const expired: Array<{ bucketId: string; reversedAmount: number }> = [];
   for (const bucket of due) {
     await db.transaction(async (tx) => {
+      // Canonical lock order: account row FIRST, then bucket rows. Debits
+      // and captures hold the account row lock (their UPDATE precedes
+      // consumeBuckets) before locking buckets; expiry must do the same or
+      // a concurrent debit and expiry could deadlock (bucket→account vs
+      // account→bucket). After acquiring the account lock, any competing
+      // debit has committed and the bucket re-read below sees its effect.
+      await tx
+        .select({ id: creditAccounts.id })
+        .from(creditAccounts)
+        .where(eq(creditAccounts.id, bucket.creditAccountId))
+        .for("update");
       const [fresh] = await tx
         .select()
         .from(creditBuckets)

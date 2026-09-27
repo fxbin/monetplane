@@ -262,6 +262,87 @@ describe("credit lifecycle buckets (#63)", () => {
     expect(bucket.remainingAmount).toBe(10);
   });
 
+  it("allocates exactly under K concurrent debits with distinct idempotency keys (B4)", async () => {
+    const f: Fixture = await seed();
+    const soon = new Date(Date.now() + 24 * 3600 * 1000);
+    const later = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+    await grant(f, { amount: 20, key: "soon", expiresAt: soon });
+    await grant(f, { amount: 30, key: "later", expiresAt: later });
+    await grant(f, { amount: 50, key: "never", type: "grant.purchase" });
+
+    // K concurrent debits, each with its own idempotency key (the advisory
+    // lock only serializes same-key retries). Total demand 70 < 100 balance,
+    // so every debit must succeed and the per-bucket allocation must land
+    // exactly on the water-filling outcome: demand drains soonest-expiry
+    // first regardless of commit order.
+    const K = 10;
+    const results = await Promise.allSettled(
+      Array.from({ length: K }, (_, i) =>
+        debitCredits(
+          {
+            applicationId: f.app.id,
+            externalCustomerId: "user-1",
+            creditType: "agent.run",
+            amount: 7,
+            sourceType: "usage",
+            sourceId: `parallel-${i}`,
+            idempotencyKey: `parallel-${i}`,
+            environment: "test",
+          },
+          db,
+        ),
+      ),
+    );
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(rejected).toHaveLength(0);
+
+    const buckets = await db
+      .select()
+      .from(creditBuckets)
+      .where(eq(creditBuckets.applicationId, f.app.id));
+    const byKey = new Map(buckets.map((b) => [b.sourceId, b]));
+    expect(byKey.get("soon")).toMatchObject({
+      remainingAmount: 0,
+      status: "consumed",
+    });
+    expect(byKey.get("later")).toMatchObject({
+      remainingAmount: 0,
+      status: "consumed",
+    });
+    expect(byKey.get("never")).toMatchObject({
+      remainingAmount: 30,
+      status: "active",
+    });
+
+    const balance = await getCreditBalance(
+      f.app.id,
+      "user-1",
+      "agent.run",
+      db,
+      "test",
+    );
+    expect(balance.available).toBe(30);
+    expect(balance.reserved).toBe(0);
+
+    // Documented invariant: sum of active remaining == available + reserved.
+    const activeRemaining = buckets
+      .filter((b) => b.status === "active")
+      .reduce((sum, b) => sum + b.remainingAmount, 0);
+    expect(activeRemaining).toBe(balance.available + balance.reserved);
+
+    // Exactly one ledger entry per debit — no lost or duplicated debits.
+    const ledger = await db
+      .select()
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.applicationId, f.app.id),
+          eq(creditTransactions.type, "debit.usage"),
+        ),
+      );
+    expect(ledger).toHaveLength(K);
+  });
+
   it("isolates buckets by environment", async () => {
     const f: Fixture = await seed();
     await grant(f, { amount: 25, key: "env-key" });
