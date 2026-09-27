@@ -864,6 +864,229 @@ describe("commerce webhook payment invariants (audit B5)", () => {
   });
 });
 
+describe("refund fact idempotency & serialization (MP-REV-01/02)", () => {
+  function refundEventData(
+    fixture: Fixture,
+    overrides: {
+      id: string;
+      type?: "payment.refunded" | "payment.succeeded";
+      providerRefundId?: string;
+      amountMinor?: number;
+    },
+  ) {
+    return {
+      id: overrides.id,
+      type: overrides.type ?? "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_fact_1",
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        amount_minor: overrides.amountMinor ?? 1000,
+        currency: "USD",
+        ...(overrides.providerRefundId
+          ? { provider_refund_id: overrides.providerRefundId }
+          : {}),
+      },
+    };
+  }
+
+  async function orderGrantsFor(applicationId: string, orderId: string) {
+    return db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, applicationId),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, orderId),
+        ),
+      );
+  }
+
+  it("treats a repeated refund id (different event ids) as an idempotent replay, not new headroom (MP-REV-01)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(
+      fixture,
+      refundEventData(fixture, {
+        id: "evt_fact_success",
+        type: "payment.succeeded",
+      }),
+    );
+
+    await processFixtureWebhook(
+      fixture,
+      refundEventData(fixture, {
+        id: "evt_fact_r1",
+        providerRefundId: "R",
+        amountMinor: 700,
+      }),
+    );
+    const replay = await processFixtureWebhook(
+      fixture,
+      refundEventData(fixture, {
+        id: "evt_fact_r2",
+        providerRefundId: "R",
+        amountMinor: 700,
+      }),
+    );
+
+    expect(replay.status).toBe("ignored");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows).toHaveLength(1);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_fact_1"))
+      .limit(1);
+    expect(payment).toMatchObject({ status: "succeeded", amountMinor: 1000 });
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+
+    const grants = await orderGrantsFor(
+      fixture.app.id,
+      fixture.checkout.orderId,
+    );
+    expect(grants.length).toBeGreaterThan(0);
+    expect(grants.every((grant) => grant.status === "active")).toBe(true);
+
+    const [replayedEvent] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.providerEventId, "evt_fact_r2"))
+      .limit(1);
+    expect(replayedEvent?.status).toBe("ignored");
+    expect(replayedEvent?.errorMessage).toContain("already recorded");
+  });
+
+  it("never overwrites a succeeded refund fact on an amount conflict (MP-REV-01)", async () => {
+    const fixture = await createFixture("one_time");
+    await processFixtureWebhook(
+      fixture,
+      refundEventData(fixture, {
+        id: "evt_conf_success",
+        type: "payment.succeeded",
+        amountMinor: 1000,
+      }),
+    );
+    await processFixtureWebhook(
+      fixture,
+      refundEventData(fixture, {
+        id: "evt_conf_r1",
+        providerRefundId: "R",
+        amountMinor: 700,
+      }),
+    );
+
+    await expect(
+      processFixtureWebhook(
+        fixture,
+        refundEventData(fixture, {
+          id: "evt_conf_r2",
+          providerRefundId: "R",
+          amountMinor: 600,
+        }),
+      ),
+    ).rejects.toThrow(/refund fact R conflict/);
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows).toHaveLength(1);
+    expect(refundRows[0]).toMatchObject({ amountMinor: 700 });
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_fact_1"))
+      .limit(1);
+    expect(payment?.status).toBe("succeeded");
+
+    const [conflicted] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.providerEventId, "evt_conf_r2"))
+      .limit(1);
+    expect(conflicted?.status).toBe("failed");
+    expect(conflicted?.errorMessage).toContain("requires reconciliation");
+  });
+
+  it("serializes concurrent first-refunds when the payment row does not exist yet (MP-REV-02)", async () => {
+    const fixture = await createFixture("one_time");
+
+    // No success event: both refund events arrive against a missing payment
+    // row. The per-payment advisory lock must serialize planning so the
+    // second plan is computed against the first one's committed state.
+    const results = await Promise.allSettled([
+      processProviderWebhook(
+        fixture.app.id,
+        fixture.providerConnection.id,
+        webhookInput(
+          refundEventData(fixture, {
+            id: "evt_conc_r1",
+            providerRefundId: "RC1",
+            amountMinor: 600,
+          }),
+        ),
+        db,
+      ),
+      processProviderWebhook(
+        fixture.app.id,
+        fixture.providerConnection.id,
+        webhookInput(
+          refundEventData(fixture, {
+            id: "evt_conc_r2",
+            providerRefundId: "RC2",
+            amountMinor: 600,
+          }),
+        ),
+        db,
+      ),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    expect(fulfilled).toHaveLength(2);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_fact_1"))
+      .limit(1);
+    expect(payment?.status).toBe("succeeded");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows).toHaveLength(2);
+    const totalRefunded = refundRows.reduce(
+      (sum, row) => sum + (row.amountMinor ?? 0),
+      0,
+    );
+    expect(totalRefunded).toBeLessThanOrEqual(payment?.amountMinor ?? 0);
+
+    // Refund-first flow: the order is driven to paid by a success event,
+    // which never arrived — the invariant under test is that no false
+    // terminal state was created and the refund total stays capped.
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("pending");
+  });
+});
+
 describe("subscription lifecycle", () => {
   it("applies activation, failed renewal, recovery, cancellation, and expiration idempotently", async () => {
     const fixture = await createFixture("subscription");

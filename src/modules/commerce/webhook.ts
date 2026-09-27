@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { prices } from "../catalog/schema";
@@ -239,6 +239,19 @@ export async function processProviderWebhook(
           );
         }
 
+        // MP-REV-02: serialize every lifecycle event for the same provider
+        // payment, even when the payment row does not exist yet (lost or
+        // out-of-order success + concurrent first refunds). The advisory lock
+        // is taken before any row read, so a transaction that waits here
+        // recomputes its refund plan against the winner's committed state
+        // instead of planning against stale absence. Single lock, acquired
+        // first — no lock-order cycle with the row locks below.
+        if (event.providerPaymentId) {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtextextended(${`commerce:payment:${providerConnectionId}:${event.providerPaymentId}`}, 0))`,
+          );
+        }
+
         // Lock any existing payment row first: it is the serialization point
         // for refund accounting and settled-value immutability (audit B5).
         const [existingPayment] = await tx
@@ -299,6 +312,64 @@ export async function processProviderWebhook(
         let refundPlan: { amountMinor: number; fullyRefunded: boolean } | null =
           null;
         if (event.type === "payment.refunded") {
+          // MP-REV-01: a refund fact is identified by (connection,
+          // providerRefundId) — NOT by the inbox event id. A second event
+          // carrying the same refund id replays or conflicts with the SAME
+          // fact; it must never be planned as new refund headroom, and a
+          // succeeded refund row is an immutable business fact.
+          if (event.providerRefundId) {
+            const [recordedFact] = await tx
+              .select()
+              .from(refunds)
+              .where(
+                and(
+                  eq(refunds.providerConnectionId, providerConnectionId),
+                  eq(refunds.providerRefundId, event.providerRefundId),
+                ),
+              )
+              .for("update")
+              .limit(1);
+            if (recordedFact?.status === "succeeded") {
+              if (recordedFact.paymentId !== existingPayment?.id) {
+                // The provider is reusing a refund id across payments —
+                // a provider-side inconsistency, not a replay.
+                throw new InvalidNormalizedCommerceEventError(
+                  `refund fact ${event.providerRefundId} conflict: already recorded for a different payment`,
+                );
+              }
+              if (
+                recordedFact.amountMinor === null ||
+                event.amountMinor === undefined ||
+                recordedFact.amountMinor === event.amountMinor
+              ) {
+                // Idempotent replay of an already-recorded refund fact:
+                // acknowledge without changing any row.
+                await tx
+                  .update(webhookEvents)
+                  .set({
+                    status: "ignored",
+                    errorMessage: `refund fact ${event.providerRefundId} already recorded (idempotent replay)`,
+                    processedAt: new Date(),
+                  })
+                  .where(eq(webhookEvents.id, webhookEventId));
+                return {
+                  webhookEventId,
+                  duplicate: Boolean(!inserted),
+                  status: "ignored" as const,
+                  normalizedType: event.type,
+                };
+              }
+              // Conflicting amount for the same refund fact: never overwrite
+              // a succeeded business fact. Park as failed for reconciliation.
+              throw new InvalidNormalizedCommerceEventError(
+                `refund fact ${event.providerRefundId} conflict: recorded amountMinor ${recordedFact.amountMinor}, event reports ${event.amountMinor} — requires reconciliation`,
+              );
+            }
+            // A `failed` recorded row may legitimately be superseded by a
+            // later success fact with the same id (provider retried and the
+            // refund went through); fall through to normal planning — the
+            // upsert below updates that row.
+          }
           const capturedAmountMinor =
             existingPayment?.amountMinor ?? amountMinor;
           let alreadyRefunded = 0;
