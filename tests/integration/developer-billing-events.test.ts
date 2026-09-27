@@ -225,6 +225,64 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
     expect(JSON.stringify(rawDelivery.payload)).not.toContain("cus_psp_9");
   });
 
+  it("resolves externalCustomerId from the customer mapping alone when the event has no order id (MP-REV-04)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+
+    // Order-less event: resolution must go through the customer-mapping
+    // path (monetplaneCustomerId -> application_customers.external_customer_id),
+    // not the order fallback.
+    const rawBody = JSON.stringify({
+      id: "evt_xid_3",
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_evt_xid_3",
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const result = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(result.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: result.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries[deliveries.length - 1].externalCustomerId).toBe("user-1");
+  });
+
   it("still resolves externalCustomerId when the event carries no PSP customer id", async () => {
     const f: Fixture = await seed();
     const receiver = await startReceiver((_req, res) => {

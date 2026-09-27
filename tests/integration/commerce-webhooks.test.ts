@@ -1035,7 +1035,7 @@ describe("refund fact idempotency & serialization (MP-REV-01/02)", () => {
           refundEventData(fixture, {
             id: "evt_conc_r1",
             providerRefundId: "RC1",
-            amountMinor: 600,
+            amountMinor: 1500,
           }),
         ),
         db,
@@ -1047,7 +1047,7 @@ describe("refund fact idempotency & serialization (MP-REV-01/02)", () => {
           refundEventData(fixture, {
             id: "evt_conc_r2",
             providerRefundId: "RC2",
-            amountMinor: 600,
+            amountMinor: 1500,
           }),
         ),
         db,
@@ -1062,7 +1062,10 @@ describe("refund fact idempotency & serialization (MP-REV-01/02)", () => {
       .from(payments)
       .where(eq(payments.providerPaymentId, "pay_fact_1"))
       .limit(1);
-    expect(payment?.status).toBe("succeeded");
+    // 1500 + capped 498 = 1998 = cumulative-full refund: the terminal
+    // transition to refunded is the expected outcome here, and the cap is
+    // what makes the second 1500 land as 498.
+    expect(payment?.status).toBe("refunded");
 
     const refundRows = await db
       .select()
@@ -1074,16 +1077,21 @@ describe("refund fact idempotency & serialization (MP-REV-01/02)", () => {
       0,
     );
     expect(totalRefunded).toBeLessThanOrEqual(payment?.amountMinor ?? 0);
+    // 1500 + 1500 against captured 1998: without the advisory lock, both
+    // plans would compute against full headroom (3000 > 1998) — the exact
+    // total below only holds when the second plan recomputes against the
+    // first one's committed state.
+    expect(totalRefunded).toBe(1998);
 
     // Refund-first flow: the order is driven to paid by a success event,
-    // which never arrived — the invariant under test is that no false
-    // terminal state was created and the refund total stays capped.
+    // which never arrived. Cumulative-full here is 1998/1998, so the order
+    // legitimately closes out as refunded via the refund path.
     const [order] = await db
       .select()
       .from(orders)
       .where(eq(orders.id, fixture.checkout.orderId))
       .limit(1);
-    expect(order?.status).toBe("pending");
+    expect(order?.status).toBe("refunded");
   });
 });
 

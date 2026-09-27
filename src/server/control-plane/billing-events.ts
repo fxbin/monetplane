@@ -92,7 +92,10 @@ export async function publishBillingLifecycleEvent(
       .where(
         and(
           eq(applicationCustomers.applicationId, input.applicationId),
-          eq(applicationCustomers.id, monetplaneCustomerId),
+          // normalized.monetplaneCustomerId carries the global customers.id
+          // (cus_...), NOT the applicationCustomers row id (acus_...) —
+          // match on the customerId column (verifier finding).
+          eq(applicationCustomers.customerId, monetplaneCustomerId),
         ),
       )
       .limit(1);

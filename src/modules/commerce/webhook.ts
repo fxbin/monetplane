@@ -330,14 +330,18 @@ export async function processProviderWebhook(
               )
               .for("update")
               .limit(1);
+            if (
+              recordedFact &&
+              recordedFact.paymentId !== existingPayment?.id
+            ) {
+              // The provider is reusing a refund id across payments —
+              // a provider-side inconsistency, not a replay (any status:
+              // a failed fact must not be silently rebound either).
+              throw new InvalidNormalizedCommerceEventError(
+                `refund fact ${event.providerRefundId} conflict: already recorded for a different payment`,
+              );
+            }
             if (recordedFact?.status === "succeeded") {
-              if (recordedFact.paymentId !== existingPayment?.id) {
-                // The provider is reusing a refund id across payments —
-                // a provider-side inconsistency, not a replay.
-                throw new InvalidNormalizedCommerceEventError(
-                  `refund fact ${event.providerRefundId} conflict: already recorded for a different payment`,
-                );
-              }
               if (
                 recordedFact.amountMinor === null ||
                 event.amountMinor === undefined ||
