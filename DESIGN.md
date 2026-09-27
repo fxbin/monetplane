@@ -583,6 +583,10 @@ Rollover enabled
 
 ## 7.4 Payment Providers
 
+> Scope note: this marketplace view is **design vision** — the shipped adapters are
+> Creem, Waffo, and PayPal (see `docs/provider-adapter-guide.md`); Stripe, Lemon
+> Squeezy, and Paddle below are illustrative future providers, not implemented ones.
+
 Payment Providers are a core differentiation of MonetPlane.
 
 This page should feel like a provider marketplace and configuration center.
@@ -772,18 +776,25 @@ Check entitlement
 Track usage
 ```
 
-Example:
+Example (current SDK API — `@monetplane/sdk/server`):
 
 ```ts
-const billing = new MonetPlane({
-  apiKey: process.env.MONETPLANE_API_KEY,
-})
+import { createMonetPlaneClient } from "@monetplane/sdk/server";
 
-await billing.checkout.create({
-  customerId: "user_123",
-  productId: "pro_monthly",
-})
+const client = createMonetPlaneClient({
+  baseUrl: process.env.MONETPLANE_BASE_URL!,
+  appSecret: process.env.MONETPLANE_APP_SECRET!, // mp_app_...
+});
+
+const checkout = await client.createCheckout({
+  externalCustomerId: "user_123",
+  items: [{ priceId: "pro_monthly", quantity: 1 }],
+  successUrl: "https://yourapp.com/success",
+  cancelUrl: "https://yourapp.com/cancel",
+});
 ```
+
+Integration reference: `docs/sdk-quickstart.md`.
 
 Developer pages should include connection status:
 

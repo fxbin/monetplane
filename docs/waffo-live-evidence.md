@@ -35,6 +35,10 @@ Sandbox, merchant `MER_6wZlJqSPKpDzf5O8Zl738e`, store
    webhooks, which stay mapped). Also: callback-origin errors now 400, and
    permanently-unprocessable verified events park with
    `200 {received, processed:false}` instead of a 24h provider retry storm.
+   *(2026-09-27 update: the receiver policy has since changed — permanent
+   validation failures now answer `422 permanent:true` and transient ones
+   `503`; see `.agents/notes/implemented/risk/2026-09-26-webhook-retry-policy.md`.
+   The observation above records the behavior at evidence time.)*
 3. Webhook retry behavior confirmed against the platform: Waffo retried a
    permanently-unmapped early test event (recorded failed, correctly not
    applied) before the park fix landed.

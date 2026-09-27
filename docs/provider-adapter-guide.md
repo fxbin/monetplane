@@ -130,6 +130,19 @@ get right is **failure classification**:
   invokes an operation the connection's capabilities do not claim. You do
   not throw this yourself.
 
+## Shared adapter kit (reuse, don't re-implement)
+
+`src/modules/providers/adapters/shared.ts` provides the pieces adapters used to
+copy-paste: JSON guards (`isRecord`, `stringValue`, `numberValue`,
+`recordValue`, `headerValue`), `requiredCredential` (throws a classified
+`ProviderOperationError(..., "rejected")` — missing credentials are
+deterministic refusals, retry-safe after input fixes), `providerBaseUrl`, and
+`providerFetchJson` (fetch with a 10s `AbortSignal` timeout — provider calls
+must never hang indefinitely). Currency/decimals handling comes from
+`src/lib/money.ts` (`currencyDecimals`, `parseProviderAmountToMinor`) — never
+keep a provider-local zero-decimal table: the divergent tables that predated
+the unified registry produced provider-dependent 100x price errors.
+
 ## Testing your adapter
 
 ### Shared conformance suite (required)
