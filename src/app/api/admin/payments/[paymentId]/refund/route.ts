@@ -3,7 +3,6 @@ import {
   requireApplicationAccess,
   requirePermission,
 } from "@/modules/admin/guard";
-import { recordAuditEntry } from "@/server/control-plane/audit";
 import { refundPaymentWithJournal } from "@/server/control-plane/billing-operation-actions";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -33,20 +32,14 @@ export async function POST(_request: Request, { params }: RouteContext) {
     );
     if (scopeCheck) return scopeCheck;
 
+    // The journaled operation owns the payment.refunded audit entry, written
+    // atomically with the journal completion (audit A4).
     const operation = await refundPaymentWithJournal(
       context.selectedApplication.id,
       paymentId,
       context.environment,
+      { id: guard.operatorId, label: guard.name || guard.email },
     );
-    await recordAuditEntry({
-      applicationId: context.selectedApplication?.id ?? null,
-      environment: context.environment,
-      action: "payment.refunded",
-      resourceType: "billing_operation",
-      resourceId: operation.id,
-      metadata: { paymentId },
-      request: _request,
-    });
     return NextResponse.json({ operation });
   } catch (error) {
     console.error("[admin/payments/refund] Error:", error);

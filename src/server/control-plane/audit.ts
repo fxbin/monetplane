@@ -20,6 +20,13 @@ const MAX_VALUE_LENGTH = 200;
 
 export type AuditEnvironment = "test" | "live" | null;
 
+/**
+ * Accepts the root database client or an open transaction client, so a caller
+ * can make the audit insert atomic with its own writes (e.g. the billing
+ * operations journal) instead of best-effort.
+ */
+export type AuditDb = Pick<Database, "insert">;
+
 function redactValue(value: unknown, depth = 0): unknown {
   if (depth > 4) return "[truncated]";
   if (value === null || typeof value !== "object") {
@@ -67,7 +74,7 @@ export async function recordAuditEntry(
     /** Defaults to admin_session; portal-initiated actions use customer_portal (#71). */
     actorType?: "admin_session" | "customer_portal";
   },
-  db: Database = getDb(),
+  db: AuditDb = getDb(),
 ) {
   let actor = input.actor;
   if (!actor) {
