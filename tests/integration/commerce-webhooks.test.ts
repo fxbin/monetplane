@@ -1470,6 +1470,132 @@ describe("refund fact pending lifecycle (B1)", () => {
   });
 });
 
+describe("order snapshot freshness under concurrent payment events (B2)", () => {
+  function paymentEventPayload(
+    fixture: Fixture,
+    overrides: {
+      id: string;
+      type: "payment.succeeded" | "payment.failed" | "payment.refunded";
+      providerPaymentId: string;
+      providerRefundId?: string;
+      amountMinor?: number;
+    },
+  ) {
+    return {
+      id: overrides.id,
+      type: overrides.type,
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: overrides.providerPaymentId,
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        amount_minor: overrides.amountMinor ?? 1998,
+        currency: "USD",
+        ...(overrides.providerRefundId
+          ? { provider_refund_id: overrides.providerRefundId }
+          : {}),
+      },
+    };
+  }
+
+  async function finalOrderState(orderId: string) {
+    const [row] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, orderId))
+      .limit(1);
+    return row;
+  }
+
+  it("keeps the order paid when a partial refund races a success event (multi-round)", async () => {
+    // Pre-fix: both transactions read order=pending before the lock; the
+    // refund then wrote its stale pending over the committed paid.
+    for (let round = 0; round < 5; round++) {
+      const fixture = await createFixture("one_time");
+      const paymentId = `pay_b2_sr_${round}`;
+      await Promise.allSettled([
+        processProviderWebhook(
+          fixture.app.id,
+          fixture.providerConnection.id,
+          webhookInput(
+            paymentEventPayload(fixture, {
+              id: `evt_b2_s_${round}`,
+              type: "payment.succeeded",
+              providerPaymentId: paymentId,
+            }),
+          ),
+          db,
+        ),
+        processProviderWebhook(
+          fixture.app.id,
+          fixture.providerConnection.id,
+          webhookInput(
+            paymentEventPayload(fixture, {
+              id: `evt_b2_r_${round}`,
+              type: "payment.refunded",
+              providerPaymentId: paymentId,
+              providerRefundId: `RB2_${round}`,
+              amountMinor: 500,
+            }),
+          ),
+          db,
+        ),
+      ]);
+
+      const [payment] = await db
+        .select()
+        .from(payments)
+        .where(eq(payments.providerPaymentId, paymentId))
+        .limit(1);
+      expect(payment?.status).toBe("succeeded");
+      const order = await finalOrderState(fixture.checkout.orderId);
+      expect(order?.status).toBe("paid");
+    }
+  });
+
+  it("keeps the order consistent when a late failure races a success event (multi-round)", async () => {
+    for (let round = 0; round < 5; round++) {
+      const fixture = await createFixture("one_time");
+      const paymentId = `pay_b2_sf_${round}`;
+      await Promise.allSettled([
+        processProviderWebhook(
+          fixture.app.id,
+          fixture.providerConnection.id,
+          webhookInput(
+            paymentEventPayload(fixture, {
+              id: `evt_b2_s2_${round}`,
+              type: "payment.succeeded",
+              providerPaymentId: paymentId,
+            }),
+          ),
+          db,
+        ),
+        processProviderWebhook(
+          fixture.app.id,
+          fixture.providerConnection.id,
+          webhookInput(
+            paymentEventPayload(fixture, {
+              id: `evt_b2_f_${round}`,
+              type: "payment.failed",
+              providerPaymentId: paymentId,
+            }),
+          ),
+          db,
+        ),
+      ]);
+
+      const [payment] = await db
+        .select()
+        .from(payments)
+        .where(eq(payments.providerPaymentId, paymentId))
+        .limit(1);
+      expect(payment?.status).toBe("succeeded");
+      const order = await finalOrderState(fixture.checkout.orderId);
+      expect(order?.status).toBe("paid");
+    }
+  });
+});
+
 describe("subscription lifecycle", () => {
   it("applies activation, failed renewal, recovery, cancellation, and expiration idempotently", async () => {
     const fixture = await createFixture("subscription");

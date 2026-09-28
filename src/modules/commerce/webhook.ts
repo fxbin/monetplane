@@ -253,6 +253,45 @@ export async function processProviderWebhook(
           );
         }
 
+        // B2: re-read the order (row-locked) and the customer mapping under
+        // the payment lock — the pre-lock reads may be stale snapshots under
+        // READ COMMITTED, and status decisions must not act on them.
+        if (event.monetplaneOrderId) {
+          [order] = await tx
+            .select({
+              id: orders.id,
+              applicationCustomerId: orders.applicationCustomerId,
+              billingMode: orders.billingMode,
+              status: orders.status,
+              currency: orders.currency,
+              totalAmountMinor: orders.totalAmountMinor,
+            })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.id, event.monetplaneOrderId),
+                eq(orders.applicationId, applicationId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+        }
+        if (event.monetplaneCustomerId) {
+          [mappedApplicationCustomer] = await tx
+            .select({
+              id: applicationCustomers.id,
+              customerId: applicationCustomers.customerId,
+            })
+            .from(applicationCustomers)
+            .where(
+              and(
+                eq(applicationCustomers.applicationId, applicationId),
+                eq(applicationCustomers.customerId, event.monetplaneCustomerId),
+              ),
+            )
+            .limit(1);
+        }
+
         // Lock any existing payment row first: it is the serialization point
         // for refund accounting and settled-value immutability (audit B5).
         const [existingPayment] = await tx
@@ -394,11 +433,11 @@ export async function processProviderWebhook(
           // re-planned through Math.min — the provider's confirmed amount IS
           // the fact.
           const upgradingPendingFact = recordedFact?.status === "pending";
-          // B1/Creem: the journal path records a synthetic refund id for
-          // providers that cannot return one synchronously (Creem:
-          // `refund:<paymentId>`). When the real provider refund id lands
-          // for the same payment, the synthetic pending row is superseded —
-          // one business fact, one live row.
+          // B1: the journal path records a synthetic refund id
+          // (`refund:<paymentId>`) for adapters that cannot return a real
+          // one synchronously. When the real provider refund id lands for
+          // the same payment, the synthetic pending row is superseded — one
+          // business fact, one live row.
           let supersededFactIds: string[] = [];
           if (event.providerRefundId && !recordedFact && existingPayment) {
             const syntheticRows = await tx
@@ -654,15 +693,29 @@ export async function processProviderWebhook(
             return refundPlan?.fullyRefunded ? "refunded" : order.status;
           })();
 
-          await tx
-            .update(orders)
-            .set({ status: nextOrderStatus, updatedAt: new Date() })
-            .where(
-              and(
-                eq(orders.id, order.id),
-                eq(orders.applicationId, applicationId),
-              ),
-            );
+          // B2: monotonic, conditional order transition — a stale decision can
+          // never regress an order (e.g. paid -> pending); keep-paths skip
+          // the write entirely.
+          if (nextOrderStatus !== order.status) {
+            const allowedSources: Record<string, string[]> = {
+              paid: ["pending", "failed"],
+              failed: ["pending"],
+              refunded: ["pending", "paid", "refunded"],
+            };
+            const sources = allowedSources[nextOrderStatus] ?? [];
+            if (sources.length > 0) {
+              await tx
+                .update(orders)
+                .set({ status: nextOrderStatus, updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(orders.id, order.id),
+                    eq(orders.applicationId, applicationId),
+                    inArray(orders.status, sources),
+                  ),
+                );
+            }
+          }
 
           if (event.type === "payment.succeeded") {
             await tx
