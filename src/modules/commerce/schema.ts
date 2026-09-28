@@ -224,7 +224,10 @@ export const refunds = pgTable(
     index("refunds_payment_idx").on(table.paymentId),
     check(
       "refunds_status_check",
-      sql`${table.status} IN ('pending', 'succeeded', 'failed')`,
+      // 'superseded' marks a provisional (journal-recorded) refund fact that
+      // the real provider refund id replaced — kept for audit, excluded
+      // from headroom. Keep in sync with 0017_refund_superseded.sql.
+      sql`${table.status} IN ('pending', 'succeeded', 'failed', 'superseded')`,
     ),
     check(
       "refunds_amount_check",

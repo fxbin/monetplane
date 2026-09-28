@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { prices } from "../catalog/schema";
@@ -318,9 +318,22 @@ export async function processProviderWebhook(
           // carrying the same refund id replays or conflicts with the SAME
           // fact; it must never be planned as new refund headroom, and a
           // succeeded refund row is an immutable business fact.
+          let recordedFact:
+            | {
+                id: string;
+                status: string;
+                amountMinor: number | null;
+                paymentId: string | null;
+              }
+            | undefined;
           if (event.providerRefundId) {
-            const [recordedFact] = await tx
-              .select()
+            [recordedFact] = await tx
+              .select({
+                id: refunds.id,
+                status: refunds.status,
+                amountMinor: refunds.amountMinor,
+                paymentId: refunds.paymentId,
+              })
               .from(refunds)
               .where(
                 and(
@@ -375,6 +388,38 @@ export async function processProviderWebhook(
             // refund went through); fall through to normal planning — the
             // upsert below updates that row.
           }
+          // B1: confirming a previously-pending fact. The pending row's
+          // provisional amount (possibly the journal path's legacy full
+          // fallback) must neither consume headroom against itself nor be
+          // re-planned through Math.min — the provider's confirmed amount IS
+          // the fact.
+          const upgradingPendingFact = recordedFact?.status === "pending";
+          // B1/Creem: the journal path records a synthetic refund id for
+          // providers that cannot return one synchronously (Creem:
+          // `refund:<paymentId>`). When the real provider refund id lands
+          // for the same payment, the synthetic pending row is superseded —
+          // one business fact, one live row.
+          let supersededFactIds: string[] = [];
+          if (event.providerRefundId && !recordedFact && existingPayment) {
+            const syntheticRows = await tx
+              .select({ id: refunds.id })
+              .from(refunds)
+              .where(
+                and(
+                  eq(refunds.paymentId, existingPayment.id),
+                  eq(refunds.status, "pending"),
+                  like(refunds.providerRefundId, "refund:%"),
+                ),
+              )
+              .for("update");
+            supersededFactIds = syntheticRows.map((row) => row.id);
+          }
+          if (supersededFactIds.length > 0) {
+            await tx
+              .update(refunds)
+              .set({ status: "superseded", updatedAt: new Date() })
+              .where(inArray(refunds.id, supersededFactIds));
+          }
           const capturedAmountMinor =
             existingPayment?.amountMinor ?? amountMinor;
           let alreadyRefunded = 0;
@@ -382,6 +427,7 @@ export async function processProviderWebhook(
           if (existingPayment) {
             const refundRows = await tx
               .select({
+                id: refunds.id,
                 status: refunds.status,
                 amountMinor: refunds.amountMinor,
               })
@@ -389,11 +435,21 @@ export async function processProviderWebhook(
               .where(eq(refunds.paymentId, existingPayment.id))
               .for("update");
             for (const row of refundRows) {
-              if (row.status === "failed") continue;
+              if (row.status === "failed" || row.status === "superseded")
+                continue;
+              if (
+                upgradingPendingFact &&
+                recordedFact &&
+                row.id === recordedFact.id
+              ) {
+                // B1: the fact being confirmed is this event's own — its
+                // provisional amount is not "already refunded" headroom.
+                continue;
+              }
               if (row.amountMinor === null) {
-                // A legacy refund row without an amount recorded a full
-                // refund under the previous ingest; treat the remaining
-                // amount as consumed (fail-closed).
+                // A refund row without an amount recorded a full refund
+                // under the previous ingest; treat the remaining amount as
+                // consumed (fail-closed).
                 unknownRefundAmount = true;
               } else {
                 alreadyRefunded += row.amountMinor;
@@ -403,7 +459,20 @@ export async function processProviderWebhook(
           const remaining = unknownRefundAmount
             ? 0
             : capturedAmountMinor - alreadyRefunded;
-          if (remaining <= 0) {
+          if (upgradingPendingFact) {
+            // B1: direct fact upgrade — the confirmed amount lands as-is
+            // (no Math.min re-plan; the pending row's provisional amount is
+            // replaced by the provider's confirmed one).
+            const confirmedAmountMinor =
+              event.amountMinor ??
+              (recordedFact as { amountMinor: number | null }).amountMinor ??
+              remaining;
+            refundPlan = {
+              amountMinor: confirmedAmountMinor,
+              fullyRefunded:
+                alreadyRefunded + confirmedAmountMinor >= capturedAmountMinor,
+            };
+          } else if (remaining <= 0) {
             // Nothing left to refund: durable idempotent skip that changes
             // no payment/order/refund rows.
             await tx

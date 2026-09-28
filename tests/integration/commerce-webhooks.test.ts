@@ -1249,6 +1249,227 @@ describe("payment/order state machine monotonicity (MP-REV-03)", () => {
   });
 });
 
+describe("refund fact pending lifecycle (B1)", () => {
+  async function seedPendingRefundRow(
+    fixture: Fixture,
+    paymentId: string,
+    providerRefundId: string,
+    amountMinor: number | null,
+  ) {
+    await db.insert(refunds).values({
+      id: `ref_${providerRefundId}`,
+      applicationId: fixture.app.id,
+      orderId: fixture.checkout.orderId,
+      paymentId,
+      providerConnectionId: fixture.providerConnection.id,
+      providerRefundId,
+      environment: "test",
+      status: "pending",
+      amountMinor,
+    });
+  }
+
+  async function succeedPaymentEvent(
+    fixture: Fixture,
+    eventId: string,
+    paymentId = "pay_b1_1",
+  ) {
+    const payload = {
+      id: eventId,
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: paymentId,
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        amount_minor: 1998,
+        currency: "USD",
+      },
+    };
+    return processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(payload),
+      db,
+    );
+  }
+
+  function refundEvent(
+    fixture: Fixture,
+    overrides: {
+      id: string;
+      providerRefundId: string;
+      amountMinor: number;
+      paymentId?: string;
+    },
+  ) {
+    const payload = {
+      id: overrides.id,
+      type: "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: overrides.paymentId ?? "pay_b1_1",
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        amount_minor: overrides.amountMinor,
+        currency: "USD",
+        provider_refund_id: overrides.providerRefundId,
+      },
+    };
+    return processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(payload),
+      db,
+    );
+  }
+
+  async function paymentRow(paymentId: string) {
+    const [row] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, paymentId))
+      .limit(1);
+    return row;
+  }
+
+  it("upgrades a pending fact to succeeded with the confirmed amount, never re-planned through Math.min", async () => {
+    const fixture = await createFixture("one_time");
+    await succeedPaymentEvent(fixture, "evt_b1_s1");
+    const payment = await paymentRow("pay_b1_1");
+    if (!payment) throw new Error("payment missing");
+    await seedPendingRefundRow(fixture, payment.id, "R1", 700);
+
+    // Old bug: pending counted as alreadyRefunded -> applied=min(700,300)=300
+    // and the row was overwritten to 300 with a false full refund.
+    const result = await refundEvent(fixture, {
+      id: "evt_b1_r1",
+      providerRefundId: "R1",
+      amountMinor: 700,
+    });
+    expect(result.status).toBe("processed");
+
+    const [refundRow] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "R1"))
+      .limit(1);
+    expect(refundRow).toMatchObject({ status: "succeeded", amountMinor: 700 });
+
+    const after = await paymentRow("pay_b1_1");
+    expect(after?.status).toBe("succeeded");
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+  });
+
+  it("upgrades a full-amount pending fact instead of stranding it as ignored", async () => {
+    const fixture = await createFixture("one_time");
+    await succeedPaymentEvent(fixture, "evt_b1_s2");
+    const payment = await paymentRow("pay_b1_1");
+    if (!payment) throw new Error("payment missing");
+    await seedPendingRefundRow(fixture, payment.id, "RFULL", 1998);
+
+    const result = await refundEvent(fixture, {
+      id: "evt_b1_r2",
+      providerRefundId: "RFULL",
+      amountMinor: 1998,
+    });
+    expect(result.status).toBe("processed");
+
+    const [refundRow] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "RFULL"))
+      .limit(1);
+    expect(refundRow).toMatchObject({ status: "succeeded", amountMinor: 1998 });
+
+    const after = await paymentRow("pay_b1_1");
+    expect(after?.status).toBe("refunded");
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("refunded");
+    const grants = await db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, fixture.app.id),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, fixture.checkout.orderId),
+        ),
+      );
+    expect(grants.every((grant) => grant.status === "revoked")).toBe(true);
+  });
+
+  it("takes the provider's corrected amount when a pending fact is confirmed with a different amount", async () => {
+    const fixture = await createFixture("one_time");
+    await succeedPaymentEvent(fixture, "evt_b1_s3");
+    const payment = await paymentRow("pay_b1_1");
+    if (!payment) throw new Error("payment missing");
+    await seedPendingRefundRow(fixture, payment.id, "RCORR", 1998);
+
+    await refundEvent(fixture, {
+      id: "evt_b1_r3",
+      providerRefundId: "RCORR",
+      amountMinor: 500,
+    });
+
+    const [refundRow] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "RCORR"))
+      .limit(1);
+    expect(refundRow).toMatchObject({ status: "succeeded", amountMinor: 500 });
+    const after = await paymentRow("pay_b1_1");
+    expect(after?.status).toBe("succeeded");
+  });
+
+  it("supersedes a synthetic journal refund id when the real provider refund id lands", async () => {
+    const fixture = await createFixture("one_time");
+    await succeedPaymentEvent(fixture, "evt_b1_s4");
+    const payment = await paymentRow("pay_b1_1");
+    if (!payment) throw new Error("payment missing");
+    // Synthetic id shape used by the Creem journal path: refund:<paymentId>
+    await seedPendingRefundRow(
+      fixture,
+      payment.id,
+      `refund:${"pay_b1_1"}`,
+      1998,
+    );
+
+    const result = await refundEvent(fixture, {
+      id: "evt_b1_r4",
+      providerRefundId: "real_refund_1",
+      amountMinor: 1998,
+    });
+    expect(result.status).toBe("processed");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows).toHaveLength(2);
+    const byId = Object.fromEntries(
+      refundRows.map((row) => [row.providerRefundId, row]),
+    );
+    expect(byId["refund:pay_b1_1"]).toMatchObject({ status: "superseded" });
+    expect(byId.real_refund_1).toMatchObject({
+      status: "succeeded",
+      amountMinor: 1998,
+    });
+
+    const after = await paymentRow("pay_b1_1");
+    expect(after?.status).toBe("refunded");
+  });
+});
+
 describe("subscription lifecycle", () => {
   it("applies activation, failed renewal, recovery, cancellation, and expiration idempotently", async () => {
     const fixture = await createFixture("subscription");

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
 import {
@@ -648,6 +648,12 @@ export async function reconcileBillingOperation(
       const orderId = payment.orderId;
 
       await db.transaction(async (tx) => {
+        // B1/B2: share the webhook path's per-payment advisory lock so
+        // journal refunds and webhook refund events serialize on the same
+        // key (and the same lock order: advisory -> rows).
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${`commerce:payment:${payment.providerConnectionId}:${payment.providerPaymentId}`}, 0))`,
+        );
         await tx
           .insert(refunds)
           .values({
@@ -659,13 +665,16 @@ export async function reconcileBillingOperation(
             environment: payment.environment,
             providerRefundId,
             status,
-            amountMinor: amountMinor ?? payment.amountMinor,
+            // B1: never fall back to the payment amount — a provider result
+            // without an amount must be recorded as unknown (null), not
+            // silently booked as a full refund that consumes all headroom.
+            amountMinor: amountMinor ?? null,
           })
           .onConflictDoUpdate({
             target: [refunds.providerConnectionId, refunds.providerRefundId],
             set: {
               status,
-              amountMinor: amountMinor ?? payment.amountMinor,
+              amountMinor: amountMinor ?? null,
               updatedAt: new Date(),
             },
           });
@@ -680,7 +689,14 @@ export async function reconcileBillingOperation(
             await tx
               .update(orders)
               .set({ status: "refunded", updatedAt: new Date() })
-              .where(eq(orders.id, orderId));
+              .where(
+                and(
+                  eq(orders.id, orderId),
+                  // B2: monotonic guard — a failed order is not flipped by a
+                  // refund without reconciliation.
+                  inArray(orders.status, ["pending", "paid", "refunded"]),
+                ),
+              );
             await revokeEntitlementsBySource(
               applicationId,
               "order",
