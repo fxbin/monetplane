@@ -1,7 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
-import { orders, webhookEvents } from "@/modules/commerce/schema";
+import {
+  orders,
+  payments,
+  subscriptions,
+  webhookEvents,
+} from "@/modules/commerce/schema";
 import { applicationCustomers } from "@/modules/customers/schema";
 import { dispatchWebhookEvent } from "@/modules/webhooks/service";
 
@@ -119,6 +124,85 @@ export async function publishBillingLifecycleEvent(
       )
       .limit(1);
     externalCustomerId = orderCustomer?.externalCustomerId ?? null;
+  }
+  // §二A: some PSP events carry neither internal reference — resolve from
+  // the recorded payment (provider payment id) or subscription when the
+  // database already knows the relationship.
+  if (!externalCustomerId && normalized.providerPaymentId) {
+    const [paymentCustomer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(payments)
+      .innerJoin(
+        applicationCustomers,
+        eq(applicationCustomers.id, payments.customerId),
+      )
+      .where(
+        and(
+          eq(payments.applicationId, input.applicationId),
+          eq(payments.providerConnectionId, input.providerConnectionId),
+          eq(payments.providerPaymentId, String(normalized.providerPaymentId)),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = paymentCustomer?.externalCustomerId ?? null;
+  }
+  if (!externalCustomerId && normalized.providerSubscriptionId) {
+    const [subscriptionCustomer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(subscriptions)
+      .innerJoin(
+        applicationCustomers,
+        eq(applicationCustomers.id, subscriptions.applicationCustomerId),
+      )
+      .where(
+        and(
+          eq(subscriptions.applicationId, input.applicationId),
+          eq(
+            subscriptions.providerSubscriptionId,
+            String(normalized.providerSubscriptionId),
+          ),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = subscriptionCustomer?.externalCustomerId ?? null;
+  }
+  // Cross-validate: when the event carries BOTH a customer reference and an
+  // order reference, they must belong to the same application customer — a
+  // mismatch is provider metadata corruption and resolves to null rather
+  // than silently preferring one side.
+  if (
+    externalCustomerId &&
+    normalized.monetplaneCustomerId &&
+    normalized.monetplaneOrderId
+  ) {
+    const [mismatch] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .innerJoin(
+        applicationCustomers,
+        eq(applicationCustomers.id, orders.applicationCustomerId),
+      )
+      .where(
+        and(
+          eq(orders.applicationId, input.applicationId),
+          eq(orders.id, String(normalized.monetplaneOrderId)),
+          eq(
+            applicationCustomers.customerId,
+            String(normalized.monetplaneCustomerId),
+          ),
+        ),
+      )
+      .limit(1);
+    if (!mismatch) {
+      console.error(
+        `[monetplane] developer event customer/order metadata mismatch for order ${String(normalized.monetplaneOrderId)}; dropping externalCustomerId`,
+      );
+      externalCustomerId = null;
+    }
   }
 
   const context: BillingEventContext = {

@@ -190,7 +190,7 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
       {
         name: "receiver",
         url: receiver.url,
-        eventTypes: ["payment.succeeded"],
+        eventTypes: ["payment.succeeded", "payment.refunded"],
       },
       db,
     );
@@ -223,6 +223,76 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
     ).data;
     expect(payloadData?.externalCustomerId).toBe("user-1");
     expect(JSON.stringify(rawDelivery.payload)).not.toContain("cus_psp_9");
+  });
+
+  it("resolves externalCustomerId from the recorded payment when the event carries neither internal reference (§二A)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+
+    // First event carries the internal references (records the payment with
+    // its customer); the PSP-style replay carries ONLY the provider payment
+    // id — resolution must go through the recorded payment.
+    const first = await signedSuccess(f, "evt_fb_1", "cus_psp_x");
+    expect(first.status).toBe("processed");
+    await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: first.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    // A refund notification carrying ONLY provider ids (PSPs that do not
+    // echo the merchant metadata): resolution must go through the recorded
+    // payment row. (A second success event would now be replay-ignored by
+    // the B3 guard, so the refund type drives the fallback path.)
+    const rawBody = JSON.stringify({
+      id: "evt_fb_2",
+      type: "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_evt_fb_1",
+        provider_refund_id: "rfb_1",
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const second = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(second.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: second.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries[deliveries.length - 1].externalCustomerId).toBe("user-1");
   });
 
   it("resolves externalCustomerId from the customer mapping alone when the event has no order id (MP-REV-04)", async () => {

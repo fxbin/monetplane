@@ -5,7 +5,6 @@ import { getDb } from "../../db/client";
 import { prices } from "../catalog/schema";
 import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
 import { applicationCustomers } from "../customers/schema";
-import { entitlementGrants } from "../entitlements/schema";
 import {
   expireEntitlementsBySource,
   grantConfiguredEntitlements,
@@ -352,6 +351,18 @@ export async function processProviderWebhook(
         let refundPlan: { amountMinor: number; fullyRefunded: boolean } | null =
           null;
         if (event.type === "payment.refunded") {
+          // §二E: a refund amount, when present, must be a positive safe
+          // integer — zero/negative amounts are provider anomalies, not
+          // bookable facts (a DB check failure here would otherwise surface
+          // as a retryable 503).
+          if (
+            event.amountMinor !== undefined &&
+            (!Number.isSafeInteger(event.amountMinor) || event.amountMinor <= 0)
+          ) {
+            throw new InvalidNormalizedCommerceEventError(
+              `refund amount must be a positive whole number, got ${event.amountMinor}`,
+            );
+          }
           // MP-REV-01: a refund fact is identified by (connection,
           // providerRefundId) — NOT by the inbox event id. A second event
           // carrying the same refund id replays or conflicts with the SAME
@@ -569,22 +580,14 @@ export async function processProviderWebhook(
           event.type === "payment.succeeded" &&
           existingPayment?.status === "succeeded"
         ) {
-          let grantsAlreadyApplied = false;
-          if (order) {
-            const [existingGrant] = await tx
-              .select({ id: entitlementGrants.id })
-              .from(entitlementGrants)
-              .where(
-                and(
-                  eq(entitlementGrants.applicationId, applicationId),
-                  eq(entitlementGrants.sourceType, "order"),
-                  eq(entitlementGrants.sourceId, order.id),
-                ),
-              )
-              .limit(1);
-            grantsAlreadyApplied = Boolean(existingGrant);
-          }
-          if (!order || grantsAlreadyApplied) {
+          // B3: the settled marker is the ORDER status, not the presence of
+          // entitlement grant rows — credits-only, no-grant-config, and
+          // subscription-billed orders legitimately have none. paid/refunded
+          // means the success effects (grants, credits, session, fan-out)
+          // already committed in the same transaction that set them.
+          const orderAlreadySettled =
+            order?.status === "paid" || order?.status === "refunded";
+          if (!order || orderAlreadySettled) {
             await tx
               .update(webhookEvents)
               .set({
@@ -620,6 +623,36 @@ export async function processProviderWebhook(
             .set({
               status: "ignored",
               errorMessage: "success event arrived after terminal refund",
+              processedAt: new Date(),
+            })
+            .where(eq(webhookEvents.id, webhookEventId));
+          return {
+            webhookEventId,
+            duplicate: Boolean(!inserted),
+            status: "ignored" as const,
+            normalizedType: event.type,
+          };
+        }
+
+        // B4: a failure event for a payment that already settled
+        // (succeeded/refunded) is a late/duplicate notification, not a new
+        // fact. Acknowledge as ignored: no payment-row overwrite (the old
+        // path nulled orderId/customerId), no subscription past_due
+        // inference, and no outbound payment.failed developer event.
+        if (
+          event.type === "payment.failed" &&
+          (existingPayment?.status === "succeeded" ||
+            existingPayment?.status === "refunded")
+        ) {
+          console.error(
+            `[monetplane] provider event ${event.providerEventId} reports failure for settled payment ${event.providerPaymentId} (${existingPayment.status}); keeping settled state`,
+          );
+          await tx
+            .update(webhookEvents)
+            .set({
+              status: "ignored",
+              errorMessage:
+                "failure event for an already-settled payment (succeeded/refunded)",
               processedAt: new Date(),
             })
             .where(eq(webhookEvents.id, webhookEventId));
@@ -668,8 +701,11 @@ export async function processProviderWebhook(
             target: [payments.providerConnectionId, payments.providerPaymentId],
             set: {
               status: nextPaymentStatus,
-              orderId: order?.id ?? null,
-              customerId: mappedApplicationCustomer?.customerId ?? null,
+              // B4 (§二A prerequisite): an event without order/customer
+              // context must not null out a payment's existing references —
+              // coalesce keeps the recorded values.
+              orderId: sql`coalesce(excluded.order_id, ${payments.orderId})`,
+              customerId: sql`coalesce(excluded.customer_id, ${payments.customerId})`,
               updatedAt: new Date(),
               // amountMinor/currency intentionally omitted: once recorded, a
               // payment's captured amount and currency are immutable (B5).

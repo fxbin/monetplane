@@ -22,6 +22,7 @@ import {
   webhookEvents,
 } from "../../src/modules/commerce/schema";
 import { processProviderWebhook } from "../../src/modules/commerce/webhook";
+import { creditTransactions } from "../../src/modules/credits/schema";
 import { customers } from "../../src/modules/customers/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 import { entitlementGrants } from "../../src/modules/entitlements/schema";
@@ -1593,6 +1594,258 @@ describe("order snapshot freshness under concurrent payment events (B2)", () => 
       const order = await finalOrderState(fixture.checkout.orderId);
       expect(order?.status).toBe("paid");
     }
+  });
+});
+
+describe("duplicate-success marker and late-failure semantics (B3/B4)", () => {
+  async function seedCreditsOnlyFixture() {
+    const slug = `credits-only-${Math.random().toString(36).slice(2, 8)}`;
+    const app = await createApplication({ slug, name: slug }, db);
+    await registerCallbackOrigin(app.id, "https://product.test/success", db);
+    await registerCallbackOrigin(app.id, "https://product.test/cancel", db);
+    const applicationCustomer = await createApplicationCustomer(
+      { applicationId: app.id, externalCustomerId: "user-1", email: "c@test" },
+      db,
+    );
+    const product = await createProduct(
+      { applicationId: app.id, key: "pack", name: "Pack" },
+      db,
+    );
+    await addProductGrantConfig(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        grantType: "credit",
+        referenceKey: "gen.credits",
+        quantity: 100,
+      },
+      db,
+    );
+    const price = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "one-time",
+        currency: "USD",
+        amountMinor: 1998,
+        billingType: "one_time",
+      },
+      db,
+    );
+    const connection = await createProviderConnection(
+      {
+        applicationId: app.id,
+        provider: "mock",
+        name: "primary",
+        mode: "test",
+        credentials: { webhookSecret: "commerce-secret" },
+      },
+      db,
+    );
+    const checkout = await createCommerceCheckout(
+      app.id,
+      {
+        externalCustomerId: "user-1",
+        items: [{ priceId: price.id, quantity: 1 }],
+        successUrl: "https://product.test/success",
+        cancelUrl: "https://product.test/cancel",
+      },
+      db,
+    );
+    return {
+      app,
+      applicationCustomer,
+      providerConnection: connection,
+      checkout,
+    };
+  }
+
+  function successPayload(
+    fixture: { checkout: { orderId: string } },
+    id: string,
+    paymentId: string,
+  ) {
+    return {
+      id,
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: paymentId,
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: "user-1",
+        amount_minor: 1998,
+        currency: "USD",
+      },
+    };
+  }
+
+  it("ignores a replayed success for a credits-only order (B3: order status is the marker)", async () => {
+    const fixture = await seedCreditsOnlyFixture();
+    const first = await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b3_c1", "pay_b3_c1")),
+      db,
+    );
+    expect(first.status).toBe("processed");
+
+    const second = await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b3_c2", "pay_b3_c1")),
+      db,
+    );
+    expect(second.status).toBe("ignored");
+
+    const grantRows = await db
+      .select()
+      .from(creditTransactions)
+      .where(eq(creditTransactions.applicationId, fixture.app.id));
+    expect(grantRows).toHaveLength(1);
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+  });
+
+  it("ignores a replayed success for a subscription-billed order (B3)", async () => {
+    const fixture = await createFixture("subscription");
+    const first = await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b3_s1", "pay_b3_s1")),
+      db,
+    );
+    expect(first.status).toBe("processed");
+    const second = await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b3_s2", "pay_b3_s1")),
+      db,
+    );
+    expect(second.status).toBe("ignored");
+  });
+
+  it("acknowledges a late failure for a settled payment without side effects (B4)", async () => {
+    const fixture = await createFixture("one_time");
+    await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b4_s1", "pay_b4_1")),
+      db,
+    );
+
+    const late = await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput({
+        id: "evt_b4_f1",
+        type: "payment.failed",
+        occurred_at: new Date().toISOString(),
+        data: {
+          provider_payment_id: "pay_b4_1",
+          monetplane_order_id: fixture.checkout.orderId,
+          monetplane_customer_id: fixture.applicationCustomer.customerId,
+          provider_subscription_id: "sub_b4_1",
+          amount_minor: 1998,
+          currency: "USD",
+        },
+      }),
+      db,
+    );
+    expect(late.status).toBe("ignored");
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_b4_1"))
+      .limit(1);
+    expect(payment?.status).toBe("succeeded");
+    expect(payment?.orderId).toBe(fixture.checkout.orderId);
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    expect(order?.status).toBe("paid");
+    const [inboxRow] = await db
+      .select()
+      .from(webhookEvents)
+      .where(eq(webhookEvents.providerEventId, "evt_b4_f1"))
+      .limit(1);
+    expect(inboxRow?.status).toBe("ignored");
+    expect(inboxRow?.errorMessage).toContain("already-settled");
+  });
+
+  it("still processes an independent renewal failure with a new payment id (B4)", async () => {
+    const fixture = await createFixture("one_time");
+    await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b4_s2", "pay_b4_2")),
+      db,
+    );
+
+    const renewal = await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput({
+        id: "evt_b4_f2",
+        type: "payment.failed",
+        occurred_at: new Date().toISOString(),
+        data: {
+          provider_payment_id: "pay_b4_renewal",
+          monetplane_order_id: fixture.checkout.orderId,
+          monetplane_customer_id: fixture.applicationCustomer.customerId,
+          provider_subscription_id: "sub_b4_2",
+          amount_minor: 1998,
+          currency: "USD",
+        },
+      }),
+      db,
+    );
+    expect(renewal.status).toBe("processed");
+  });
+
+  it("rejects zero and negative refund amounts as permanent failures (§二E)", async () => {
+    const fixture = await createFixture("one_time");
+    await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(successPayload(fixture, "evt_b4e_s1", "pay_b4e_1")),
+      db,
+    );
+
+    for (const amount of [0, -100]) {
+      await expect(
+        processProviderWebhook(
+          fixture.app.id,
+          fixture.providerConnection.id,
+          webhookInput({
+            id: `evt_b4e_r_${amount}`,
+            type: "payment.refunded",
+            occurred_at: new Date().toISOString(),
+            data: {
+              provider_payment_id: "pay_b4e_1",
+              monetplane_order_id: fixture.checkout.orderId,
+              monetplane_customer_id: fixture.applicationCustomer.customerId,
+              amount_minor: amount,
+              currency: "USD",
+              provider_refund_id: `RB4E_${amount}`,
+            },
+          }),
+          db,
+        ),
+      ).rejects.toThrow(/positive whole number/);
+    }
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.applicationId, fixture.app.id));
+    expect(refundRows).toHaveLength(0);
   });
 });
 
