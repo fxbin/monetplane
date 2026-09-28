@@ -136,7 +136,10 @@ export async function publishBillingLifecycleEvent(
       .from(payments)
       .innerJoin(
         applicationCustomers,
-        eq(applicationCustomers.id, payments.customerId),
+        // payments.customerId stores the global customers.id (cus_...);
+        // applicationCustomers.id is the acus_... row id — match on the
+        // customerId column (same id-space trap as the primary lookup).
+        eq(applicationCustomers.customerId, payments.customerId),
       )
       .where(
         and(
@@ -161,6 +164,7 @@ export async function publishBillingLifecycleEvent(
       .where(
         and(
           eq(subscriptions.applicationId, input.applicationId),
+          eq(subscriptions.providerConnectionId, input.providerConnectionId),
           eq(
             subscriptions.providerSubscriptionId,
             String(normalized.providerSubscriptionId),

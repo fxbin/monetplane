@@ -353,8 +353,8 @@ export async function processProviderWebhook(
         if (event.type === "payment.refunded") {
           // §二E: a refund amount, when present, must be a positive safe
           // integer — zero/negative amounts are provider anomalies, not
-          // bookable facts (a DB check failure here would otherwise surface
-          // as a retryable 503).
+          // bookable facts, and fail permanently instead of reaching the
+          // ledger.
           if (
             event.amountMinor !== undefined &&
             (!Number.isSafeInteger(event.amountMinor) || event.amountMinor <= 0)

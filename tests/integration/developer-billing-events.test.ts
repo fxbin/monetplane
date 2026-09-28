@@ -190,7 +190,7 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
       {
         name: "receiver",
         url: receiver.url,
-        eventTypes: ["payment.succeeded", "payment.refunded"],
+        eventTypes: ["payment.succeeded"],
       },
       db,
     );
@@ -238,7 +238,7 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
       {
         name: "receiver",
         url: receiver.url,
-        eventTypes: ["payment.succeeded"],
+        eventTypes: ["payment.succeeded", "payment.refunded"],
       },
       db,
     );
@@ -291,8 +291,15 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
     });
     expect(published.published).toBe(true);
 
+    // Assert on THE refund delivery specifically (list is desc by createdAt,
+    // so indexing the tail would read the oldest row and pass vacuously —
+    // verifier finding).
     const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
-    expect(deliveries[deliveries.length - 1].externalCustomerId).toBe("user-1");
+    const refundDelivery = deliveries.find(
+      (row) => row.eventType === "payment.refunded",
+    );
+    expect(refundDelivery).toBeDefined();
+    expect(refundDelivery?.externalCustomerId).toBe("user-1");
   });
 
   it("resolves externalCustomerId from the customer mapping alone when the event has no order id (MP-REV-04)", async () => {
