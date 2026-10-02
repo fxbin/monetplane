@@ -233,6 +233,18 @@ export async function processProviderWebhook(
         event.type === "payment.failed" ||
         event.type === "payment.refunded"
       ) {
+        // #132: payment amounts, when present, must be non-negative safe
+        // integers — a negative value would otherwise trip the DB check and
+        // surface as a retryable 503 instead of a permanent rejection
+        // (refunds additionally require > 0, guarded below).
+        if (
+          event.amountMinor !== undefined &&
+          (!Number.isSafeInteger(event.amountMinor) || event.amountMinor < 0)
+        ) {
+          throw new InvalidNormalizedCommerceEventError(
+            `payment amount must be a non-negative whole number, got ${event.amountMinor}`,
+          );
+        }
         if (!event.providerPaymentId) {
           throw new InvalidNormalizedCommerceEventError(
             "Payment event is missing providerPaymentId",

@@ -1822,13 +1822,15 @@ describe("duplicate-success marker and late-failure semantics (B3/B4)", () => {
       db,
     );
 
-    for (const amount of [0, -100]) {
-      await expect(
+    // Zero trips the refund-specific guard (strictly positive); a negative
+    // amount is caught even earlier by the general payment-amount guard.
+    const expectRejected = (eventId: string, amount: number) =>
+      expect(
         processProviderWebhook(
           fixture.app.id,
           fixture.providerConnection.id,
           webhookInput({
-            id: `evt_b4e_r_${amount}`,
+            id: eventId,
             type: "payment.refunded",
             occurred_at: new Date().toISOString(),
             data: {
@@ -1842,8 +1844,9 @@ describe("duplicate-success marker and late-failure semantics (B3/B4)", () => {
           }),
           db,
         ),
-      ).rejects.toThrow(/positive whole number/);
-    }
+      ).rejects.toThrow(/whole number/);
+    await expectRejected("evt_b4e_r_0", 0);
+    await expectRejected("evt_b4e_r_neg", -100);
 
     const refundRows = await db
       .select()
@@ -2355,6 +2358,61 @@ describe("round-4 review regressions (F1/F2)", () => {
         ),
       );
     expect(grants.every((g) => g.status === "active")).toBe(true);
+  });
+});
+
+describe("payment amount validation (#132)", () => {
+  it("permanently rejects a negative amount on a payment.succeeded event", async () => {
+    const fixture = await createFixture("one_time");
+    await expect(
+      processProviderWebhook(
+        fixture.app.id,
+        fixture.providerConnection.id,
+        webhookInput({
+          id: "evt_v132_s",
+          type: "payment.succeeded",
+          occurred_at: new Date().toISOString(),
+          data: {
+            provider_payment_id: "pay_v132_1",
+            monetplane_order_id: fixture.checkout.orderId,
+            monetplane_customer_id: fixture.applicationCustomer.customerId,
+            amount_minor: -100,
+            currency: "USD",
+          },
+        }),
+        db,
+      ),
+    ).rejects.toThrow(/non-negative whole number/);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_v132_1"))
+      .limit(1);
+    expect(payment).toBeUndefined();
+  });
+
+  it("permanently rejects a negative amount on a payment.failed event", async () => {
+    const fixture = await createFixture("one_time");
+    await expect(
+      processProviderWebhook(
+        fixture.app.id,
+        fixture.providerConnection.id,
+        webhookInput({
+          id: "evt_v132_f",
+          type: "payment.failed",
+          occurred_at: new Date().toISOString(),
+          data: {
+            provider_payment_id: "pay_v132_2",
+            monetplane_order_id: fixture.checkout.orderId,
+            monetplane_customer_id: fixture.applicationCustomer.customerId,
+            amount_minor: -1,
+            currency: "USD",
+          },
+        }),
+        db,
+      ),
+    ).rejects.toThrow(/non-negative whole number/);
   });
 });
 
