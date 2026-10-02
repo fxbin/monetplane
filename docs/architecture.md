@@ -155,6 +155,9 @@ once-audited.
 Committed provider webhook effects fan out to developer-configured webhook
 endpoints as signed, provider-neutral events (deterministic event identity;
 deliveries unique per endpoint + event). Publisher: `src/server/control-plane/billing-events.ts`.
+A protected sweeper (`GET/POST /api/cron/webhook-deliveries`, `CRON_SECRET`, every 1–5 min)
+re-delivers deliveries left `pending` by a crash between insert and attempt
+(exponential backoff, atomic claim, max attempts → failed).
 
 ### Webhook Inbox
 

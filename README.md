@@ -65,8 +65,10 @@ pnpm dev
 ```
 
 `AUTH_SECRET` is required at build and runtime (fail-fast). `CRON_SECRET`
-protects the credit-expiry cron route (`GET /api/cron/credit-expiry`, schedule
-every 5-15 min — see `docs/credits-ledger.md`).
+protects the cron routes — `GET /api/cron/credit-expiry` (every 5–15 min,
+see `docs/credits-ledger.md`) and `GET /api/cron/webhook-deliveries`
+(every 1–5 min; re-delivers developer-webhook deliveries stranded `pending`
+by a crash).
 
 Verification:
 
