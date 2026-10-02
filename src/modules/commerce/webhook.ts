@@ -585,6 +585,17 @@ export async function processProviderWebhook(
               fullyRefunded:
                 confirmedRefunded + confirmedAmountMinor >= capturedAmountMinor,
             };
+            // #128 reconciliation signal: the provider CONFIRMED more refund
+            // money than was captured — book the fact (never re-clamp it)
+            // but surface the over-refund loudly for reconciliation.
+            if (
+              confirmedRefunded + confirmedAmountMinor >
+              capturedAmountMinor
+            ) {
+              console.error(
+                `[monetplane] refund reconciliation: provider event ${event.providerEventId} confirms ${confirmedAmountMinor} minor for payment ${event.providerPaymentId}; confirmed total ${confirmedRefunded + confirmedAmountMinor} exceeds captured ${capturedAmountMinor}`,
+              );
+            }
           } else if (remaining <= 0) {
             // Nothing left to refund: durable idempotent skip that changes
             // no payment/order/refund rows.
@@ -613,6 +624,17 @@ export async function processProviderWebhook(
               event.amountMinor === undefined
                 ? remaining
                 : Math.min(event.amountMinor, remaining);
+            // #128 reconciliation signal: the provider reports more refund
+            // money than the remaining headroom — the internal books stay
+            // capped, but the delta must not disappear silently.
+            if (
+              event.amountMinor !== undefined &&
+              event.amountMinor > appliedRefundMinor
+            ) {
+              console.error(
+                `[monetplane] refund reconciliation: provider event ${event.providerEventId} reports ${event.amountMinor} minor for payment ${event.providerPaymentId}; applied clamped to ${appliedRefundMinor} (remaining headroom ${remaining})`,
+              );
+            }
             refundPlan = {
               amountMinor: appliedRefundMinor,
               // F1: terminality counts CONFIRMED facts only (the new fact

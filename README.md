@@ -92,7 +92,9 @@ Decision records (why things are the way they are) live in
 (money invariants, currency registry, credential gating, webhook retry policy,
 explicit scope cuts) are the first entries. Operations tooling:
 `scripts/reconcile-currency-decimals.mts` (read-only report of rows possibly
-mis-scaled by pre-unification currency tables).
+mis-scaled by pre-unification currency tables) and
+`scripts/reconcile-refunds.mts` (read-only refund reconciliation: over-refunded
+payments, stuck pending refunds, torn refund states, failed refund events).
 
 ## Design references
 
