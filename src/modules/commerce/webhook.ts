@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { prices } from "../catalog/schema";
@@ -239,6 +239,58 @@ export async function processProviderWebhook(
           );
         }
 
+        // MP-REV-02: serialize every lifecycle event for the same provider
+        // payment, even when the payment row does not exist yet (lost or
+        // out-of-order success + concurrent first refunds). The advisory lock
+        // is taken before any row read, so a transaction that waits here
+        // recomputes its refund plan against the winner's committed state
+        // instead of planning against stale absence. Single lock, acquired
+        // first — no lock-order cycle with the row locks below.
+        if (event.providerPaymentId) {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtextextended(${`commerce:payment:${providerConnectionId}:${event.providerPaymentId}`}, 0))`,
+          );
+        }
+
+        // B2: re-read the order (row-locked) and the customer mapping under
+        // the payment lock — the pre-lock reads may be stale snapshots under
+        // READ COMMITTED, and status decisions must not act on them.
+        if (event.monetplaneOrderId) {
+          [order] = await tx
+            .select({
+              id: orders.id,
+              applicationCustomerId: orders.applicationCustomerId,
+              billingMode: orders.billingMode,
+              status: orders.status,
+              currency: orders.currency,
+              totalAmountMinor: orders.totalAmountMinor,
+            })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.id, event.monetplaneOrderId),
+                eq(orders.applicationId, applicationId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+        }
+        if (event.monetplaneCustomerId) {
+          [mappedApplicationCustomer] = await tx
+            .select({
+              id: applicationCustomers.id,
+              customerId: applicationCustomers.customerId,
+            })
+            .from(applicationCustomers)
+            .where(
+              and(
+                eq(applicationCustomers.applicationId, applicationId),
+                eq(applicationCustomers.customerId, event.monetplaneCustomerId),
+              ),
+            )
+            .limit(1);
+        }
+
         // Lock any existing payment row first: it is the serialization point
         // for refund accounting and settled-value immutability (audit B5).
         const [existingPayment] = await tx
@@ -252,6 +304,58 @@ export async function processProviderWebhook(
           )
           .for("update")
           .limit(1);
+
+        // F2 (round-4, scoped fix): a payment's order/customer bindings are
+        // immutable. Compare the RAW event references against the recorded
+        // bindings — the previous guard compared the RESOLVED order and let
+        // a nonexistent or cross-application order id slip past (resolved
+        // to undefined) with a non-empty event reference, producing a torn
+        // refund (payment refunded, real order paid, entitlements live).
+        if (
+          existingPayment?.orderId &&
+          event.monetplaneOrderId &&
+          event.monetplaneOrderId !== existingPayment.orderId
+        ) {
+          throw new InvalidNormalizedCommerceEventError(
+            `payment ${event.providerPaymentId} is already bound to order ${existingPayment.orderId}; event references order ${event.monetplaneOrderId}`,
+          );
+        }
+        if (
+          existingPayment?.customerId &&
+          event.monetplaneCustomerId &&
+          event.monetplaneCustomerId !== existingPayment.customerId
+        ) {
+          throw new InvalidNormalizedCommerceEventError(
+            `payment ${event.providerPaymentId} is already bound to customer ${existingPayment.customerId}; event references customer ${event.monetplaneCustomerId}`,
+          );
+        }
+
+        // Round-3 finding: a refund notification that carries ONLY provider
+        // ids used to lose the order association (order lookups keyed on
+        // event.monetplaneOrderId), leaving a fully-refunded payment with a
+        // paid order and live entitlements. The RECORDED payment binding is
+        // the authoritative association: whenever no order was resolved from
+        // the event, load and lock the recorded one.
+        if (!order && existingPayment?.orderId) {
+          [order] = await tx
+            .select({
+              id: orders.id,
+              applicationCustomerId: orders.applicationCustomerId,
+              billingMode: orders.billingMode,
+              status: orders.status,
+              currency: orders.currency,
+              totalAmountMinor: orders.totalAmountMinor,
+            })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.id, existingPayment.orderId),
+                eq(orders.applicationId, applicationId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+        }
 
         // Invariant A (audit B5): a payment event that carries a currency
         // must match the currency the order/payment was captured in.
@@ -299,13 +403,140 @@ export async function processProviderWebhook(
         let refundPlan: { amountMinor: number; fullyRefunded: boolean } | null =
           null;
         if (event.type === "payment.refunded") {
+          // §二E: a refund amount, when present, must be a positive safe
+          // integer — zero/negative amounts are provider anomalies, not
+          // bookable facts, and fail permanently instead of reaching the
+          // ledger.
+          if (
+            event.amountMinor !== undefined &&
+            (!Number.isSafeInteger(event.amountMinor) || event.amountMinor <= 0)
+          ) {
+            throw new InvalidNormalizedCommerceEventError(
+              `refund amount must be a positive whole number, got ${event.amountMinor}`,
+            );
+          }
+          // MP-REV-01: a refund fact is identified by (connection,
+          // providerRefundId) — NOT by the inbox event id. A second event
+          // carrying the same refund id replays or conflicts with the SAME
+          // fact; it must never be planned as new refund headroom, and a
+          // succeeded refund row is an immutable business fact.
+          let recordedFact:
+            | {
+                id: string;
+                status: string;
+                amountMinor: number | null;
+                paymentId: string | null;
+              }
+            | undefined;
+          if (event.providerRefundId) {
+            [recordedFact] = await tx
+              .select({
+                id: refunds.id,
+                status: refunds.status,
+                amountMinor: refunds.amountMinor,
+                paymentId: refunds.paymentId,
+              })
+              .from(refunds)
+              .where(
+                and(
+                  eq(refunds.providerConnectionId, providerConnectionId),
+                  eq(refunds.providerRefundId, event.providerRefundId),
+                ),
+              )
+              .for("update")
+              .limit(1);
+            if (
+              recordedFact &&
+              recordedFact.paymentId !== existingPayment?.id
+            ) {
+              // The provider is reusing a refund id across payments —
+              // a provider-side inconsistency, not a replay (any status:
+              // a failed fact must not be silently rebound either).
+              throw new InvalidNormalizedCommerceEventError(
+                `refund fact ${event.providerRefundId} conflict: already recorded for a different payment`,
+              );
+            }
+            if (recordedFact?.status === "succeeded") {
+              if (
+                recordedFact.amountMinor === null ||
+                event.amountMinor === undefined ||
+                recordedFact.amountMinor === event.amountMinor
+              ) {
+                // Idempotent replay of an already-recorded refund fact:
+                // acknowledge without changing any row.
+                await tx
+                  .update(webhookEvents)
+                  .set({
+                    status: "ignored",
+                    errorMessage: `refund fact ${event.providerRefundId} already recorded (idempotent replay)`,
+                    processedAt: new Date(),
+                  })
+                  .where(eq(webhookEvents.id, webhookEventId));
+                return {
+                  webhookEventId,
+                  duplicate: Boolean(!inserted),
+                  status: "ignored" as const,
+                  normalizedType: event.type,
+                };
+              }
+              // Conflicting amount for the same refund fact: never overwrite
+              // a succeeded business fact. Park as failed for reconciliation.
+              throw new InvalidNormalizedCommerceEventError(
+                `refund fact ${event.providerRefundId} conflict: recorded amountMinor ${recordedFact.amountMinor}, event reports ${event.amountMinor} — requires reconciliation`,
+              );
+            }
+            // A `failed` recorded row may legitimately be superseded by a
+            // later success fact with the same id (provider retried and the
+            // refund went through); fall through to normal planning — the
+            // upsert below updates that row.
+          }
+          // B1: confirming a previously-pending fact. The pending row's
+          // provisional amount (possibly the journal path's legacy full
+          // fallback) must neither consume headroom against itself nor be
+          // re-planned through Math.min — the provider's confirmed amount IS
+          // the fact.
+          const upgradingPendingFact = recordedFact?.status === "pending";
+          // B1: the journal path records a synthetic refund id
+          // (`refund:<paymentId>`) for adapters that cannot return a real
+          // one synchronously. When the real provider refund id lands for
+          // the same payment, the synthetic pending row is superseded — one
+          // business fact, one live row.
+          let supersededFactIds: string[] = [];
+          if (event.providerRefundId && !recordedFact && existingPayment) {
+            const syntheticRows = await tx
+              .select({ id: refunds.id })
+              .from(refunds)
+              .where(
+                and(
+                  eq(refunds.paymentId, existingPayment.id),
+                  eq(refunds.status, "pending"),
+                  like(refunds.providerRefundId, "refund:%"),
+                ),
+              )
+              .for("update");
+            supersededFactIds = syntheticRows.map((row) => row.id);
+          }
+          if (supersededFactIds.length > 0) {
+            await tx
+              .update(refunds)
+              .set({ status: "superseded", updatedAt: new Date() })
+              .where(inArray(refunds.id, supersededFactIds));
+          }
           const capturedAmountMinor =
             existingPayment?.amountMinor ?? amountMinor;
-          let alreadyRefunded = 0;
+          // F1 (round-4): two distinct quantities —
+          //   reservedRefunded (pending + succeeded) guards over-refund
+          //   headroom; confirmedRefunded (succeeded only) is the ONLY basis
+          //   for terminality. Counting pending rows toward fullyRefunded
+          //   used to flip a payment to refunded while other refunds were
+          //   still unconfirmed (and could later fail).
+          let reservedRefunded = 0;
+          let confirmedRefunded = 0;
           let unknownRefundAmount = false;
           if (existingPayment) {
             const refundRows = await tx
               .select({
+                id: refunds.id,
                 status: refunds.status,
                 amountMinor: refunds.amountMinor,
               })
@@ -313,21 +544,48 @@ export async function processProviderWebhook(
               .where(eq(refunds.paymentId, existingPayment.id))
               .for("update");
             for (const row of refundRows) {
-              if (row.status === "failed") continue;
+              if (row.status === "failed" || row.status === "superseded")
+                continue;
+              if (
+                upgradingPendingFact &&
+                recordedFact &&
+                row.id === recordedFact.id
+              ) {
+                // B1: the fact being confirmed is this event's own — its
+                // provisional amount is not "already refunded" headroom.
+                continue;
+              }
               if (row.amountMinor === null) {
-                // A legacy refund row without an amount recorded a full
-                // refund under the previous ingest; treat the remaining
-                // amount as consumed (fail-closed).
+                // A refund row without an amount recorded a full refund
+                // under the previous ingest; treat the remaining amount as
+                // consumed (fail-closed).
                 unknownRefundAmount = true;
               } else {
-                alreadyRefunded += row.amountMinor;
+                reservedRefunded += row.amountMinor;
+                if (row.status === "succeeded") {
+                  confirmedRefunded += row.amountMinor;
+                }
               }
             }
           }
           const remaining = unknownRefundAmount
             ? 0
-            : capturedAmountMinor - alreadyRefunded;
-          if (remaining <= 0) {
+            : capturedAmountMinor - reservedRefunded;
+          if (upgradingPendingFact) {
+            // B1: direct fact upgrade — the confirmed amount lands as-is
+            // (no Math.min re-plan; the pending row's provisional amount is
+            // replaced by the provider's confirmed one).
+            const confirmedAmountMinor =
+              event.amountMinor ??
+              (recordedFact as { amountMinor: number | null }).amountMinor ??
+              remaining;
+            refundPlan = {
+              amountMinor: confirmedAmountMinor,
+              // F1: terminality counts CONFIRMED facts only.
+              fullyRefunded:
+                confirmedRefunded + confirmedAmountMinor >= capturedAmountMinor,
+            };
+          } else if (remaining <= 0) {
             // Nothing left to refund: durable idempotent skip that changes
             // no payment/order/refund rows.
             await tx
@@ -345,34 +603,32 @@ export async function processProviderWebhook(
               status: "ignored" as const,
               normalizedType: event.type,
             };
+          } else {
+            // Generic planning (new refund fact): the applied amount is
+            // capped at the remaining headroom. This branch must NEVER run
+            // for an upgrade — it would re-clamp the provider's confirmed
+            // amount through Math.min and overwrite the plan above (round-3
+            // review finding).
+            const appliedRefundMinor =
+              event.amountMinor === undefined
+                ? remaining
+                : Math.min(event.amountMinor, remaining);
+            refundPlan = {
+              amountMinor: appliedRefundMinor,
+              // F1: terminality counts CONFIRMED facts only (the new fact
+              // lands as succeeded immediately).
+              fullyRefunded:
+                confirmedRefunded + appliedRefundMinor >= capturedAmountMinor,
+            };
           }
-          const appliedRefundMinor =
-            event.amountMinor === undefined
-              ? remaining
-              : Math.min(event.amountMinor, remaining);
-          refundPlan = {
-            amountMinor: appliedRefundMinor,
-            fullyRefunded:
-              alreadyRefunded + appliedRefundMinor >= capturedAmountMinor,
-          };
         }
-
-        const nextPaymentStatus = (() => {
-          if (event.type === "payment.succeeded") return "succeeded";
-          if (event.type === "payment.failed") return "failed";
-          // payment.refunded: a partial refund keeps the payment's current
-          // status; only a cumulative-full refund flips it to `refunded`.
-          // A refund creating a brand-new payment row (out-of-order
-          // delivery) lands on `succeeded` — never terminal on insert.
-          return refundPlan?.fullyRefunded
-            ? "refunded"
-            : (existingPayment?.status ?? "succeeded");
-        })();
 
         // Invariant B (audit B5): a settled payment's amount is immutable.
         // Surface amount drift on a succeeded payment without failing the
         // event or overwriting the stored value. (Refund events carry the
         // refund amount, not the payment amount, so they are excluded.)
+        // Runs before the replay guards so a replayed event still surfaces
+        // amount drift.
         if (
           existingPayment?.status === "succeeded" &&
           event.type !== "payment.refunded" &&
@@ -383,6 +639,120 @@ export async function processProviderWebhook(
             `[monetplane] provider event ${event.providerEventId} reports amountMinor ${event.amountMinor} for settled payment ${event.providerPaymentId} (stored ${existingPayment.amountMinor}); keeping stored amount`,
           );
         }
+
+        // MP-REV-03: a duplicate success event for an already-succeeded
+        // payment is a replay of a settled fact. Re-running the grant
+        // pipeline with a new event timestamp would trip the entitlement
+        // idempotency conflict (EntitlementIdempotencyConflictError) and put
+        // the event into a permanent retry loop. Grants fire only if they
+        // never fired for this order (refund-first seeded the payment before
+        // any success event arrived); otherwise acknowledge as replay.
+        if (
+          event.type === "payment.succeeded" &&
+          existingPayment?.status === "succeeded"
+        ) {
+          // B3: the settled marker is the ORDER status, not the presence of
+          // entitlement grant rows — credits-only, no-grant-config, and
+          // subscription-billed orders legitimately have none. paid/refunded
+          // means the success effects (grants, credits, session, fan-out)
+          // already committed in the same transaction that set them.
+          const orderAlreadySettled =
+            order?.status === "paid" || order?.status === "refunded";
+          if (!order || orderAlreadySettled) {
+            await tx
+              .update(webhookEvents)
+              .set({
+                status: "ignored",
+                errorMessage:
+                  "success event replayed for an already-succeeded payment",
+                processedAt: new Date(),
+              })
+              .where(eq(webhookEvents.id, webhookEventId));
+            return {
+              webhookEventId,
+              duplicate: Boolean(!inserted),
+              status: "ignored" as const,
+              normalizedType: event.type,
+            };
+          }
+          // No grants yet (refund-first seed): fall through so the late
+          // success applies them exactly once.
+        }
+
+        // MP-REV-03: refunded is a terminal state. A late success event for
+        // an already-refunded payment must not resurrect it or re-fire
+        // grants — record the anomaly and acknowledge without state change.
+        if (
+          event.type === "payment.succeeded" &&
+          existingPayment?.status === "refunded"
+        ) {
+          console.error(
+            `[monetplane] provider event ${event.providerEventId} reports success for refunded payment ${event.providerPaymentId}; keeping refunded state`,
+          );
+          await tx
+            .update(webhookEvents)
+            .set({
+              status: "ignored",
+              errorMessage: "success event arrived after terminal refund",
+              processedAt: new Date(),
+            })
+            .where(eq(webhookEvents.id, webhookEventId));
+          return {
+            webhookEventId,
+            duplicate: Boolean(!inserted),
+            status: "ignored" as const,
+            normalizedType: event.type,
+          };
+        }
+
+        // B4: a failure event for a payment that already settled
+        // (succeeded/refunded) is a late/duplicate notification, not a new
+        // fact. Acknowledge as ignored: no payment-row overwrite (the old
+        // path nulled orderId/customerId), no subscription past_due
+        // inference, and no outbound payment.failed developer event.
+        if (
+          event.type === "payment.failed" &&
+          (existingPayment?.status === "succeeded" ||
+            existingPayment?.status === "refunded")
+        ) {
+          console.error(
+            `[monetplane] provider event ${event.providerEventId} reports failure for settled payment ${event.providerPaymentId} (${existingPayment.status}); keeping settled state`,
+          );
+          await tx
+            .update(webhookEvents)
+            .set({
+              status: "ignored",
+              errorMessage:
+                "failure event for an already-settled payment (succeeded/refunded)",
+              processedAt: new Date(),
+            })
+            .where(eq(webhookEvents.id, webhookEventId));
+          return {
+            webhookEventId,
+            duplicate: Boolean(!inserted),
+            status: "ignored" as const,
+            normalizedType: event.type,
+          };
+        }
+
+        const nextPaymentStatus = (() => {
+          if (event.type === "payment.succeeded") return "succeeded";
+          if (event.type === "payment.failed") {
+            // A failure never erases a settled fact: only a pending (or
+            // absent) payment transitions to failed; succeeded and refunded
+            // payments keep their status (MP-REV-03).
+            return !existingPayment || existingPayment.status === "pending"
+              ? "failed"
+              : existingPayment.status;
+          }
+          // payment.refunded: a partial refund keeps the payment's current
+          // status; only a cumulative-full refund flips it to `refunded`.
+          // A refund creating a brand-new payment row (out-of-order
+          // delivery) lands on `succeeded` — never terminal on insert.
+          return refundPlan?.fullyRefunded
+            ? "refunded"
+            : (existingPayment?.status ?? "succeeded");
+        })();
 
         const [payment] = await tx
           .insert(payments)
@@ -402,8 +772,11 @@ export async function processProviderWebhook(
             target: [payments.providerConnectionId, payments.providerPaymentId],
             set: {
               status: nextPaymentStatus,
-              orderId: order?.id ?? null,
-              customerId: mappedApplicationCustomer?.customerId ?? null,
+              // B4 (§二A prerequisite): an event without order/customer
+              // context must not null out a payment's existing references —
+              // coalesce keeps the recorded values.
+              orderId: sql`coalesce(excluded.order_id, ${payments.orderId})`,
+              customerId: sql`coalesce(excluded.customer_id, ${payments.customerId})`,
               updatedAt: new Date(),
               // amountMinor/currency intentionally omitted: once recorded, a
               // payment's captured amount and currency are immutable (B5).
@@ -415,7 +788,10 @@ export async function processProviderWebhook(
 
         if (order) {
           const nextOrderStatus = (() => {
-            if (event.type === "payment.succeeded") return "paid";
+            if (event.type === "payment.succeeded") {
+              // refunded is terminal for orders too (MP-REV-03).
+              return order.status === "refunded" ? "refunded" : "paid";
+            }
             if (event.type === "payment.failed") {
               return order.status === "pending" ? "failed" : order.status;
             }
@@ -424,15 +800,29 @@ export async function processProviderWebhook(
             return refundPlan?.fullyRefunded ? "refunded" : order.status;
           })();
 
-          await tx
-            .update(orders)
-            .set({ status: nextOrderStatus, updatedAt: new Date() })
-            .where(
-              and(
-                eq(orders.id, order.id),
-                eq(orders.applicationId, applicationId),
-              ),
-            );
+          // B2: monotonic, conditional order transition — a stale decision can
+          // never regress an order (e.g. paid -> pending); keep-paths skip
+          // the write entirely.
+          if (nextOrderStatus !== order.status) {
+            const allowedSources: Record<string, string[]> = {
+              paid: ["pending", "failed"],
+              failed: ["pending"],
+              refunded: ["pending", "paid", "refunded"],
+            };
+            const sources = allowedSources[nextOrderStatus] ?? [];
+            if (sources.length > 0) {
+              await tx
+                .update(orders)
+                .set({ status: nextOrderStatus, updatedAt: new Date() })
+                .where(
+                  and(
+                    eq(orders.id, order.id),
+                    eq(orders.applicationId, applicationId),
+                    inArray(orders.status, sources),
+                  ),
+                );
+            }
+          }
 
           if (event.type === "payment.succeeded") {
             await tx

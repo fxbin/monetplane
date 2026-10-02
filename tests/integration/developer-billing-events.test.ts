@@ -1,5 +1,6 @@
 import { createServer, type RequestListener } from "node:http";
 import type { AddressInfo } from "node:net";
+import { eq } from "drizzle-orm";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import { createApplication } from "../../src/modules/applications/service";
@@ -13,6 +14,7 @@ import {
 } from "../../src/modules/providers/adapters/mock";
 import { registerProviderAdapter } from "../../src/modules/providers/registry";
 import { createProviderConnection } from "../../src/modules/providers/service";
+import { webhookDeliveries } from "../../src/modules/webhooks/schema";
 import {
   createWebhookEndpoint,
   listWebhookDeliveries,
@@ -134,6 +136,350 @@ async function succeedPayment(f: Fixture, eventId: string) {
     db,
   );
 }
+
+describe("developer event externalCustomerId contract (MP-REV-04)", () => {
+  const receivers: Array<() => Promise<void>> = [];
+  afterEach(async () => {
+    for (const close of receivers.splice(0)) await close();
+  });
+
+  function signedSuccess(
+    f: Fixture,
+    eventId: string,
+    providerCustomerId?: string,
+  ) {
+    const rawBody = JSON.stringify({
+      id: eventId,
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: `pay_${eventId}`,
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        provider_customer_id: providerCustomerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    return processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+  }
+
+  it("exposes the application externalCustomerId, never the PSP customer id", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+
+    // The provider event carries a PSP-side customer id that differs from
+    // both the MonetPlane internal id and the application external id.
+    const result = await signedSuccess(f, "evt_xid_1", "cus_psp_9");
+    expect(result.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: result.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    const delivery = deliveries[deliveries.length - 1];
+    expect(published.published).toBe(true);
+    // Fixture customer: external id "user-1", internal id f.customer.customerId.
+    expect(delivery.externalCustomerId).toBe("user-1");
+
+    // The wire payload must carry the application external id and never
+    // leak the PSP customer id.
+    const [rawDelivery] = await db
+      .select()
+      .from(webhookDeliveries)
+      .where(eq(webhookDeliveries.id, delivery.id))
+      .limit(1);
+    const payloadData = (
+      rawDelivery.payload as { data?: Record<string, unknown> }
+    ).data;
+    expect(payloadData?.externalCustomerId).toBe("user-1");
+    expect(JSON.stringify(rawDelivery.payload)).not.toContain("cus_psp_9");
+  });
+
+  it("T3: the payments customer fallback never leaks another application's external id (round-3 finding 3)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded", "payment.refunded"],
+      },
+      db,
+    );
+
+    // A second application linked to the SAME global customer with a
+    // DIFFERENT external id — the fallback join must stay inside app A.
+    const otherApp = await createApplication(
+      {
+        slug: `t3-other-${Math.random().toString(36).slice(2, 8)}`,
+        name: "Other",
+      },
+      db,
+    );
+    await createApplicationCustomer(
+      {
+        applicationId: otherApp.id,
+        customerId: f.customer.customerId,
+        externalCustomerId: "other-app-user",
+        email: "shared@example.test",
+      },
+      db,
+    );
+
+    // Record the payment via a fully-referenced success event...
+    const first = await signedSuccess(f, "evt_t3_s", "cus_psp_x");
+    expect(first.status).toBe("processed");
+    await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: first.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    // ...then a provider-id-only refund: externalCustomerId resolution goes
+    // through the payments fallback join.
+    const rawBody = JSON.stringify({
+      id: "evt_t3_r",
+      type: "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_evt_t3_s",
+        provider_refund_id: "rt3_1",
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const refund = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(refund.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: refund.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    const refundDelivery = deliveries.find(
+      (row) => row.eventType === "payment.refunded",
+    );
+    expect(refundDelivery).toBeDefined();
+    expect(refundDelivery?.externalCustomerId).toBe("user-1");
+    expect(refundDelivery?.externalCustomerId).not.toBe("other-app-user");
+  });
+
+  it("resolves externalCustomerId from the recorded payment when the event carries neither internal reference (§二A)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded", "payment.refunded"],
+      },
+      db,
+    );
+
+    // First event carries the internal references (records the payment with
+    // its customer); the PSP-style replay carries ONLY the provider payment
+    // id — resolution must go through the recorded payment.
+    const first = await signedSuccess(f, "evt_fb_1", "cus_psp_x");
+    expect(first.status).toBe("processed");
+    await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: first.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    // A refund notification carrying ONLY provider ids (PSPs that do not
+    // echo the merchant metadata): resolution must go through the recorded
+    // payment row. (A second success event would now be replay-ignored by
+    // the B3 guard, so the refund type drives the fallback path.)
+    const rawBody = JSON.stringify({
+      id: "evt_fb_2",
+      type: "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_evt_fb_1",
+        provider_refund_id: "rfb_1",
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const second = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(second.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: second.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    // Assert on THE refund delivery specifically (list is desc by createdAt,
+    // so indexing the tail would read the oldest row and pass vacuously —
+    // verifier finding).
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    const refundDelivery = deliveries.find(
+      (row) => row.eventType === "payment.refunded",
+    );
+    expect(refundDelivery).toBeDefined();
+    expect(refundDelivery?.externalCustomerId).toBe("user-1");
+  });
+
+  it("resolves externalCustomerId from the customer mapping alone when the event has no order id (MP-REV-04)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+
+    // Order-less event: resolution must go through the customer-mapping
+    // path (monetplaneCustomerId -> application_customers.external_customer_id),
+    // not the order fallback.
+    const rawBody = JSON.stringify({
+      id: "evt_xid_3",
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_evt_xid_3",
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const result = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(result.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: result.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries[deliveries.length - 1].externalCustomerId).toBe("user-1");
+  });
+
+  it("still resolves externalCustomerId when the event carries no PSP customer id", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded"],
+      },
+      db,
+    );
+    const result = await signedSuccess(f, "evt_xid_2");
+    expect(result.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: result.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.published).toBe(true);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries[deliveries.length - 1].externalCustomerId).toBe("user-1");
+  });
+});
 
 describe("developer billing lifecycle events (#61)", () => {
   const receivers: Array<() => Promise<void>> = [];

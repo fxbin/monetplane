@@ -26,12 +26,21 @@ async function seed() {
   return app;
 }
 
-function period(): { periodStart: Date; periodEnd: Date } {
-  const now = new Date();
+/**
+ * Anchor the period to the month containing the seeded DATED event (3 days
+ * ago) instead of the wall clock — on the 1st–3rd of a month the two differ
+ * and the test used to under-count (found 2026-10-02: October period,
+ * September event).
+ */
+const DATED_EVENT_AT = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+
+function period(anchor: Date): { periodStart: Date; periodEnd: Date } {
   return {
-    periodStart: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)),
+    periodStart: new Date(
+      Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1),
+    ),
     periodEnd: new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
+      Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 1),
     ),
   };
 }
@@ -153,7 +162,7 @@ describe("usage metering (#62)", () => {
     );
     expect(concurrent.filter((r) => !r.duplicate)).toHaveLength(1);
 
-    const { periodStart, periodEnd } = period();
+    const { periodStart, periodEnd } = period(new Date());
     const summary = await getUsageSummary(
       {
         applicationId: app.id,
@@ -224,7 +233,7 @@ describe("usage metering (#62)", () => {
       db,
     );
 
-    const { periodStart, periodEnd } = period();
+    const { periodStart, periodEnd } = period(new Date());
     const testSummary = await getUsageSummary(
       {
         applicationId: app.id,
@@ -286,7 +295,7 @@ describe("usage metering (#62)", () => {
         sourceType: "app",
         sourceId: "s1",
         idempotencyKey: "tok-1",
-        occurredAt: new Date(Date.now() - 3 * 24 * 3600 * 1000),
+        occurredAt: DATED_EVENT_AT,
       },
       db,
     );
@@ -300,11 +309,12 @@ describe("usage metering (#62)", () => {
         sourceType: "app",
         sourceId: "s2",
         idempotencyKey: "tok-2",
+        occurredAt: new Date(DATED_EVENT_AT.getTime() + 3600_000),
       },
       db,
     );
 
-    const { periodStart, periodEnd } = period();
+    const { periodStart, periodEnd } = period(DATED_EVENT_AT);
     const summary = await getUsageSummary(
       {
         applicationId: app.id,

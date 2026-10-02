@@ -1,7 +1,13 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
-import { webhookEvents } from "@/modules/commerce/schema";
+import {
+  orders,
+  payments,
+  subscriptions,
+  webhookEvents,
+} from "@/modules/commerce/schema";
+import { applicationCustomers } from "@/modules/customers/schema";
 import { dispatchWebhookEvent } from "@/modules/webhooks/service";
 
 /**
@@ -72,15 +78,148 @@ export async function publishBillingLifecycleEvent(
     return { published: false, eventType: event.normalizedType, eventId: null };
   }
 
+  // MP-REV-04: the developer contract's externalCustomerId is the
+  // APPLICATION's customer identifier (application_customers
+  // .external_customer_id) — never the PSP's customer id. Resolve it from
+  // the verified internal customer id, falling back to the order's customer
+  // when the event does not carry one.
+  const monetplaneCustomerId =
+    typeof normalized.monetplaneCustomerId === "string"
+      ? normalized.monetplaneCustomerId
+      : null;
+  let externalCustomerId: string | null = null;
+  if (monetplaneCustomerId) {
+    const [customer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(applicationCustomers)
+      .where(
+        and(
+          eq(applicationCustomers.applicationId, input.applicationId),
+          // normalized.monetplaneCustomerId carries the global customers.id
+          // (cus_...), NOT the applicationCustomers row id (acus_...) —
+          // match on the customerId column (verifier finding).
+          eq(applicationCustomers.customerId, monetplaneCustomerId),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = customer?.externalCustomerId ?? null;
+  }
+  if (!externalCustomerId && normalized.monetplaneOrderId) {
+    const [orderCustomer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(applicationCustomers)
+      .innerJoin(
+        orders,
+        eq(orders.applicationCustomerId, applicationCustomers.id),
+      )
+      .where(
+        and(
+          eq(orders.applicationId, input.applicationId),
+          eq(orders.id, String(normalized.monetplaneOrderId)),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = orderCustomer?.externalCustomerId ?? null;
+  }
+  // §二A: some PSP events carry neither internal reference — resolve from
+  // the recorded payment (provider payment id) or subscription when the
+  // database already knows the relationship.
+  if (!externalCustomerId && normalized.providerPaymentId) {
+    const [paymentCustomer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(payments)
+      .innerJoin(
+        applicationCustomers,
+        // payments.customerId stores the global customers.id (cus_...);
+        // applicationCustomers.id is the acus_... row id — match on the
+        // customerId column (same id-space trap as the primary lookup).
+        eq(applicationCustomers.customerId, payments.customerId),
+      )
+      .where(
+        and(
+          eq(payments.applicationId, input.applicationId),
+          eq(payments.providerConnectionId, input.providerConnectionId),
+          eq(payments.providerPaymentId, String(normalized.providerPaymentId)),
+          // Round-3 finding: the global customerId can be linked to
+          // application customers in MULTIPLE applications — constrain the
+          // join target to this application or another app's
+          // externalCustomerId may leak into the event.
+          eq(applicationCustomers.applicationId, input.applicationId),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = paymentCustomer?.externalCustomerId ?? null;
+  }
+  if (!externalCustomerId && normalized.providerSubscriptionId) {
+    const [subscriptionCustomer] = await db
+      .select({
+        externalCustomerId: applicationCustomers.externalCustomerId,
+      })
+      .from(subscriptions)
+      .innerJoin(
+        applicationCustomers,
+        eq(applicationCustomers.id, subscriptions.applicationCustomerId),
+      )
+      .where(
+        and(
+          eq(subscriptions.applicationId, input.applicationId),
+          eq(subscriptions.providerConnectionId, input.providerConnectionId),
+          eq(
+            subscriptions.providerSubscriptionId,
+            String(normalized.providerSubscriptionId),
+          ),
+        ),
+      )
+      .limit(1);
+    externalCustomerId = subscriptionCustomer?.externalCustomerId ?? null;
+  }
+  // Cross-validate: when the event carries BOTH a customer reference and an
+  // order reference, they must belong to the same application customer — a
+  // mismatch is provider metadata corruption and resolves to null rather
+  // than silently preferring one side.
+  if (
+    externalCustomerId &&
+    normalized.monetplaneCustomerId &&
+    normalized.monetplaneOrderId
+  ) {
+    const [mismatch] = await db
+      .select({ id: orders.id })
+      .from(orders)
+      .innerJoin(
+        applicationCustomers,
+        eq(applicationCustomers.id, orders.applicationCustomerId),
+      )
+      .where(
+        and(
+          eq(orders.applicationId, input.applicationId),
+          eq(orders.id, String(normalized.monetplaneOrderId)),
+          eq(
+            applicationCustomers.customerId,
+            String(normalized.monetplaneCustomerId),
+          ),
+        ),
+      )
+      .limit(1);
+    if (!mismatch) {
+      console.error(
+        `[monetplane] developer event customer/order metadata mismatch for order ${String(normalized.monetplaneOrderId)}; dropping externalCustomerId`,
+      );
+      externalCustomerId = null;
+    }
+  }
+
   const context: BillingEventContext = {
     orderId:
       typeof normalized.monetplaneOrderId === "string"
         ? normalized.monetplaneOrderId
         : null,
-    externalCustomerId:
-      typeof normalized.providerCustomerId === "string"
-        ? normalized.providerCustomerId
-        : null,
+    externalCustomerId,
     amountMinor:
       typeof normalized.amountMinor === "number"
         ? normalized.amountMinor

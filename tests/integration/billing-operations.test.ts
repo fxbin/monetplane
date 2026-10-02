@@ -174,6 +174,46 @@ async function seedOneTimePayment(options?: {
 }
 
 describe("billing operations console", () => {
+  it("records a provider pending refund without inventing a full amount (B1)", async () => {
+    // Provider returns PENDING and no amount: the refund row must record
+    // amount NULL, never the legacy full-amount fallback that consumed all
+    // webhook headroom.
+    const pendingAdapter: PaymentProviderAdapter = {
+      ...mockProviderAdapter,
+      async refundPayment() {
+        return {
+          providerRefundId: `refund:pending-${Date.now()}`,
+          providerPaymentId: "pay_unused",
+          status: "pending" as const,
+        };
+      },
+    };
+    registerProviderAdapter(pendingAdapter);
+
+    const seed = await seedOneTimePayment({ suffix: "pending-refund" });
+    const operation = await refundPaymentWithJournal(
+      seed.app.id,
+      seed.paymentId,
+      "test",
+    );
+    expect(operation.status).toBe("completed");
+
+    const [refundRow] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.paymentId, seed.paymentId))
+      .limit(1);
+    expect(refundRow?.status).toBe("pending");
+    expect(refundRow?.amountMinor).toBeNull();
+
+    // The payment must NOT be flipped to refunded by a pending refund.
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.id, seed.paymentId));
+    expect(payment?.status).toBe("succeeded");
+  });
+
   it("journals a safe refund and makes request retries provider-idempotent", async () => {
     const seed = await seedOneTimePayment({ suffix: "refund" });
     await grantEntitlement(
