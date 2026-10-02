@@ -2009,6 +2009,233 @@ describe("round-3 review regressions", () => {
   });
 });
 
+describe("round-4 review regressions (F1/F2)", () => {
+  async function succeed(fixture: Fixture, paymentId: string, eventId: string) {
+    return processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput({
+        id: eventId,
+        type: "payment.succeeded",
+        occurred_at: new Date().toISOString(),
+        data: {
+          provider_payment_id: paymentId,
+          monetplane_order_id: fixture.checkout.orderId,
+          monetplane_customer_id: fixture.applicationCustomer.customerId,
+          amount_minor: 1998,
+          currency: "USD",
+        },
+      }),
+      db,
+    );
+  }
+
+  function confirmRefund(
+    fixture: Fixture,
+    paymentId: string,
+    refundId: string,
+    amountMinor: number,
+    eventId: string,
+    monetplaneOrderId?: string,
+  ) {
+    return processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput({
+        id: eventId,
+        type: "payment.refunded",
+        occurred_at: new Date().toISOString(),
+        data: {
+          provider_payment_id: paymentId,
+          monetplane_order_id: monetplaneOrderId,
+          monetplane_customer_id: fixture.applicationCustomer.customerId,
+          amount_minor: amountMinor,
+          currency: "USD",
+          provider_refund_id: refundId,
+        },
+      }),
+      db,
+    );
+  }
+
+  async function seedPendingRefund(
+    fixture: Fixture,
+    paymentId: string,
+    refundId: string,
+    amountMinor: number,
+  ) {
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, paymentId))
+      .limit(1);
+    if (!payment) throw new Error("payment missing");
+    await db.insert(refunds).values({
+      id: `ref_${refundId}`,
+      applicationId: fixture.app.id,
+      orderId: fixture.checkout.orderId,
+      paymentId: payment.id,
+      providerConnectionId: fixture.providerConnection.id,
+      providerRefundId: refundId,
+      environment: "test",
+      status: "pending",
+      amountMinor,
+    });
+  }
+
+  async function stateTriple(fixture: Fixture, paymentId: string) {
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, paymentId))
+      .limit(1);
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    const grants = await db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, fixture.app.id),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, fixture.checkout.orderId),
+        ),
+      );
+    return {
+      payment: payment?.status,
+      order: order?.status,
+      grantsActive: grants.every((g) => g.status === "active"),
+    };
+  }
+
+  it("Test A: pending refunds reserve headroom but never decide terminality (F1)", async () => {
+    const fixture = await createFixture("one_time");
+    await succeed(fixture, "pay_f1_1", "evt_f1_s");
+    await seedPendingRefund(fixture, "pay_f1_1", "FA", 700);
+    await seedPendingRefund(fixture, "pay_f1_1", "FB", 1500);
+
+    // Confirm ONLY A: confirmed 700 < 1998 — B is still unconfirmed.
+    const confirmA = await confirmRefund(
+      fixture,
+      "pay_f1_1",
+      "FA",
+      700,
+      "evt_f1_ra",
+    );
+    expect(confirmA.status).toBe("processed");
+    await expect(stateTriple(fixture, "pay_f1_1")).resolves.toEqual({
+      payment: "succeeded",
+      order: "paid",
+      grantsActive: true,
+    });
+
+    // B later CONFIRMS: 700 + 1500 >= 1998 -> terminal now.
+    const confirmB = await confirmRefund(
+      fixture,
+      "pay_f1_1",
+      "FB",
+      1500,
+      "evt_f1_rb",
+    );
+    expect(confirmB.status).toBe("processed");
+    await expect(stateTriple(fixture, "pay_f1_1")).resolves.toEqual({
+      payment: "refunded",
+      order: "refunded",
+      grantsActive: false,
+    });
+  });
+
+  it("Test A-variant: a pending refund that later fails never decides terminality (F1)", async () => {
+    const fixture = await createFixture("one_time");
+    await succeed(fixture, "pay_f1_2", "evt_f1_s2");
+    await seedPendingRefund(fixture, "pay_f1_2", "FC", 700);
+    await seedPendingRefund(fixture, "pay_f1_2", "FD", 1500);
+
+    await confirmRefund(fixture, "pay_f1_2", "FC", 700, "evt_f1_rc");
+
+    // D fails at the provider (journal path records the failed fact).
+    await db
+      .update(refunds)
+      .set({ status: "failed", updatedAt: new Date() })
+      .where(eq(refunds.providerRefundId, "FD"));
+
+    await expect(stateTriple(fixture, "pay_f1_2")).resolves.toEqual({
+      payment: "succeeded",
+      order: "paid",
+      grantsActive: true,
+    });
+  });
+
+  it("Test B: an event cannot rebind a payment to a different order (F2)", async () => {
+    const fixture = await createFixture("one_time");
+    await succeed(fixture, "pay_f2_1", "evt_f2_s");
+
+    // A second, unrelated order in the same application.
+    const second = await createCommerceCheckout(
+      fixture.app.id,
+      {
+        externalCustomerId: "user-1",
+        items: [{ priceId: fixture.price.id, quantity: 1 }],
+        successUrl: "https://product.test/success",
+        cancelUrl: "https://product.test/cancel",
+      },
+      db,
+    );
+
+    await expect(
+      confirmRefund(
+        fixture,
+        "pay_f2_1",
+        "RF2",
+        500,
+        "evt_f2_r",
+        second.orderId,
+      ),
+    ).rejects.toThrow(/already bound to order/);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_f2_1"))
+      .limit(1);
+    expect(payment?.orderId).toBe(fixture.checkout.orderId);
+
+    const [orderA] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, fixture.checkout.orderId))
+      .limit(1);
+    const [orderB] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, second.orderId))
+      .limit(1);
+    expect(orderA?.status).toBe("paid");
+    expect(orderB?.status).toBe("pending");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "RF2"));
+    expect(refundRows).toHaveLength(0);
+
+    const grants = await db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, fixture.app.id),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, fixture.checkout.orderId),
+        ),
+      );
+    expect(grants.every((g) => g.status === "active")).toBe(true);
+  });
+});
+
 describe("subscription lifecycle", () => {
   it("applies activation, failed renewal, recovery, cancellation, and expiration idempotently", async () => {
     const fixture = await createFixture("subscription");

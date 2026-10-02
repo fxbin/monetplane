@@ -305,6 +305,21 @@ export async function processProviderWebhook(
           .for("update")
           .limit(1);
 
+        // F2 (round-4): a payment is bound to at most one order. An event
+        // referencing a DIFFERENT order than the recorded payment must be
+        // rejected permanently — proceeding would rebind the payment
+        // (coalesce upsert), refund/flip the wrong order, and revoke the
+        // wrong entitlements.
+        if (
+          order &&
+          existingPayment?.orderId &&
+          order.id !== existingPayment.orderId
+        ) {
+          throw new InvalidNormalizedCommerceEventError(
+            `payment ${event.providerPaymentId} is already bound to order ${existingPayment.orderId}; event references order ${order.id}`,
+          );
+        }
+
         // Round-3 finding: a refund notification that carries ONLY provider
         // ids used to lose the order association (order lookups keyed on
         // event.monetplaneOrderId), leaving a fully-refunded payment with a
@@ -498,7 +513,14 @@ export async function processProviderWebhook(
           }
           const capturedAmountMinor =
             existingPayment?.amountMinor ?? amountMinor;
-          let alreadyRefunded = 0;
+          // F1 (round-4): two distinct quantities —
+          //   reservedRefunded (pending + succeeded) guards over-refund
+          //   headroom; confirmedRefunded (succeeded only) is the ONLY basis
+          //   for terminality. Counting pending rows toward fullyRefunded
+          //   used to flip a payment to refunded while other refunds were
+          //   still unconfirmed (and could later fail).
+          let reservedRefunded = 0;
+          let confirmedRefunded = 0;
           let unknownRefundAmount = false;
           if (existingPayment) {
             const refundRows = await tx
@@ -528,13 +550,16 @@ export async function processProviderWebhook(
                 // consumed (fail-closed).
                 unknownRefundAmount = true;
               } else {
-                alreadyRefunded += row.amountMinor;
+                reservedRefunded += row.amountMinor;
+                if (row.status === "succeeded") {
+                  confirmedRefunded += row.amountMinor;
+                }
               }
             }
           }
           const remaining = unknownRefundAmount
             ? 0
-            : capturedAmountMinor - alreadyRefunded;
+            : capturedAmountMinor - reservedRefunded;
           if (upgradingPendingFact) {
             // B1: direct fact upgrade — the confirmed amount lands as-is
             // (no Math.min re-plan; the pending row's provisional amount is
@@ -545,8 +570,9 @@ export async function processProviderWebhook(
               remaining;
             refundPlan = {
               amountMinor: confirmedAmountMinor,
+              // F1: terminality counts CONFIRMED facts only.
               fullyRefunded:
-                alreadyRefunded + confirmedAmountMinor >= capturedAmountMinor,
+                confirmedRefunded + confirmedAmountMinor >= capturedAmountMinor,
             };
           } else if (remaining <= 0) {
             // Nothing left to refund: durable idempotent skip that changes
@@ -578,8 +604,10 @@ export async function processProviderWebhook(
                 : Math.min(event.amountMinor, remaining);
             refundPlan = {
               amountMinor: appliedRefundMinor,
+              // F1: terminality counts CONFIRMED facts only (the new fact
+              // lands as succeeded immediately).
               fullyRefunded:
-                alreadyRefunded + appliedRefundMinor >= capturedAmountMinor,
+                confirmedRefunded + appliedRefundMinor >= capturedAmountMinor,
             };
           }
         }
