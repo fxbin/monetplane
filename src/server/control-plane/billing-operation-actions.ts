@@ -631,6 +631,17 @@ export async function reconcileBillingOperation(
       );
       const status = requiredString(result.status, "Refund status");
       const amountMinor = optionalNumber(result.amountMinor);
+      // #132: a provider refund amount, when present, must be a positive
+      // safe integer — anything else is a malformed provider result and must
+      // fail the journal loudly instead of tripping the DB check mid-write.
+      if (
+        amountMinor !== undefined &&
+        (!Number.isSafeInteger(amountMinor) || amountMinor <= 0)
+      ) {
+        throw new Error(
+          `Provider refund amount must be a positive whole number, got ${amountMinor}`,
+        );
+      }
 
       const [payment] = await db
         .select()

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import { createApplication } from "../../src/modules/applications/service";
@@ -174,6 +174,43 @@ async function seedOneTimePayment(options?: {
 }
 
 describe("billing operations console", () => {
+  it("fails the journal loudly on a negative provider refund amount (#132)", async () => {
+    const negativeAdapter: PaymentProviderAdapter = {
+      ...mockProviderAdapter,
+      async refundPayment() {
+        return {
+          providerRefundId: `refund:neg-${Date.now()}`,
+          providerPaymentId: "pay_unused",
+          status: "succeeded" as const,
+          amountMinor: -5,
+        };
+      },
+    };
+    registerProviderAdapter(negativeAdapter);
+
+    const seed = await seedOneTimePayment({ suffix: "neg-amount" });
+    // The reconcile error is journaled as needs_reconciliation and rethrown
+    // (established semantics); the malformed amount never reaches the DB.
+    await expect(
+      refundPaymentWithJournal(seed.app.id, seed.paymentId, "test"),
+    ).rejects.toThrow(/positive whole number/);
+
+    const [operationRow] = await db
+      .select()
+      .from(billingOperations)
+      .where(eq(billingOperations.applicationId, seed.app.id))
+      .orderBy(desc(billingOperations.createdAt))
+      .limit(1);
+    expect(operationRow?.status).toBe("needs_reconciliation");
+    expect(operationRow?.errorMessage).toContain("positive whole number");
+
+    const refundRows = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.paymentId, seed.paymentId));
+    expect(refundRows).toHaveLength(0);
+  });
+
   it("records a provider pending refund without inventing a full amount (B1)", async () => {
     // Provider returns PENDING and no amount: the refund row must record
     // amount NULL, never the legacy full-amount fallback that consumed all
