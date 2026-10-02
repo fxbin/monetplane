@@ -303,44 +303,20 @@ export async function listWebhookDeliveries(
   return rows.map((row) => deliveryView(row.delivery, row.endpointName));
 }
 
-export async function deliverWebhookDelivery(
-  applicationId: string,
-  mode: WebhookMode,
-  deliveryId: string,
+/**
+ * Transport core shared by operator-triggered deliveries and the pending
+ * sweeper (#126). Callers own the claim (attempt accounting + status).
+ */
+async function performWebhookDelivery(
+  row: {
+    delivery: typeof webhookDeliveries.$inferSelect;
+    endpoint: typeof webhookEndpoints.$inferSelect;
+  },
   options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
   db: Database = getDb(),
 ) {
-  const [row] = await db
-    .select({ delivery: webhookDeliveries, endpoint: webhookEndpoints })
-    .from(webhookDeliveries)
-    .innerJoin(
-      webhookEndpoints,
-      eq(webhookEndpoints.id, webhookDeliveries.endpointId),
-    )
-    .where(
-      and(
-        eq(webhookDeliveries.id, deliveryId),
-        eq(webhookDeliveries.applicationId, applicationId),
-        eq(webhookDeliveries.mode, mode),
-        eq(webhookEndpoints.status, "active"),
-      ),
-    )
-    .limit(1);
-  if (!row) throw new WebhookDeliveryNotFoundError();
-
+  const deliveryId = row.delivery.id;
   const now = new Date();
-  const attemptCount = row.delivery.attemptCount + 1;
-  await db
-    .update(webhookDeliveries)
-    .set({
-      status: "pending",
-      attemptCount,
-      responseStatus: null,
-      errorMessage: null,
-      lastAttemptAt: now,
-    })
-    .where(eq(webhookDeliveries.id, deliveryId));
-
   const secret = decryptWebhookSecret(row.endpoint.secretCiphertext);
   const rawBody = JSON.stringify(row.delivery.payload);
   const timestamp = Math.floor(now.getTime() / 1000).toString();
@@ -396,6 +372,180 @@ export async function deliverWebhookDelivery(
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function deliverWebhookDelivery(
+  applicationId: string,
+  mode: WebhookMode,
+  deliveryId: string,
+  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  db: Database = getDb(),
+) {
+  const [row] = await db
+    .select({ delivery: webhookDeliveries, endpoint: webhookEndpoints })
+    .from(webhookDeliveries)
+    .innerJoin(
+      webhookEndpoints,
+      eq(webhookEndpoints.id, webhookDeliveries.endpointId),
+    )
+    .where(
+      and(
+        eq(webhookDeliveries.id, deliveryId),
+        eq(webhookDeliveries.applicationId, applicationId),
+        eq(webhookDeliveries.mode, mode),
+        eq(webhookEndpoints.status, "active"),
+      ),
+    )
+    .limit(1);
+  if (!row) throw new WebhookDeliveryNotFoundError();
+
+  const now = new Date();
+  const attemptCount = row.delivery.attemptCount + 1;
+  await db
+    .update(webhookDeliveries)
+    .set({
+      status: "pending",
+      attemptCount,
+      responseStatus: null,
+      errorMessage: null,
+      lastAttemptAt: now,
+    })
+    .where(eq(webhookDeliveries.id, deliveryId));
+
+  return performWebhookDelivery(row, options, db);
+}
+
+/**
+ * Pending-delivery sweeper (#126).
+ *
+ * Closes the crash window between a delivery row's INSERT and its first (or
+ * next) attempt: dispatchWebhookEvent inserts rows and delivers only the
+ * newly-inserted ones — a process dying mid-flight leaves `pending` rows
+ * that replays conflict-skip and the operator retry (failed-only) refuses.
+ *
+ * Semantics:
+ * - a pending row is eligible once it is stale (never attempted for
+ *   STALE_AFTER_MS, or its last attempt is older than an exponential
+ *   backoff keyed on attemptCount);
+ * - claiming is a single atomic UPDATE (status must still be pending and
+ *   the backoff window must have elapsed), so concurrent sweepers never
+ *   double-deliver;
+ * - rows exceeding MAX_ATTEMPTS are parked as failed (operator retry
+ *   remains available) instead of retrying forever.
+ */
+export const PENDING_DELIVERY_STALE_AFTER_MS = 60_000;
+export const PENDING_DELIVERY_MAX_ATTEMPTS = 8;
+const PENDING_DELIVERY_MAX_BACKOFF_MS = 3_600_000;
+
+function pendingDeliveryBackoffMs(attemptCount: number): number {
+  return Math.min(
+    PENDING_DELIVERY_STALE_AFTER_MS * 2 ** attemptCount,
+    PENDING_DELIVERY_MAX_BACKOFF_MS,
+  );
+}
+
+export async function sweepPendingWebhookDeliveries(
+  options: {
+    fetchImpl?: typeof fetch;
+    timeoutMs?: number;
+    now?: Date;
+    limit?: number;
+  } = {},
+  db: Database = getDb(),
+): Promise<{ swept: number; delivered: number; parked: number }> {
+  const now = options.now ?? new Date();
+  const candidates = await db
+    .select()
+    .from(webhookDeliveries)
+    .where(eq(webhookDeliveries.status, "pending"))
+    .orderBy(webhookDeliveries.createdAt)
+    .limit(options.limit ?? 50);
+
+  let delivered = 0;
+  let parked = 0;
+  for (const candidate of candidates) {
+    if (candidate.attemptCount >= PENDING_DELIVERY_MAX_ATTEMPTS) {
+      const parkedRow = await db
+        .update(webhookDeliveries)
+        .set({
+          status: "failed",
+          errorMessage: `pending delivery exceeded ${PENDING_DELIVERY_MAX_ATTEMPTS} attempts`,
+        })
+        .where(
+          and(
+            eq(webhookDeliveries.id, candidate.id),
+            eq(webhookDeliveries.status, "pending"),
+          ),
+        )
+        .returning({ id: webhookDeliveries.id });
+      if (parkedRow.length > 0) parked += 1;
+      continue;
+    }
+
+    const staleIfNeverAttempted =
+      candidate.lastAttemptAt === null &&
+      candidate.createdAt.getTime() <=
+        now.getTime() - PENDING_DELIVERY_STALE_AFTER_MS;
+    const backoffElapsed =
+      candidate.lastAttemptAt !== null &&
+      candidate.lastAttemptAt.getTime() <=
+        now.getTime() - pendingDeliveryBackoffMs(candidate.attemptCount);
+    if (!staleIfNeverAttempted && !backoffElapsed) continue;
+
+    // Atomic claim: increment the attempt and stamp the attempt time only
+    // if the row is still pending (a concurrent sweeper may have taken it).
+    const claimed = await db
+      .update(webhookDeliveries)
+      .set({
+        attemptCount: candidate.attemptCount + 1,
+        responseStatus: null,
+        errorMessage: null,
+        lastAttemptAt: now,
+      })
+      .where(
+        and(
+          eq(webhookDeliveries.id, candidate.id),
+          eq(webhookDeliveries.status, "pending"),
+        ),
+      )
+      .returning();
+    if (claimed.length === 0) continue;
+
+    const [row] = await db
+      .select({ delivery: webhookDeliveries, endpoint: webhookEndpoints })
+      .from(webhookDeliveries)
+      .innerJoin(
+        webhookEndpoints,
+        eq(webhookEndpoints.id, webhookDeliveries.endpointId),
+      )
+      .where(
+        and(
+          eq(webhookDeliveries.id, candidate.id),
+          eq(webhookEndpoints.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      await db
+        .update(webhookDeliveries)
+        .set({
+          status: "failed",
+          errorMessage: "Endpoint missing or inactive",
+        })
+        .where(eq(webhookDeliveries.id, candidate.id));
+      parked += 1;
+      continue;
+    }
+
+    try {
+      await performWebhookDelivery(row, options, db);
+      delivered += 1;
+    } catch {
+      // performWebhookDelivery already parks transport failures as failed.
+      parked += 1;
+    }
+  }
+  return { swept: candidates.length, delivered, parked };
 }
 
 export async function createTestWebhookDelivery(
