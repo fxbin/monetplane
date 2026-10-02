@@ -2169,6 +2169,128 @@ describe("round-4 review regressions (F1/F2)", () => {
     });
   });
 
+  it("Test B-1: an event carrying a nonexistent order id cannot bypass the binding guard (F2)", async () => {
+    const fixture = await createFixture("one_time");
+    await succeed(fixture, "pay_f2_2", "evt_f2_s2");
+
+    await expect(
+      confirmRefund(
+        fixture,
+        "pay_f2_2",
+        "RF2B1",
+        500,
+        "evt_f2_r2",
+        "ord_does_not_exist",
+      ),
+    ).rejects.toThrow(/already bound to order/);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_f2_2"))
+      .limit(1);
+    expect(payment?.status).toBe("succeeded");
+    expect(payment?.orderId).toBe(fixture.checkout.orderId);
+    expect(
+      await db
+        .select()
+        .from(refunds)
+        .where(eq(refunds.providerRefundId, "RF2B1")),
+    ).toHaveLength(0);
+    const grants = await db
+      .select()
+      .from(entitlementGrants)
+      .where(
+        and(
+          eq(entitlementGrants.applicationId, fixture.app.id),
+          eq(entitlementGrants.sourceType, "order"),
+          eq(entitlementGrants.sourceId, fixture.checkout.orderId),
+        ),
+      );
+    expect(grants.every((g) => g.status === "active")).toBe(true);
+  });
+
+  it("Test B-2: an event carrying another application's order id cannot bypass the binding guard (F2)", async () => {
+    const fixture = await createFixture("one_time");
+    await succeed(fixture, "pay_f2_3", "evt_f2_s3");
+
+    const otherFixture = await createFixture("one_time");
+    await expect(
+      confirmRefund(
+        fixture,
+        "pay_f2_3",
+        "RF2B2",
+        500,
+        "evt_f2_r3",
+        otherFixture.checkout.orderId,
+      ),
+    ).rejects.toThrow(/already bound to order/);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_f2_3"))
+      .limit(1);
+    expect(payment?.orderId).toBe(fixture.checkout.orderId);
+    expect(payment?.status).toBe("succeeded");
+    expect(
+      await db
+        .select()
+        .from(refunds)
+        .where(eq(refunds.providerRefundId, "RF2B2")),
+    ).toHaveLength(0);
+  });
+
+  it("Test B-3: an event cannot rebind a payment to a different customer (binding family P1)", async () => {
+    const fixture = await createFixture("one_time");
+    await succeed(fixture, "pay_f2_4", "evt_f2_s4");
+
+    const otherCustomer = await createApplicationCustomer(
+      {
+        applicationId: fixture.app.id,
+        externalCustomerId: "user-2",
+        email: "other@example.test",
+      },
+      db,
+    );
+
+    const payload = {
+      id: "evt_f2_r4",
+      type: "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_f2_4",
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: otherCustomer.customerId,
+        amount_minor: 500,
+        currency: "USD",
+        provider_refund_id: "RF2B3",
+      },
+    };
+    await expect(
+      processProviderWebhook(
+        fixture.app.id,
+        fixture.providerConnection.id,
+        webhookInput(payload),
+        db,
+      ),
+    ).rejects.toThrow(/already bound to customer/);
+
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_f2_4"))
+      .limit(1);
+    expect(payment?.customerId).toBe(fixture.applicationCustomer.customerId);
+    expect(payment?.status).toBe("succeeded");
+    expect(
+      await db
+        .select()
+        .from(refunds)
+        .where(eq(refunds.providerRefundId, "RF2B3")),
+    ).toHaveLength(0);
+  });
+
   it("Test B: an event cannot rebind a payment to a different order (F2)", async () => {
     const fixture = await createFixture("one_time");
     await succeed(fixture, "pay_f2_1", "evt_f2_s");

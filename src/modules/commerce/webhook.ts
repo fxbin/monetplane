@@ -305,27 +305,38 @@ export async function processProviderWebhook(
           .for("update")
           .limit(1);
 
-        // F2 (round-4): a payment is bound to at most one order. An event
-        // referencing a DIFFERENT order than the recorded payment must be
-        // rejected permanently — proceeding would rebind the payment
-        // (coalesce upsert), refund/flip the wrong order, and revoke the
-        // wrong entitlements.
+        // F2 (round-4, scoped fix): a payment's order/customer bindings are
+        // immutable. Compare the RAW event references against the recorded
+        // bindings — the previous guard compared the RESOLVED order and let
+        // a nonexistent or cross-application order id slip past (resolved
+        // to undefined) with a non-empty event reference, producing a torn
+        // refund (payment refunded, real order paid, entitlements live).
         if (
-          order &&
           existingPayment?.orderId &&
-          order.id !== existingPayment.orderId
+          event.monetplaneOrderId &&
+          event.monetplaneOrderId !== existingPayment.orderId
         ) {
           throw new InvalidNormalizedCommerceEventError(
-            `payment ${event.providerPaymentId} is already bound to order ${existingPayment.orderId}; event references order ${order.id}`,
+            `payment ${event.providerPaymentId} is already bound to order ${existingPayment.orderId}; event references order ${event.monetplaneOrderId}`,
+          );
+        }
+        if (
+          existingPayment?.customerId &&
+          event.monetplaneCustomerId &&
+          event.monetplaneCustomerId !== existingPayment.customerId
+        ) {
+          throw new InvalidNormalizedCommerceEventError(
+            `payment ${event.providerPaymentId} is already bound to customer ${existingPayment.customerId}; event references customer ${event.monetplaneCustomerId}`,
           );
         }
 
         // Round-3 finding: a refund notification that carries ONLY provider
         // ids used to lose the order association (order lookups keyed on
         // event.monetplaneOrderId), leaving a fully-refunded payment with a
-        // paid order and live entitlements. Recover the order from the
-        // recorded payment, under the same locks.
-        if (!event.monetplaneOrderId && existingPayment?.orderId) {
+        // paid order and live entitlements. The RECORDED payment binding is
+        // the authoritative association: whenever no order was resolved from
+        // the event, load and lock the recorded one.
+        if (!order && existingPayment?.orderId) {
           [order] = await tx
             .select({
               id: orders.id,
