@@ -2416,6 +2416,148 @@ describe("payment amount validation (#132)", () => {
   });
 });
 
+describe("refund reconciliation signals (#128)", () => {
+  function paymentPayload(
+    fixture: Fixture,
+    id: string,
+    type: string,
+    extra: Record<string, unknown>,
+  ) {
+    return {
+      id,
+      type,
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_s128_1",
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        amount_minor: 1998,
+        currency: "USD",
+        ...extra,
+      },
+    };
+  }
+
+  it("logs loudly when a new refund fact is clamped to remaining headroom", async () => {
+    const fixture = await createFixture("one_time");
+    await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(
+        paymentPayload(fixture, "evt_s128_s", "payment.succeeded", {}),
+      ),
+      db,
+    );
+    // Consume most headroom first.
+    await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(
+        paymentPayload(fixture, "evt_s128_r1", "payment.refunded", {
+          provider_refund_id: "RS128_A",
+          amount_minor: 1498,
+        }),
+      ),
+      db,
+    );
+
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      // Requests 700 but only 500 headroom remains -> clamped, signaled.
+      await processFixtureWebhook(
+        fixture,
+        (() => {
+          const payload = paymentPayload(
+            fixture,
+            "evt_s128_r2",
+            "payment.refunded",
+            {
+              provider_refund_id: "RS128_B",
+              amount_minor: 700,
+            },
+          );
+          return payload;
+        })(),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("evt_s128_r2"),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("applied clamped to 500"),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+
+    const [row] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "RS128_B"))
+      .limit(1);
+    expect(row?.amountMinor).toBe(500);
+  });
+
+  it("logs loudly when a confirmed upgrade exceeds the captured amount", async () => {
+    const fixture = await createFixture("one_time");
+    await processProviderWebhook(
+      fixture.app.id,
+      fixture.providerConnection.id,
+      webhookInput(
+        paymentPayload(fixture, "evt_s128_s2", "payment.succeeded", {}),
+      ),
+      db,
+    );
+    const [payment] = await db
+      .select()
+      .from(payments)
+      .where(eq(payments.providerPaymentId, "pay_s128_1"))
+      .limit(1);
+    if (!payment) throw new Error("payment missing");
+    await db.insert(refunds).values({
+      id: "ref_s128_pending",
+      applicationId: fixture.app.id,
+      orderId: fixture.checkout.orderId,
+      paymentId: payment.id,
+      providerConnectionId: fixture.providerConnection.id,
+      providerRefundId: "RS128_C",
+      environment: "test",
+      status: "pending",
+      amountMinor: 2500,
+    });
+
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      await processFixtureWebhook(
+        fixture,
+        paymentPayload(fixture, "evt_s128_r3", "payment.refunded", {
+          provider_refund_id: "RS128_C",
+          amount_minor: 2500,
+        }),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("evt_s128_r3"),
+      );
+      expect(consoleError).toHaveBeenCalledWith(
+        expect.stringContaining("exceeds captured 1998"),
+      );
+    } finally {
+      consoleError.mockRestore();
+    }
+
+    // The confirmed fact is booked as-is (uncapped by design).
+    const [row] = await db
+      .select()
+      .from(refunds)
+      .where(eq(refunds.providerRefundId, "RS128_C"))
+      .limit(1);
+    expect(row).toMatchObject({ status: "succeeded", amountMinor: 2500 });
+  });
+});
+
 describe("subscription lifecycle", () => {
   it("applies activation, failed renewal, recovery, cancellation, and expiration idempotently", async () => {
     const fixture = await createFixture("subscription");
