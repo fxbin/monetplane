@@ -146,6 +146,11 @@ export async function publishBillingLifecycleEvent(
           eq(payments.applicationId, input.applicationId),
           eq(payments.providerConnectionId, input.providerConnectionId),
           eq(payments.providerPaymentId, String(normalized.providerPaymentId)),
+          // Round-3 finding: the global customerId can be linked to
+          // application customers in MULTIPLE applications — constrain the
+          // join target to this application or another app's
+          // externalCustomerId may leak into the event.
+          eq(applicationCustomers.applicationId, input.applicationId),
         ),
       )
       .limit(1);

@@ -305,6 +305,32 @@ export async function processProviderWebhook(
           .for("update")
           .limit(1);
 
+        // Round-3 finding: a refund notification that carries ONLY provider
+        // ids used to lose the order association (order lookups keyed on
+        // event.monetplaneOrderId), leaving a fully-refunded payment with a
+        // paid order and live entitlements. Recover the order from the
+        // recorded payment, under the same locks.
+        if (!event.monetplaneOrderId && existingPayment?.orderId) {
+          [order] = await tx
+            .select({
+              id: orders.id,
+              applicationCustomerId: orders.applicationCustomerId,
+              billingMode: orders.billingMode,
+              status: orders.status,
+              currency: orders.currency,
+              totalAmountMinor: orders.totalAmountMinor,
+            })
+            .from(orders)
+            .where(
+              and(
+                eq(orders.id, existingPayment.orderId),
+                eq(orders.applicationId, applicationId),
+              ),
+            )
+            .for("update")
+            .limit(1);
+        }
+
         // Invariant A (audit B5): a payment event that carries a currency
         // must match the currency the order/payment was captured in.
         // Comparison is case-insensitive; stored currency is canonical
@@ -540,16 +566,22 @@ export async function processProviderWebhook(
               status: "ignored" as const,
               normalizedType: event.type,
             };
+          } else {
+            // Generic planning (new refund fact): the applied amount is
+            // capped at the remaining headroom. This branch must NEVER run
+            // for an upgrade — it would re-clamp the provider's confirmed
+            // amount through Math.min and overwrite the plan above (round-3
+            // review finding).
+            const appliedRefundMinor =
+              event.amountMinor === undefined
+                ? remaining
+                : Math.min(event.amountMinor, remaining);
+            refundPlan = {
+              amountMinor: appliedRefundMinor,
+              fullyRefunded:
+                alreadyRefunded + appliedRefundMinor >= capturedAmountMinor,
+            };
           }
-          const appliedRefundMinor =
-            event.amountMinor === undefined
-              ? remaining
-              : Math.min(event.amountMinor, remaining);
-          refundPlan = {
-            amountMinor: appliedRefundMinor,
-            fullyRefunded:
-              alreadyRefunded + appliedRefundMinor >= capturedAmountMinor,
-          };
         }
 
         // Invariant B (audit B5): a settled payment's amount is immutable.
