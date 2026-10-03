@@ -24,6 +24,8 @@ export type {
   CheckoutResult,
   CreditBalance,
   CustomerInput,
+  CustomerReadTokenInput,
+  CustomerReadTokenResult,
   CustomerResult,
   DebitCreditsInput,
   DebitCreditsResult,
@@ -34,4 +36,5 @@ export type {
   ReleaseReservationResult,
   ReserveCreditsInput,
   ReserveCreditsResult,
+  RevokeCustomerReadTokenResult,
 } from "./types";

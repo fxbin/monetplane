@@ -47,6 +47,34 @@ export type PortalSessionResult = {
   expiresAt: string;
 };
 
+export type CustomerReadTokenInput = {
+  externalCustomerId: string;
+  environment?: Environment;
+  /**
+   * Token lifetime in seconds. The server forces this into 60–3600
+   * (default 900) — expiry is mandatory, there is no unbounded token.
+   */
+  ttlSeconds?: number;
+};
+
+export type CustomerReadTokenResult = {
+  id: string;
+  /**
+   * Raw `mprt_*` bearer value. Shown exactly once — MonetPlane stores only
+   * a hash. Pass it to the customer's browser and have it call the read
+   * endpoints with `Authorization: Bearer mprt_...`.
+   */
+  token: string;
+  /** ISO timestamp after which the token no longer resolves. */
+  expiresAt: string;
+  externalCustomerId: string;
+  environment: Environment;
+};
+
+export type RevokeCustomerReadTokenResult = {
+  revoked: boolean;
+};
+
 export type CustomerInput = {
   externalCustomerId: string;
   email?: string | null;

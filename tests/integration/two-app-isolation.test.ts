@@ -404,11 +404,13 @@ describe("two-application isolation demo", () => {
       "checkEntitlement",
       "createCheckout",
       "createCustomerPortalSession",
+      "createCustomerReadToken",
       "debitCredits",
       "getCreditBalance",
       "releaseReservation",
       "reportUsage",
       "reserveCredits",
+      "revokeCustomerReadToken",
       "upsertCustomer",
     ]);
 
