@@ -77,12 +77,13 @@ export type BillingEventContext = {
  * adapters should provide stable refund ids and period boundaries.
  */
 /**
- * Canonical, injective encoding of the fact tuple -> truncated SHA-256.
- * Length-prefixing makes `["rf:a"]` and `["rf|a"]`-style joins impossible to
- * collide, and hashing absorbs any provider-id character set. Event ids ARE
- * the delivery dedup key, so the encoding must be lossless (round-4 review:
- * the previous `[^A-Za-z0-9_-]+ -> "-"` sanitizer deterministically merged
- * distinct refund facts).
+ * Canonical fact-tuple encoding -> truncated SHA-256. The length-prefixed
+ * tuple is injective (no join ambiguities: "rf:a" and "rf|a" differ), and
+ * the truncated hash over it is collision-RESISTANT rather than a strict
+ * injection — 128 bits of digest makes accidental collisions negligible,
+ * while adversarial collisions stay infeasible without the key space.
+ * (Round-4 review: replaced the lossy `[^A-Za-z0-9_-]+ -> "-"` sanitizer
+ * that deterministically merged distinct refund facts.)
  */
 function canonicalFactHash(parts: string[]): string {
   const canonical = parts.map((part) => `${part.length}:${part}`).join("|");
