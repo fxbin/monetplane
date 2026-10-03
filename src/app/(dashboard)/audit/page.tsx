@@ -67,7 +67,7 @@ export default async function AuditPage({
           : `Immutable operator activity for ${application?.name ?? ""} · ${environmentLabel}. Secrets are never recorded.`
       }
     >
-      <form className="developer-filters" method="get">
+      <form className="developer-filters audit-filters" method="get">
         <label>
           <span>Scope</span>
           <select name="scope" defaultValue={scope}>

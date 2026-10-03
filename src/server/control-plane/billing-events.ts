@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
@@ -51,6 +52,95 @@ export type BillingEventContext = {
   amountMinor?: number | null;
   currency?: string | null;
 };
+
+/**
+ * Fact-based developer event identity (#131).
+ *
+ * The id used to be `dev_<webhook inbox row id>`, and the inbox is unique per
+ * (connection, providerEventId) — so the same BUSINESS fact arriving under two
+ * provider event ids (provider retries that regenerate ids, or replay paths
+ * the ingest still processes, e.g. subscription lifecycle / payment.failed
+ * replays) produced two different developer events and double-delivered.
+ * Consumers get no stable idempotency key from us in that world.
+ *
+ * The id is now derived from the business fact:
+ *   payments   -> (connection, providerPaymentId, type)
+ *   refunds    -> (connection, providerRefundId)            [one event per refund fact]
+ *   renewals   -> (connection, subscriptionId, periodStart) [each period is a fact]
+ *   other sub  -> (connection, subscriptionId, type [, periodStart when present])
+ * Same fact => same id => the deliveries' unique (endpoint, eventId) index
+ * becomes fact-level dedup, and a first-publish crash heals on the next
+ * ingest regardless of the provider's event-id churn.
+ *
+ * Under-specified events (refund without a stable id, renewal without a
+ * period) fall back to the raw inbox id — the documented §二D limitation;
+ * adapters should provide stable refund ids and period boundaries.
+ */
+/**
+ * Canonical fact-tuple encoding -> truncated SHA-256. The length-prefixed
+ * tuple is injective (no join ambiguities: "rf:a" and "rf|a" differ), and
+ * the truncated hash over it is collision-RESISTANT rather than a strict
+ * injection — 128 bits of digest makes accidental collisions negligible,
+ * while adversarial collisions stay infeasible without the key space.
+ * (Round-4 review: replaced the lossy `[^A-Za-z0-9_-]+ -> "-"` sanitizer
+ * that deterministically merged distinct refund facts.)
+ */
+function canonicalFactHash(parts: string[]): string {
+  const canonical = parts.map((part) => `${part.length}:${part}`).join("|");
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
+}
+
+function stringPart(
+  normalized: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = normalized[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function factBasedDeveloperEventId(
+  normalized: Record<string, unknown>,
+  providerConnectionId: string,
+  inboxEventId: string,
+): string {
+  const raw = `dev_${inboxEventId}`;
+  const eventType = typeof normalized.type === "string" ? normalized.type : "";
+  const refundId = stringPart(normalized, "providerRefundId");
+  const paymentId = stringPart(normalized, "providerPaymentId");
+  const subscriptionId = stringPart(normalized, "providerSubscriptionId");
+  const periodStart = stringPart(normalized, "subscriptionPeriodStart");
+
+  // Dispatch by FACT FAMILY (the event type) FIRST — never by which ids
+  // happen to be present. Real adapters attach providerPaymentId to
+  // subscription.renewed (it must stay a subscription-period fact, not a
+  // payment fact), and a payment.refunded without a refund id must fall
+  // back to the raw inbox id instead of colliding with the payment's
+  // succeeded fact (which the delivery uniqueness would silently swallow).
+  if (eventType === "payment.refunded") {
+    if (!refundId) return raw;
+    return `dev_refund_${canonicalFactHash([providerConnectionId, refundId])}`;
+  }
+  if (eventType === "payment.succeeded" || eventType === "payment.failed") {
+    if (!paymentId) return raw;
+    return `dev_payment_${canonicalFactHash([
+      providerConnectionId,
+      paymentId,
+      eventType,
+    ])}`;
+  }
+  if (eventType.startsWith("subscription.")) {
+    if (!subscriptionId) return raw;
+    if (eventType === "subscription.renewed" && !periodStart) {
+      // A renewal without a period boundary is indistinguishable from its
+      // replay — fall back rather than merge distinct renewals.
+      return raw;
+    }
+    const parts = [providerConnectionId, subscriptionId, eventType];
+    if (periodStart) parts.push(periodStart);
+    return `dev_subscription_${canonicalFactHash(parts)}`;
+  }
+  return raw;
+}
 
 export async function publishBillingLifecycleEvent(
   input: {
@@ -232,7 +322,11 @@ export async function publishBillingLifecycleEvent(
     {
       applicationId: input.applicationId,
       mode: event.environment as "test" | "live",
-      eventId: `dev_${event.id}`,
+      eventId: factBasedDeveloperEventId(
+        normalized,
+        input.providerConnectionId,
+        event.id,
+      ),
       eventType: developerType,
       providerConnectionId: input.providerConnectionId,
       externalCustomerId: context.externalCustomerId,
