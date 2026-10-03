@@ -495,9 +495,7 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
       webhookEventId: second.webhookEventId,
       providerConnectionId: f.connection.id,
     });
-    expect(published.eventId).toBe(
-      `dev_${f.connection.id}_subscription_sub_fact_1_activated_2026-10-01T00-00-00-000Z`,
-    );
+    expect(published.eventId).toMatch(/^dev_subscription_[0-9a-f]{32}$/);
 
     const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
     const activations = deliveries.filter(
@@ -550,9 +548,7 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
 
     const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
     expect(deliveries).toHaveLength(1);
-    expect(deliveries[0]?.eventId).toBe(
-      `dev_${f.connection.id}_payment_pay_fact_fail_1_failed`,
-    );
+    expect(deliveries[0]?.eventId).toMatch(/^dev_payment_[0-9a-f]{32}$/);
   });
 
   it("renewals in different periods remain distinct facts with distinct ids (#131)", async () => {
@@ -599,6 +595,233 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
     expect(deliveries).toHaveLength(2);
     const ids = new Set(deliveries.map((row) => row.eventId));
     expect(ids.size).toBe(2);
+  });
+
+  it("refund without providerRefundId falls back to the raw inbox id and never collides with succeeded (round-4 P0)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["payment.succeeded", "payment.refunded"],
+      },
+      db,
+    );
+
+    const success = await signedSuccess(f, "evt_rn_s");
+    expect(success.status).toBe("processed");
+    const successPublished = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: success.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    // A refund for the same payment with NO provider_refund_id: the fact id
+    // must be the raw inbox fallback — sharing the succeeded fact id would
+    // make the delivery uniqueness silently swallow the refund event.
+    const refundRaw = JSON.stringify({
+      id: "evt_rn_r",
+      type: "payment.refunded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_evt_rn_s",
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 500,
+        currency: "USD",
+      },
+    });
+    const refund = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody: refundRaw,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            refundRaw,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(refund.status).toBe("processed");
+    const refundPublished = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: refund.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    expect(refundPublished.eventId).toBe(`dev_${refund.webhookEventId}`);
+    expect(refundPublished.eventId).not.toBe(successPublished.eventId);
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries).toHaveLength(2);
+  });
+
+  it("renewal carrying providerPaymentId stays a subscription-period fact (round-4 P0)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["subscription.renewed"],
+      },
+      db,
+    );
+
+    // Real-adapter shape: renewals carry BOTH the transaction id and the
+    // subscription/period references.
+    const rawBody = JSON.stringify({
+      id: "evt_rw_full",
+      type: "subscription.renewed",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_rw_txn_1",
+        provider_subscription_id: "sub_rw_1",
+        subscription_status: "active",
+        subscription_period_start: "2026-10-01T00:00:00.000Z",
+        subscription_period_end: "2026-11-01T00:00:00.000Z",
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const renewed = await processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+    expect(renewed.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: renewed.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.eventId).toMatch(/^dev_subscription_[0-9a-f]{32}$/);
+    expect(published.eventId).not.toMatch(/^dev_payment_/);
+  });
+
+  it("a renewal without period boundaries is rejected by ingest, so the raw-inbox fallback only applies to publishable shapes (round-4)", async () => {
+    // The ingest enforces period boundaries on active subscription facts
+    // (entitlements need them), so a period-less renewal can never reach the
+    // publisher through a successful ingest — the raw-inbox fallback in
+    // factBasedDeveloperEventId covers only defensive/late-publish shapes.
+    const f: Fixture = await seed();
+    const rawBody = JSON.stringify({
+      id: "evt_rw_noperiod",
+      type: "subscription.renewed",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_rw_txn_2",
+        provider_subscription_id: "sub_rw_2",
+        subscription_status: "active",
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    await expect(
+      processProviderWebhook(
+        f.app.id,
+        f.connection.id,
+        {
+          rawBody,
+          headers: {
+            "x-monetplane-mock-signature": signMockWebhookPayload(
+              rawBody,
+              `${f.app.slug}-secret`,
+            ),
+          },
+        },
+        db,
+      ),
+    ).rejects.toThrow(/period boundaries/);
+  });
+
+  it("sanitization cannot merge distinct refund facts: 'rf:a' vs 'rf/a' (round-4 P1)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      { name: "receiver", url: receiver.url, eventTypes: ["payment.refunded"] },
+      db,
+    );
+    await signedSuccess(f, "evt_col_s");
+
+    for (const [i, refundId] of ["rf:a", "rf/a"].entries()) {
+      const rawBody = JSON.stringify({
+        id: `evt_col_r${i}`,
+        type: "payment.refunded",
+        occurred_at: new Date().toISOString(),
+        data: {
+          provider_payment_id: "pay_evt_col_s",
+          provider_refund_id: refundId,
+          monetplane_order_id: f.checkout.orderId,
+          monetplane_customer_id: f.customer.customerId,
+          amount_minor: 500,
+          currency: "USD",
+        },
+      });
+      const processed = await processProviderWebhook(
+        f.app.id,
+        f.connection.id,
+        {
+          rawBody,
+          headers: {
+            "x-monetplane-mock-signature": signMockWebhookPayload(
+              rawBody,
+              `${f.app.slug}-secret`,
+            ),
+          },
+        },
+        db,
+      );
+      expect(processed.status).toBe("processed");
+      const published = await publishBillingLifecycleEvent({
+        applicationId: f.app.id,
+        webhookEventId: processed.webhookEventId,
+        providerConnectionId: f.connection.id,
+      });
+      expect(published.eventId).toMatch(/^dev_refund_[0-9a-f]{32}$/);
+    }
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    const refundDeliveries = deliveries.filter(
+      (row) => row.eventType === "payment.refunded",
+    );
+    expect(refundDeliveries).toHaveLength(2);
+    expect(new Set(refundDeliveries.map((row) => row.eventId)).size).toBe(2);
   });
 
   it("resolves externalCustomerId from the customer mapping alone when the event has no order id (MP-REV-04)", async () => {
@@ -739,9 +962,7 @@ describe("developer billing lifecycle events (#61)", () => {
 
     const payload = JSON.parse(receivedBody);
     // #131: fact-based identity — same payment fact always yields this id.
-    expect(payload.id).toBe(
-      `dev_${f.connection.id}_payment_pay_evt_dev_1_succeeded`,
-    );
+    expect(payload.id).toMatch(/^dev_payment_[0-9a-f]{32}$/);
     expect(payload.version).toBe(1);
     expect(payload.type).toBe("payment.succeeded");
     expect(payload.data.orderId).toBe(f.checkout.orderId);

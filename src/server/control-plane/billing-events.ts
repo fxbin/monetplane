@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { getDb } from "@/db/client";
@@ -75,8 +76,17 @@ export type BillingEventContext = {
  * period) fall back to the raw inbox id — the documented §二D limitation;
  * adapters should provide stable refund ids and period boundaries.
  */
-function sanitizeIdentityPart(value: string): string {
-  return value.replace(/[^A-Za-z0-9_-]+/g, "-");
+/**
+ * Canonical, injective encoding of the fact tuple -> truncated SHA-256.
+ * Length-prefixing makes `["rf:a"]` and `["rf|a"]`-style joins impossible to
+ * collide, and hashing absorbs any provider-id character set. Event ids ARE
+ * the delivery dedup key, so the encoding must be lossless (round-4 review:
+ * the previous `[^A-Za-z0-9_-]+ -> "-"` sanitizer deterministically merged
+ * distinct refund facts).
+ */
+function canonicalFactHash(parts: string[]): string {
+  const canonical = parts.map((part) => `${part.length}:${part}`).join("|");
+  return createHash("sha256").update(canonical).digest("hex").slice(0, 32);
 }
 
 function stringPart(
@@ -92,31 +102,43 @@ function factBasedDeveloperEventId(
   providerConnectionId: string,
   inboxEventId: string,
 ): string {
-  const conn = sanitizeIdentityPart(providerConnectionId);
-  const paymentId = stringPart(normalized, "providerPaymentId");
+  const raw = `dev_${inboxEventId}`;
+  const eventType = typeof normalized.type === "string" ? normalized.type : "";
   const refundId = stringPart(normalized, "providerRefundId");
+  const paymentId = stringPart(normalized, "providerPaymentId");
   const subscriptionId = stringPart(normalized, "providerSubscriptionId");
   const periodStart = stringPart(normalized, "subscriptionPeriodStart");
 
-  if (normalized.type === "payment.refunded" && refundId) {
-    return `dev_${conn}_refund_${sanitizeIdentityPart(refundId)}`;
+  // Dispatch by FACT FAMILY (the event type) FIRST — never by which ids
+  // happen to be present. Real adapters attach providerPaymentId to
+  // subscription.renewed (it must stay a subscription-period fact, not a
+  // payment fact), and a payment.refunded without a refund id must fall
+  // back to the raw inbox id instead of colliding with the payment's
+  // succeeded fact (which the delivery uniqueness would silently swallow).
+  if (eventType === "payment.refunded") {
+    if (!refundId) return raw;
+    return `dev_refund_${canonicalFactHash([providerConnectionId, refundId])}`;
   }
-  if (paymentId) {
-    const type = normalized.type === "payment.failed" ? "failed" : "succeeded";
-    return `dev_${conn}_payment_${sanitizeIdentityPart(paymentId)}_${type}`;
+  if (eventType === "payment.succeeded" || eventType === "payment.failed") {
+    if (!paymentId) return raw;
+    return `dev_payment_${canonicalFactHash([
+      providerConnectionId,
+      paymentId,
+      eventType,
+    ])}`;
   }
-  const eventType = typeof normalized.type === "string" ? normalized.type : "";
-  if (subscriptionId && eventType.startsWith("subscription.")) {
-    const type = eventType.slice("subscription.".length);
-    if (type === "renewed" && !periodStart) {
+  if (eventType.startsWith("subscription.")) {
+    if (!subscriptionId) return raw;
+    if (eventType === "subscription.renewed" && !periodStart) {
       // A renewal without a period boundary is indistinguishable from its
       // replay — fall back rather than merge distinct renewals.
-      return `dev_${inboxEventId}`;
+      return raw;
     }
-    const period = periodStart ? `_${sanitizeIdentityPart(periodStart)}` : "";
-    return `dev_${conn}_subscription_${sanitizeIdentityPart(subscriptionId)}_${sanitizeIdentityPart(type)}${period}`;
+    const parts = [providerConnectionId, subscriptionId, eventType];
+    if (periodStart) parts.push(periodStart);
+    return `dev_subscription_${canonicalFactHash(parts)}`;
   }
-  return `dev_${inboxEventId}`;
+  return raw;
 }
 
 export async function publishBillingLifecycleEvent(
