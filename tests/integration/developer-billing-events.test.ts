@@ -392,6 +392,215 @@ describe("developer event externalCustomerId contract (MP-REV-04)", () => {
     expect(refundDelivery?.externalCustomerId).toBe("user-1");
   });
 
+  function subscriptionEventPayload(
+    f: Fixture,
+    overrides: {
+      id: string;
+      type: string;
+      subscriptionStatus: string;
+      periodStart: string;
+      periodEnd: string;
+    },
+  ) {
+    return {
+      id: overrides.id,
+      type: overrides.type,
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_subscription_id: "sub_fact_1",
+        subscription_status: overrides.subscriptionStatus,
+        subscription_period_start: overrides.periodStart,
+        subscription_period_end: overrides.periodEnd,
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    };
+  }
+
+  async function processSigned(f: Fixture, payload: Record<string, unknown>) {
+    const rawBody = JSON.stringify(payload);
+    return processProviderWebhook(
+      f.app.id,
+      f.connection.id,
+      {
+        rawBody,
+        headers: {
+          "x-monetplane-mock-signature": signMockWebhookPayload(
+            rawBody,
+            `${f.app.slug}-secret`,
+          ),
+        },
+      },
+      db,
+    );
+  }
+
+  it("same activation fact under two provider event ids delivers exactly once (#131)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: [
+          "subscription.activated",
+          "subscription.renewed",
+          "payment.failed",
+        ],
+      },
+      db,
+    );
+
+    const period = {
+      periodStart: "2026-10-01T00:00:00.000Z",
+      periodEnd: "2026-11-01T00:00:00.000Z",
+    };
+    const first = await processSigned(
+      f,
+      subscriptionEventPayload(f, {
+        id: "evt_fact_a1",
+        type: "subscription.activated",
+        subscriptionStatus: "active",
+        ...period,
+      }),
+    );
+    expect(first.status).toBe("processed");
+    await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: first.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    // Same business fact, DIFFERENT provider event id (provider retry churn).
+    const second = await processSigned(
+      f,
+      subscriptionEventPayload(f, {
+        id: "evt_fact_a2",
+        type: "subscription.activated",
+        subscriptionStatus: "active",
+        ...period,
+      }),
+    );
+    expect(second.status).toBe("processed");
+    const published = await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: second.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+    expect(published.eventId).toBe(
+      `dev_${f.connection.id}_subscription_sub_fact_1_activated_2026-10-01T00-00-00-000Z`,
+    );
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    const activations = deliveries.filter(
+      (row) => row.eventType === "subscription.activated",
+    );
+    expect(activations).toHaveLength(1);
+  });
+
+  it("payment.failed replays under new event ids deliver exactly once (#131)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      { name: "receiver", url: receiver.url, eventTypes: ["payment.failed"] },
+      db,
+    );
+
+    const failedPayload = (id: string) => ({
+      id,
+      type: "payment.failed",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_fact_fail_1",
+        monetplane_order_id: f.checkout.orderId,
+        monetplane_customer_id: f.customer.customerId,
+        amount_minor: 2900,
+        currency: "USD",
+      },
+    });
+    const first = await processSigned(f, failedPayload("evt_fact_f1"));
+    expect(first.status).toBe("processed");
+    await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: first.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    const second = await processSigned(f, failedPayload("evt_fact_f2"));
+    expect(second.status).toBe("processed");
+    await publishBillingLifecycleEvent({
+      applicationId: f.app.id,
+      webhookEventId: second.webhookEventId,
+      providerConnectionId: f.connection.id,
+    });
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries).toHaveLength(1);
+    expect(deliveries[0]?.eventId).toBe(
+      `dev_${f.connection.id}_payment_pay_fact_fail_1_failed`,
+    );
+  });
+
+  it("renewals in different periods remain distinct facts with distinct ids (#131)", async () => {
+    const f: Fixture = await seed();
+    const receiver = await startReceiver((_req, res) => {
+      res.statusCode = 204;
+      res.end();
+    });
+    receivers.push(receiver.close);
+    await createWebhookEndpoint(
+      f.app.id,
+      "test",
+      {
+        name: "receiver",
+        url: receiver.url,
+        eventTypes: ["subscription.renewed"],
+      },
+      db,
+    );
+
+    for (const [i, periodStart] of [
+      ["2026-10-01T00:00:00.000Z"],
+      ["2026-11-01T00:00:00.000Z"],
+    ].entries()) {
+      const renewed = await processSigned(
+        f,
+        subscriptionEventPayload(f, {
+          id: `evt_fact_r${i}`,
+          type: "subscription.renewed",
+          subscriptionStatus: "active",
+          periodStart: periodStart[0] as string,
+          periodEnd: "2026-12-01T00:00:00.000Z",
+        }),
+      );
+      expect(renewed.status).toBe("processed");
+      await publishBillingLifecycleEvent({
+        applicationId: f.app.id,
+        webhookEventId: renewed.webhookEventId,
+        providerConnectionId: f.connection.id,
+      });
+    }
+
+    const deliveries = await listWebhookDeliveries(f.app.id, "test", {}, db);
+    expect(deliveries).toHaveLength(2);
+    const ids = new Set(deliveries.map((row) => row.eventId));
+    expect(ids.size).toBe(2);
+  });
+
   it("resolves externalCustomerId from the customer mapping alone when the event has no order id (MP-REV-04)", async () => {
     const f: Fixture = await seed();
     const receiver = await startReceiver((_req, res) => {
@@ -529,7 +738,10 @@ describe("developer billing lifecycle events (#61)", () => {
     });
 
     const payload = JSON.parse(receivedBody);
-    expect(payload.id).toMatch(/^dev_wh_/);
+    // #131: fact-based identity — same payment fact always yields this id.
+    expect(payload.id).toBe(
+      `dev_${f.connection.id}_payment_pay_evt_dev_1_succeeded`,
+    );
     expect(payload.version).toBe(1);
     expect(payload.type).toBe("payment.succeeded");
     expect(payload.data.orderId).toBe(f.checkout.orderId);

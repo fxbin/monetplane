@@ -153,8 +153,13 @@ once-audited.
 ### Developer Lifecycle Events
 
 Committed provider webhook effects fan out to developer-configured webhook
-endpoints as signed, provider-neutral events (deterministic event identity;
-deliveries unique per endpoint + event). Publisher: `src/server/control-plane/billing-events.ts`.
+endpoints as signed, provider-neutral events. Event identity is **fact-based**
+(#131): payments key on (connection, providerPaymentId, outcome), refunds on
+(connection, providerRefundId), renewals on (connection, subscriptionId,
+periodStart) — the same business fact always carries the SAME event id, so the
+per-endpoint `(endpoint, eventId)` uniqueness is fact-level dedup and consumers
+can treat the id as a stable idempotency key even when the provider regenerates
+its own event ids on retry. Publisher: `src/server/control-plane/billing-events.ts`.
 A protected sweeper (`GET/POST /api/cron/webhook-deliveries`, `CRON_SECRET`, every 1–5 min)
 re-delivers deliveries left `pending` by a crash between insert and attempt
 (exponential backoff, atomic claim, max attempts → failed).

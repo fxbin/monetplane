@@ -52,6 +52,73 @@ export type BillingEventContext = {
   currency?: string | null;
 };
 
+/**
+ * Fact-based developer event identity (#131).
+ *
+ * The id used to be `dev_<webhook inbox row id>`, and the inbox is unique per
+ * (connection, providerEventId) — so the same BUSINESS fact arriving under two
+ * provider event ids (provider retries that regenerate ids, or replay paths
+ * the ingest still processes, e.g. subscription lifecycle / payment.failed
+ * replays) produced two different developer events and double-delivered.
+ * Consumers get no stable idempotency key from us in that world.
+ *
+ * The id is now derived from the business fact:
+ *   payments   -> (connection, providerPaymentId, type)
+ *   refunds    -> (connection, providerRefundId)            [one event per refund fact]
+ *   renewals   -> (connection, subscriptionId, periodStart) [each period is a fact]
+ *   other sub  -> (connection, subscriptionId, type [, periodStart when present])
+ * Same fact => same id => the deliveries' unique (endpoint, eventId) index
+ * becomes fact-level dedup, and a first-publish crash heals on the next
+ * ingest regardless of the provider's event-id churn.
+ *
+ * Under-specified events (refund without a stable id, renewal without a
+ * period) fall back to the raw inbox id — the documented §二D limitation;
+ * adapters should provide stable refund ids and period boundaries.
+ */
+function sanitizeIdentityPart(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]+/g, "-");
+}
+
+function stringPart(
+  normalized: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = normalized[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function factBasedDeveloperEventId(
+  normalized: Record<string, unknown>,
+  providerConnectionId: string,
+  inboxEventId: string,
+): string {
+  const conn = sanitizeIdentityPart(providerConnectionId);
+  const paymentId = stringPart(normalized, "providerPaymentId");
+  const refundId = stringPart(normalized, "providerRefundId");
+  const subscriptionId = stringPart(normalized, "providerSubscriptionId");
+  const periodStart = stringPart(normalized, "subscriptionPeriodStart");
+
+  if (normalized.type === "payment.refunded" && refundId) {
+    return `dev_${conn}_refund_${sanitizeIdentityPart(refundId)}`;
+  }
+  if (paymentId) {
+    const type = normalized.type === "payment.failed" ? "failed" : "succeeded";
+    return `dev_${conn}_payment_${sanitizeIdentityPart(paymentId)}_${type}`;
+  }
+  const eventType = typeof normalized.type === "string" ? normalized.type : "";
+  if (subscriptionId && eventType.startsWith("subscription.")) {
+    const type = eventType.slice("subscription.".length);
+    if (type === "renewed" && !periodStart) {
+      // A renewal without a period boundary is indistinguishable from its
+      // replay — fall back rather than merge distinct renewals.
+      return `dev_${inboxEventId}`;
+    }
+    const period = periodStart ? `_${sanitizeIdentityPart(periodStart)}` : "";
+    return `dev_${conn}_subscription_${sanitizeIdentityPart(subscriptionId)}_${sanitizeIdentityPart(type)}${period}`;
+  }
+  return `dev_${inboxEventId}`;
+}
+
 export async function publishBillingLifecycleEvent(
   input: {
     applicationId: string;
@@ -232,7 +299,11 @@ export async function publishBillingLifecycleEvent(
     {
       applicationId: input.applicationId,
       mode: event.environment as "test" | "live",
-      eventId: `dev_${event.id}`,
+      eventId: factBasedDeveloperEventId(
+        normalized,
+        input.providerConnectionId,
+        event.id,
+      ),
       eventType: developerType,
       providerConnectionId: input.providerConnectionId,
       externalCustomerId: context.externalCustomerId,
