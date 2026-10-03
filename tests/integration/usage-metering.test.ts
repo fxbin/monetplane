@@ -27,12 +27,19 @@ async function seed() {
 }
 
 /**
- * Anchor the period to the month containing the seeded DATED event (3 days
- * ago) instead of the wall clock — on the 1st–3rd of a month the two differ
- * and the test used to under-count (found 2026-10-02: October period,
- * September event).
+ * Deterministic mid-month anchor in the PREVIOUS month. "3 days ago" was
+ * wall-clock dependent: on 2026-10-02 it landed on the 1st–3rd and the
+ * period under-counted; on 2026-10-04 (UTC) it landed on Sep 30 23:48Z and
+ * the +1h second event crossed into October, so the September-anchored
+ * period caught only one event. A fixed 15th-of-month noon anchor is always
+ * in the past and can never straddle a month boundary, for either event.
  */
-const DATED_EVENT_AT = new Date(Date.now() - 3 * 24 * 3600 * 1000);
+const DATED_EVENT_AT = (() => {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 15, 12),
+  );
+})();
 
 function period(anchor: Date): { periodStart: Date; periodEnd: Date } {
   return {
