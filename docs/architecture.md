@@ -297,12 +297,15 @@ No queue, Kafka, Redis, microservice split, or separate analytics database is re
 
 - Product browsers cannot mutate credits directly; consumption is server-to-server.
 - Application credentials are scoped to one application.
-- Hosted-domain routes derive application context from an allow-listed host; host-only
-  reads of balances/entitlements are rate limited with an anomaly signal (#127
-  transitional control — credential auth is the preferred read path). Client identity
-  comes from `x-forwarded-for` ONLY when `MONETPLANE_TRUST_PROXY=true` (deployed behind
-  a proxy that overwrites it); otherwise all host-only clients share one bucket per
-  application. The window map is hard-capped and the limiter fails closed when full.
+- Hosted-domain routes derive application context from an allow-listed host. Read
+  endpoints authenticate through three tiers (#138): **customer read tokens**
+  (`mprt_*`, issued credential-only by the application backend, scoped to ONE
+  customer + environment, mandatory expiry, revocable), **application credentials**
+  (trusted, unlimited), and the #127 transitional **host fallback** (rate limited
+  per application+client with an anomaly signal; client identity from
+  `x-forwarded-for` ONLY when `MONETPLANE_TRUST_PROXY=true`; window map hard-capped,
+  limiter fails closed with a saturation signal). The host tier is the migration
+  window — new integrations use tokens or credentials.
 - Callback/return URLs must match application allow-lists to prevent open redirects.
 - Provider webhook signatures are verified before event persistence/effects.
 - Admin/provider secrets are encrypted and redacted.

@@ -90,3 +90,22 @@ export function extractApplicationBearerToken(
 
   return token.startsWith(APPLICATION_SECRET_PREFIX) ? token : null;
 }
+
+/**
+ * Round-2 review (#138): extract a customer read token (mprt_*) with the same
+ * case-insensitive Bearer parsing and malformed-header rejection as
+ * extractApplicationBearerToken — "bearer mprt_x" is equally valid HTTP, and
+ * a malformed header must never silently downgrade to the host fallback.
+ */
+export function extractCustomerReadToken(
+  authorizationHeader: string | null,
+): string | null {
+  if (!authorizationHeader) return null;
+
+  const [scheme, token, ...extra] = authorizationHeader.trim().split(/\s+/);
+  if (scheme?.toLowerCase() !== "bearer" || !token || extra.length > 0) {
+    return null;
+  }
+
+  return token.startsWith("mprt_") ? token : null;
+}
