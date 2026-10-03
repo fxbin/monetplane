@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveApplicationContext } from "@/modules/applications";
+import { consumeHostReadQuota } from "@/modules/applications/host-read-guards";
 import { hasEntitlement } from "@/modules/entitlements/service";
 
 function parseEnvironment(
@@ -21,6 +22,29 @@ export async function POST(request: Request) {
 
   try {
     const context = await resolveApplicationContext(request);
+
+    // #127 transitional control: host-only reads (branded-host fallback)
+    // are rate limited per application+client; credential reads are trusted.
+    if (context.source === "host") {
+      const quota = consumeHostReadQuota(context.application.id, request);
+      if (!quota.allowed) {
+        if (quota.anomaly) {
+          // First breach of this window only — a flooding attacker must not
+          // also flood the logs (round-2 review note).
+          console.error(
+            `[security] host-only read rate limit exceeded for application ${context.application.id} (${quota.limit}/min); possible enumeration attempt`,
+          );
+        }
+        return NextResponse.json(
+          {
+            error:
+              "Too many requests for this host context — use an application credential",
+            code: "rate_limited",
+          },
+          { status: 429 },
+        );
+      }
+    }
 
     const externalCustomerId =
       typeof body.externalCustomerId === "string"

@@ -64,7 +64,9 @@ pnpm db:migrate
 pnpm dev
 ```
 
-`AUTH_SECRET` is required at build and runtime (fail-fast). `CRON_SECRET`
+`AUTH_SECRET` is required at build and runtime (fail-fast). Host-only read rate
+limiting: set `MONETPLANE_TRUST_PROXY=true` **only** behind a proxy that overwrites
+`x-forwarded-for` (see `.env.example`). `CRON_SECRET`
 protects the cron routes — `GET /api/cron/credit-expiry` (every 5–15 min,
 see `docs/credits-ledger.md`) and `GET /api/cron/webhook-deliveries`
 (every 1–5 min; re-delivers developer-webhook deliveries stranded `pending`
