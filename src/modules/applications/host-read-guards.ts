@@ -26,6 +26,7 @@ type WindowState = { count: number; resetAt: number; breachLogged: boolean };
 
 const windows = new Map<string, WindowState>();
 const WINDOW_MS = 60_000;
+let lastSaturationLoggedAt = 0;
 
 export function hostReadLimitPerMinute(): number {
   const parsed = Number(process.env.MONETPLANE_HOST_READ_LIMIT);
@@ -80,6 +81,14 @@ export function consumeHostReadQuota(
     // then hard-cap: fail closed instead of growing the map.
     pruneExpiredWindows(now);
     if (windows.size >= hostReadMaxWindows()) {
+      // #138: saturation is an operational signal, not per-request noise —
+      // log at most once per window (throttled at module level).
+      if (now - lastSaturationLoggedAt > WINDOW_MS) {
+        lastSaturationLoggedAt = now;
+        console.error(
+          `[security] host-only read limiter saturated at ${hostReadMaxWindows()} windows; denying untrusted host reads (fail-closed) — migration to credential/customer-token auth should be completed`,
+        );
+      }
       return { allowed: false, limit, anomaly: false };
     }
     windows.set(key, {
@@ -104,4 +113,5 @@ export function consumeHostReadQuota(
 /** Test hook: reset the in-memory windows between integration tests. */
 export function resetHostReadQuotaForTests(): void {
   windows.clear();
+  lastSaturationLoggedAt = 0;
 }

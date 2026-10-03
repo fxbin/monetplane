@@ -127,6 +127,13 @@
             "when": 1790600000000,
             "tag": "0017_refund_superseded",
             "breakpoints": true
+        },
+        {
+            "idx": 18,
+            "version": "7",
+            "when": 1790700000000,
+            "tag": "0018_customer_read_tokens",
+            "breakpoints": true
         }
     ]
 }

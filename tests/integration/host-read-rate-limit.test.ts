@@ -184,6 +184,40 @@ describe("host-only read rate limiting (#127)", () => {
     expect(existingKey.status).toBe(200);
   });
 
+  it("logs the saturation anomaly once when the limiter fails closed on the cap (round-2 polish, #138)", async () => {
+    await seedAppWithBalance();
+    process.env.MONETPLANE_TRUST_PROXY = "true";
+    process.env.MONETPLANE_HOST_READ_MAX_WINDOWS = "2";
+
+    for (let i = 0; i < 2; i++) {
+      const response = await balancePOST(
+        readRequest({ "x-forwarded-for": `192.0.2.${i}` }),
+      );
+      expect(response.status).toBe(200);
+    }
+
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    try {
+      // Two saturated requests within the throttle window: ONE anomaly.
+      const first = await balancePOST(
+        readRequest({ "x-forwarded-for": "192.0.2.50" }),
+      );
+      const second = await balancePOST(
+        readRequest({ "x-forwarded-for": "192.0.2.51" }),
+      );
+      expect(first.status).toBe(429);
+      expect(second.status).toBe(429);
+      const saturationCalls = consoleError.mock.calls.filter((call) =>
+        String(call[0]).includes("limiter saturated"),
+      );
+      expect(saturationCalls).toHaveLength(1);
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
   it("never limits credential-authenticated reads, even after the host quota is exhausted", async () => {
     const { credentialSecret } = await seedAppWithBalance();
 
