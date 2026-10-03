@@ -1,3 +1,5 @@
+import { createHash, randomBytes } from "node:crypto";
+import { sql } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { POST as balancePOST } from "../../src/app/api/credits/balance/route";
 import { DELETE as revokeDELETE } from "../../src/app/api/customer-read-tokens/[tokenId]/route";
@@ -8,6 +10,10 @@ import {
   issueApplicationCredential,
 } from "../../src/modules/applications/service";
 import { grantCredits } from "../../src/modules/credits/service";
+import {
+  issueCustomerReadToken,
+  resolveCustomerReadToken,
+} from "../../src/modules/customers/read-tokens";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 
 /**
@@ -248,5 +254,134 @@ describe("customer read tokens (#138)", () => {
     );
     expect(badTtl.status).toBe(400);
     await expect(badTtl.json()).resolves.toMatchObject({ code: "invalid_ttl" });
+  });
+
+  it("rejects an illegal environment value with 400 before any auth tier runs", async () => {
+    const read = await balancePOST(
+      balanceRequest({}, { creditType: "gen.credits", environment: "prod" }),
+    );
+    expect(read.status).toBe(400);
+    await expect(read.json()).resolves.toMatchObject({
+      code: "invalid_environment",
+    });
+
+    // Even WITH a valid read token, an illegal environment is a 400 — not a
+    // silent coercion and not an environment_mismatch 403.
+    const { credentialSecret } = await seedApp("env");
+    const issued = await issuePOST(
+      issueRequest(credentialSecret, { externalCustomerId: "user-1" }),
+    );
+    const issuedBody = (await issued.json()) as { token: string };
+    const badEnv = await balancePOST(
+      balanceRequest(
+        { authorization: `Bearer ${issuedBody.token}` },
+        { creditType: "gen.credits", environment: "prod" },
+      ),
+    );
+    expect(badEnv.status).toBe(400);
+    await expect(badEnv.json()).resolves.toMatchObject({
+      code: "invalid_environment",
+    });
+  });
+
+  it("accepts a lowercase bearer scheme for read tokens and never downgrades a malformed header to the host tier", async () => {
+    const { credentialSecret } = await seedApp("parser");
+    const issued = await issuePOST(
+      issueRequest(credentialSecret, { externalCustomerId: "user-1" }),
+    );
+    const issuedBody = (await issued.json()) as { token: string };
+
+    // "bearer" is case-insensitive per RFC 7235 and must be accepted.
+    const lowerScheme = await balancePOST(
+      balanceRequest(
+        { authorization: `bearer ${issuedBody.token}` },
+        { creditType: "gen.credits", environment: "test" },
+      ),
+    );
+    expect(lowerScheme.status).toBe(200);
+
+    // A malformed Bearer header (wrong shape / unknown token shape) must NOT
+    // silently fall through to the host fallback, which would read the data
+    // the caller had no credential for.
+    const malformed = await balancePOST(
+      balanceRequest(
+        { authorization: "Bearer" },
+        { creditType: "gen.credits", environment: "test" },
+      ),
+    );
+    expect(malformed.status).toBe(401);
+    await expect(malformed.json()).resolves.toMatchObject({
+      code: "read_token_invalid",
+    });
+
+    const junkScheme = await balancePOST(
+      balanceRequest(
+        { authorization: "Basic dXNlcjpwYXNz" },
+        { creditType: "gen.credits", environment: "test" },
+      ),
+    );
+    expect(junkScheme.status).toBe(401);
+
+    // An application credential is ALSO bearer-shaped: the no-downgrade guard
+    // must not swallow the middle tier.
+    const credentialRead = await balancePOST(
+      balanceRequest(
+        { authorization: `Bearer ${credentialSecret}` },
+        {
+          creditType: "gen.credits",
+          externalCustomerId: "user-1",
+          environment: "test",
+        },
+      ),
+    );
+    expect(credentialRead.status).toBe(200);
+  });
+});
+
+/**
+ * Service-level cross-application checks. The HTTP routes already reject a
+ * cross-app customer, but the binding invariant must hold at the service
+ * boundary too — any future caller of issueCustomerReadToken gets it.
+ */
+describe("customer read tokens — cross-application binding (#138)", () => {
+  it("refuses to issue a token for another application's customer", async () => {
+    const appA = await seedApp("cross-a");
+    const appB = await seedApp("cross-b");
+
+    await expect(
+      issueCustomerReadToken(
+        {
+          applicationId: appB.app.id,
+          applicationCustomerId: appA.customer.id,
+          environment: "test",
+        },
+        db,
+      ),
+    ).rejects.toThrow(/does not belong to the application/);
+
+    // Fail-closed means no row was written, not even a revoked one.
+    const rows = await db.execute(
+      sql`SELECT id FROM customer_read_tokens WHERE application_id = ${appB.app.id}`,
+    );
+    expect((rows as unknown as { rows?: unknown[] }).rows ?? rows).toEqual([]);
+  });
+
+  it("refuses to resolve a row whose customer belongs to a different application", async () => {
+    const appA = await seedApp("corrupt-a");
+    const appB = await seedApp("corrupt-b");
+
+    // Write a row that bypasses issuance validation (as a corrupted restore or
+    // a direct DB write would). The resolver must still fail closed.
+    const rawToken = `mprt_${randomBytes(24).toString("base64url")}`;
+    const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+    await db.execute(
+      sql`INSERT INTO customer_read_tokens
+          (id, application_id, application_customer_id, environment, token_hash, expires_at)
+          VALUES (${`crt_${randomBytes(12).toString("base64url")}`}, ${appB.app.id}, ${appA.customer.id}, 'test', ${tokenHash}, now() + interval '15 minutes')`,
+    );
+
+    await expect(resolveCustomerReadToken(rawToken, db)).rejects.toThrow(
+      /invalid or expired/,
+    );
   });
 });

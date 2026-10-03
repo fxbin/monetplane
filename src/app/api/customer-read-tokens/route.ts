@@ -29,9 +29,22 @@ export async function POST(request: Request) {
         : "";
     // Token environment: explicit body value wins; otherwise the minting
     // backend picks it. ApplicationContext carries no environment (connections
-    // do) — the caller knows which plane it operates in.
-    const environment =
-      body.environment === "live" ? ("live" as const) : ("test" as const);
+    // do). #132 matrix consistency: an explicit but invalid environment is a
+    // client error, not a silent default to test.
+    let environment: "test" | "live";
+    if (body.environment === undefined) {
+      environment = "test";
+    } else if (body.environment === "live" || body.environment === "test") {
+      environment = body.environment;
+    } else {
+      return NextResponse.json(
+        {
+          error: "environment must be 'test' or 'live'",
+          code: "invalid_environment",
+        },
+        { status: 400 },
+      );
+    }
     const ttlSeconds =
       typeof body.ttlSeconds === "number" ? body.ttlSeconds : undefined;
 
@@ -82,6 +95,32 @@ export async function POST(request: Request) {
           code: "credential_required",
         },
         { status: 401 },
+      );
+    }
+    if (name === "CustomerReadTokenMismatchError") {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Customer binding mismatch",
+          code: "customer_application_mismatch",
+        },
+        { status: 400 },
+      );
+    }
+    if (name === "ApplicationContextMismatchError") {
+      // Host and credential resolved to different applications — a client
+      // error, never a 500.
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Application binding mismatch",
+          code: "application_mismatch",
+        },
+        { status: 400 },
       );
     }
     if (name === "CustomerReadTokenTtlError") {

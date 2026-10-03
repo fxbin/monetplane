@@ -34,6 +34,20 @@ export async function DELETE(
         { status: 401 },
       );
     }
+    if (name === "ApplicationContextMismatchError") {
+      // Host and credential resolved to different applications — a client
+      // error, never a 500.
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Application binding mismatch",
+          code: "application_mismatch",
+        },
+        { status: 400 },
+      );
+    }
     if (
       name === "InvalidApplicationCredentialError" ||
       name === "ApplicationContextNotFoundError"

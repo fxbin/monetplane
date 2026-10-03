@@ -2,7 +2,14 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/db/client";
 import { resolveApplicationContext } from "@/modules/applications";
 import { consumeHostReadQuota } from "@/modules/applications/host-read-guards";
-import { resolveCustomerReadToken } from "@/modules/customers/read-tokens";
+import {
+  extractApplicationBearerToken,
+  extractCustomerReadToken,
+} from "@/modules/applications/security";
+import {
+  CustomerReadTokenError,
+  resolveCustomerReadToken,
+} from "@/modules/customers/read-tokens";
 import { hasEntitlement } from "@/modules/entitlements/service";
 
 function parseEnvironment(
@@ -22,15 +29,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  // Environment is an auth-boundary input in every tier below, so an illegal
+  // value is rejected up front (400) rather than coerced or turned into a 500.
+  if (
+    body.environment !== undefined &&
+    body.environment !== "test" &&
+    body.environment !== "live"
+  ) {
+    return NextResponse.json(
+      {
+        error: "environment must be 'test' or 'live'",
+        code: "invalid_environment",
+      },
+      { status: 400 },
+    );
+  }
+
   try {
     // #138: three read-auth tiers — customer read token (mprt_*, scoped to
     // one customer), application credential, then the (rate-limited) host
     // fallback that #127 keeps for branded-host migration.
-    const authorization = request.headers.get("authorization") ?? "";
-    const bearerValue = authorization.startsWith("Bearer ")
-      ? authorization.slice(7).trim()
-      : "";
-    const readTokenValue = bearerValue.startsWith("mprt_") ? bearerValue : null;
+    const authorizationHeader = request.headers.get("authorization");
+    const readTokenValue = extractCustomerReadToken(authorizationHeader);
+    if (
+      authorizationHeader &&
+      !readTokenValue &&
+      !extractApplicationBearerToken(authorizationHeader) &&
+      authorizationHeader.trim().split(/\s+/)[0]?.toLowerCase() === "bearer"
+    ) {
+      // A Bearer header that is neither a read token nor an application
+      // credential is rejected instead of silently downgrading to the host
+      // fallback (round-2 review: no silent downgrade). A malformed
+      // `mp_app_`-shaped bearer still falls through to the credential tier,
+      // which answers 401 itself.
+      throw new CustomerReadTokenError();
+    }
 
     let applicationId: string;
     let externalCustomerId: string;

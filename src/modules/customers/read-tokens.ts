@@ -46,6 +46,15 @@ export type IssuedCustomerReadToken = {
   expiresAt: Date;
 };
 
+export class CustomerReadTokenMismatchError extends Error {
+  constructor(
+    message = "Customer does not belong to the application bound to this token request",
+  ) {
+    super(message);
+    this.name = "CustomerReadTokenMismatchError";
+  }
+}
+
 export async function issueCustomerReadToken(
   input: {
     applicationId: string;
@@ -55,6 +64,23 @@ export async function issueCustomerReadToken(
   },
   db: Database = getDb(),
 ): Promise<IssuedCustomerReadToken> {
+  // Fail-closed app/customer binding check (round-2 review): the two columns
+  // are independent FKs — without this, a caller could bind another
+  // application's customer row into a token for THIS application.
+  const [binding] = await db
+    .select({ id: applicationCustomers.id })
+    .from(applicationCustomers)
+    .where(
+      and(
+        eq(applicationCustomers.id, input.applicationCustomerId),
+        eq(applicationCustomers.applicationId, input.applicationId),
+      ),
+    )
+    .limit(1);
+  if (!binding) {
+    throw new CustomerReadTokenMismatchError();
+  }
+
   const ttlSeconds = input.ttlSeconds ?? READ_TOKEN_DEFAULT_TTL_SECONDS;
   if (
     !Number.isSafeInteger(ttlSeconds) ||
@@ -105,8 +131,13 @@ export async function resolveCustomerReadToken(
       applicationId: customerReadTokens.applicationId,
       applicationCustomerId: customerReadTokens.applicationCustomerId,
       environment: customerReadTokens.environment,
+      customerApplicationId: applicationCustomers.applicationId,
     })
     .from(customerReadTokens)
+    .innerJoin(
+      applicationCustomers,
+      eq(applicationCustomers.id, customerReadTokens.applicationCustomerId),
+    )
     .where(
       and(
         eq(customerReadTokens.tokenHash, hashReadToken(token)),
@@ -116,6 +147,11 @@ export async function resolveCustomerReadToken(
     )
     .limit(1);
   if (!row) throw new CustomerReadTokenError();
+  if (row.customerApplicationId !== row.applicationId) {
+    // Fail-closed even though issuance validates the binding: a corrupted or
+    // externally-written row must never resolve.
+    throw new CustomerReadTokenError();
+  }
 
   const [customer] = await db
     .select({
