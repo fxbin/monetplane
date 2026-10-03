@@ -25,7 +25,7 @@ Status: implemented — Issue #138 部分落地(Advances,非 Closes):随分支 f
 - 非法 `environment` 值在进入任何认证层之前就 400 `invalid_environment`(不再 coerce 也不 500)。
 - 迁移 0018 的时间列一律 `timestamp with time zone`(Drizzle schema `withTimezone: true`);expiry 是认证边界,时区漂移会直接变成"多活/少活"。
 - `POST /api/customers` 静态路由与新增 `/api/customer-read-tokens` 共存(Next.js 静态优先于动态段,无冲突)。
-- SDK 封装(`createCustomerReadToken`)留作后续(REST 面已稳定);saturation 信号只进日志,告警管道归 #128 的运维接线。
+- SDK 封装已落地(`createCustomerReadToken` / `revokeCustomerReadToken`,后继 PR);saturation 信号只进日志,告警管道的载体待议(#128 已关闭,接线时需先定归属 issue)。
 - 迁移 0018 无数据回填;表随应用级联删除。
 
 ## Verification

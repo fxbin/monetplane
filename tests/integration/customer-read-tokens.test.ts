@@ -15,6 +15,7 @@ import {
   resolveCustomerReadToken,
 } from "../../src/modules/customers/read-tokens";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
+import { createMonetPlaneClient } from "../../src/sdk/server";
 
 /**
  * Customer read tokens (#138): the end-state auth tier for read endpoints.
@@ -383,5 +384,103 @@ describe("customer read tokens — cross-application binding (#138)", () => {
     await expect(resolveCustomerReadToken(rawToken, db)).rejects.toThrow(
       /invalid or expired/,
     );
+  });
+});
+
+/**
+ * SDK ↔ route end-to-end: the real client (real header building, real path
+ * building, real DELETE verb) dispatched in-process onto the real route
+ * handlers. Guards drift between SDK payload and route parsing — the fake
+ * -fetch unit tests and the route tests alone can each drift silently.
+ */
+describe("customer read tokens — SDK end-to-end (#138)", () => {
+  function sdkFetch(): typeof fetch {
+    return (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const request = new Request(url, {
+        ...init,
+        headers: { host: url.host, ...(init?.headers ?? {}) },
+      });
+      if (
+        url.pathname === "/api/customer-read-tokens" &&
+        (init?.method ?? "GET") === "POST"
+      ) {
+        return issuePOST(request);
+      }
+      const tokenMatch = url.pathname.match(
+        /^\/api\/customer-read-tokens\/(.+)$/,
+      );
+      if (tokenMatch && init?.method === "DELETE") {
+        return revokeDELETE(request, {
+          params: Promise.resolve({
+            tokenId: decodeURIComponent(tokenMatch[1]),
+          }),
+        });
+      }
+      return new Response(JSON.stringify({ error: "no such route" }), {
+        status: 404,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+  }
+
+  it("issues through the SDK, reads the balance with the raw token, and revokes by id", async () => {
+    const { credentialSecret } = await seedApp("sdk-e2e");
+    const client = createMonetPlaneClient({
+      baseUrl: "https://console.test",
+      appSecret: credentialSecret,
+      fetchImpl: sdkFetch(),
+    });
+
+    const issued = await client.createCustomerReadToken({
+      externalCustomerId: "user-1",
+      ttlSeconds: 120,
+    });
+    expect(issued.token).toMatch(/^mprt_/);
+    expect(issued.environment).toBe("test");
+
+    // The browser leg: raw token against the read endpoint, no credential.
+    const read = await balancePOST(
+      new Request("https://host.test/api/credits/balance", {
+        method: "POST",
+        headers: {
+          host: "host.test",
+          "content-type": "application/json",
+          authorization: `Bearer ${issued.token}`,
+        },
+        body: JSON.stringify({
+          creditType: "gen.credits",
+          environment: "test",
+        }),
+      }),
+    );
+    expect(read.status).toBe(200);
+    await expect(read.json()).resolves.toMatchObject({ available: 250 });
+
+    const revoked = await client.revokeCustomerReadToken(issued.id);
+    expect(revoked.revoked).toBe(true);
+
+    // Revocation is real: the same raw token now fails closed.
+    const afterRevoke = await balancePOST(
+      new Request("https://host.test/api/credits/balance", {
+        method: "POST",
+        headers: {
+          host: "host.test",
+          "content-type": "application/json",
+          authorization: `Bearer ${issued.token}`,
+        },
+        body: JSON.stringify({
+          creditType: "gen.credits",
+          environment: "test",
+        }),
+      }),
+    );
+    expect(afterRevoke.status).toBe(401);
+
+    // Re-revoking reports not-found (404 -> ApiError), matching the REST face.
+    const again = await client
+      .revokeCustomerReadToken(issued.id)
+      .catch((error: unknown) => error);
+    expect(String((again as Error).name)).toBe("ApiError");
   });
 });

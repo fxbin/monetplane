@@ -135,6 +135,41 @@ await client.captureReservation({
 // The remaining 20 are automatically released back to available
 ```
 
+## 9. Customer read tokens (browser-side reads)
+
+Your backend holds the `mp_app_*` secret; browsers must not. To let a customer's
+browser read **that one customer's** balance or entitlements, mint a short-lived
+read token and hand it to the page:
+
+```ts
+// Server side — render it into the page or return it from your own API
+const readToken = await client.createCustomerReadToken({
+  externalCustomerId: "user-123",
+  environment: "live",
+  ttlSeconds: 900,          // forced by the server into 60–3600
+});
+// readToken.token is the raw `mprt_...` value — it is shown exactly once
+// and MonetPlane stores only a hash. readToken.expiresAt is when it dies.
+```
+
+```ts
+// Browser side — plain fetch, no SDK and no appSecret involved
+const res = await fetch(`${MONETPLANE_BASE_URL}/api/credits/balance`, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    authorization: `Bearer ${readToken.token}`,
+  },
+  body: JSON.stringify({ creditType: "photo.credits", environment: "live" }),
+});
+```
+
+Rules the token enforces: scoped to **one** customer (a different
+`externalCustomerId` in the body is a 403), bound to the environment it was
+minted for, expires mandatorily, and resolves nothing after revocation. Revoke
+early with `client.revokeCustomerReadToken(readToken.id)` — by server-side id,
+because the raw token cannot be recovered from storage.
+
 ## Error handling
 
 The SDK exposes typed, provider-neutral errors:
@@ -168,6 +203,7 @@ try {
 - All credit mutations require an idempotency key to prevent double-charging.
 - Application isolation is enforced at the database level — one application cannot query or mutate another application's customers, credits, or entitlements.
 - **All money-mutating endpoints require the application credential.** Host-header-only access is read-only by design: checkout, credit mutations, usage reporting, portal sessions, and customer creation answer `401 credential_required` without a valid `mp_app_*` bearer.
+- **Browser reads use `mprt_*` read tokens, never the app secret.** A read token authorizes exactly one customer for at most an hour; treat it like a short-lived session cookie and mint it per page render.
 
 ## SDK method reference
 
@@ -175,6 +211,8 @@ try {
 |---|---|
 | `upsertCustomer` | Create or find a customer by external ID |
 | `createCustomerPortalSession` | Mint a short-lived, one-time customer portal session |
+| `createCustomerReadToken` | Mint a short-lived, customer-scoped read token for browser-side reads |
+| `revokeCustomerReadToken` | Revoke a read token by its server-side id |
 | `reportUsage` | Report metered usage against a meter (idempotent) |
 | `createCheckout` | Create a provider-hosted checkout session |
 | `getCreditBalance` | Check available and reserved credit balance |

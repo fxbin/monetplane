@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ApiError,
   AuthorizationError,
   createMonetPlaneClient,
   InsufficientCreditsError,
@@ -286,6 +287,135 @@ describe("MonetPlane SDK", () => {
     });
   });
 
+  describe("createCustomerReadToken", () => {
+    it("issues a token and posts the credential-authenticated route", async () => {
+      const seen: { request?: { url: string; init?: RequestInit } } = {};
+      const fetchImpl = (async (
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        seen.request = { url: String(input), init };
+        return new Response(
+          JSON.stringify({
+            id: "crt_1",
+            token: "mprt_raw",
+            expiresAt: "2026-10-04T12:00:00.000Z",
+            externalCustomerId: "user-1",
+            environment: "test",
+          }),
+          {
+            status: 201,
+            headers: { "content-type": "application/json" },
+          },
+        );
+      }) as typeof fetch;
+
+      const client = createMonetPlaneClient({
+        baseUrl: "https://api.test",
+        appSecret: "mp_app_test",
+        fetchImpl,
+      });
+
+      const result = await client.createCustomerReadToken({
+        externalCustomerId: "user-1",
+        ttlSeconds: 300,
+      });
+
+      expect(result.token).toMatch(/^mprt_/);
+      expect(result.expiresAt).toBe("2026-10-04T12:00:00.000Z");
+      expect(seen.request?.url).toBe(
+        "https://api.test/api/customer-read-tokens",
+      );
+      expect(seen.request?.init?.method).toBe("POST");
+      expect(
+        (seen.request?.init?.headers as Record<string, string>).authorization,
+      ).toBe("Bearer mp_app_test");
+      expect(JSON.parse(String(seen.request?.init?.body))).toEqual({
+        externalCustomerId: "user-1",
+        environment: undefined,
+        ttlSeconds: 300,
+      });
+    });
+  });
+
+  describe("revokeCustomerReadToken", () => {
+    it("DELETEs the token route and reports revocation", async () => {
+      const seen: { request?: { url: string; init?: RequestInit } } = {};
+      const fetchImpl = (async (
+        input: RequestInfo | URL,
+        init?: RequestInit,
+      ) => {
+        seen.request = { url: String(input), init };
+        return new Response(JSON.stringify({ revoked: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+
+      const client = createMonetPlaneClient({
+        baseUrl: "https://api.test",
+        appSecret: "mp_app_test",
+        fetchImpl,
+      });
+
+      const result = await client.revokeCustomerReadToken("crt_1");
+      expect(result.revoked).toBe(true);
+      expect(seen.request?.url).toBe(
+        "https://api.test/api/customer-read-tokens/crt_1",
+      );
+      expect(seen.request?.init?.method).toBe("DELETE");
+      expect(seen.request?.init?.body).toBeUndefined();
+    });
+
+    it("encodes the tokenId path segment", async () => {
+      const seen: { url?: string } = {};
+      const fetchImpl = (async (input: RequestInfo | URL) => {
+        seen.url = String(input);
+        return new Response(JSON.stringify({ revoked: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }) as typeof fetch;
+
+      const client = createMonetPlaneClient({
+        baseUrl: "https://api.test",
+        appSecret: "mp_app_test",
+        fetchImpl,
+      });
+
+      await client.revokeCustomerReadToken("crt/a b");
+      expect(seen.url).toBe(
+        "https://api.test/api/customer-read-tokens/crt%2Fa%20b",
+      );
+    });
+
+    it("throws ApiError (404) when the token is unknown or already revoked", async () => {
+      const fetchImpl = createFakeFetch([
+        {
+          match: (u) => u.includes("/api/customer-read-tokens/"),
+          status: 404,
+          body: {
+            error: "Read token not found or already revoked",
+            code: "not_found",
+          },
+        },
+      ]);
+
+      const client = createMonetPlaneClient({
+        baseUrl: "https://api.test",
+        appSecret: "mp_app_test",
+        fetchImpl,
+      });
+
+      const error = await client
+        .revokeCustomerReadToken("crt_gone")
+        .catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(ApiError);
+      expect((error as ApiError).statusCode).toBe(404);
+      expect((error as ApiError).code).toBe("not_found");
+    });
+  });
+
   describe("error handling", () => {
     it("throws AuthorizationError on 401", async () => {
       const fetchImpl = createFakeFetch([
@@ -341,11 +471,13 @@ describe("MonetPlane SDK", () => {
         "checkEntitlement",
         "createCheckout",
         "createCustomerPortalSession",
+        "createCustomerReadToken",
         "debitCredits",
         "getCreditBalance",
         "releaseReservation",
         "reportUsage",
         "reserveCredits",
+        "revokeCustomerReadToken",
         "upsertCustomer",
       ]);
     });

@@ -31,6 +31,8 @@ import type {
   CheckoutResult,
   CreditBalance,
   CustomerInput,
+  CustomerReadTokenInput,
+  CustomerReadTokenResult,
   CustomerResult,
   DebitCreditsInput,
   DebitCreditsResult,
@@ -46,6 +48,7 @@ import type {
   ReportUsageResult,
   ReserveCreditsInput,
   ReserveCreditsResult,
+  RevokeCustomerReadTokenResult,
 } from "./types";
 
 type Client = {
@@ -53,6 +56,12 @@ type Client = {
   createCustomerPortalSession(
     input: PortalSessionInput,
   ): Promise<PortalSessionResult>;
+  createCustomerReadToken(
+    input: CustomerReadTokenInput,
+  ): Promise<CustomerReadTokenResult>;
+  revokeCustomerReadToken(
+    tokenId: string,
+  ): Promise<RevokeCustomerReadTokenResult>;
   upsertCustomer(input: CustomerInput): Promise<CustomerResult>;
   getCreditBalance(
     externalCustomerId: string,
@@ -93,6 +102,7 @@ async function request(
   },
   path: string,
   body: Record<string, unknown> | null,
+  method: "POST" | "DELETE" = "POST",
 ): Promise<unknown> {
   const url = `${options.baseUrl}${path}`;
 
@@ -101,7 +111,7 @@ async function request(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs);
     response = await options.fetchImpl(url, {
-      method: "POST",
+      method,
       headers: {
         "content-type": "application/json",
         authorization: `Bearer ${options.appSecret}`,
@@ -158,6 +168,31 @@ export function createMonetPlaneClient(
     ): Promise<PortalSessionResult> {
       const data = await call("/api/portal/sessions", input);
       return data as PortalSessionResult;
+    },
+
+    async createCustomerReadToken(
+      input: CustomerReadTokenInput,
+    ): Promise<CustomerReadTokenResult> {
+      const data = await call("/api/customer-read-tokens", {
+        externalCustomerId: input.externalCustomerId,
+        environment: input.environment,
+        ttlSeconds: input.ttlSeconds,
+      });
+      return data as CustomerReadTokenResult;
+    },
+
+    async revokeCustomerReadToken(
+      tokenId: string,
+    ): Promise<RevokeCustomerReadTokenResult> {
+      // The raw token is unrecoverable (hash-only storage), so revocation is
+      // by server-side id — the id returned from createCustomerReadToken.
+      const data = await request(
+        { baseUrl, appSecret: options.appSecret, timeoutMs, fetchImpl },
+        `/api/customer-read-tokens/${encodeURIComponent(tokenId)}`,
+        null,
+        "DELETE",
+      );
+      return (data ?? { revoked: false }) as RevokeCustomerReadTokenResult;
     },
 
     async upsertCustomer(input: CustomerInput): Promise<CustomerResult> {
