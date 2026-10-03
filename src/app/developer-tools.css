@@ -421,6 +421,41 @@
   align-self: end;
 }
 
+/* Audit page (#UI fix): the plain auto-fit grid produced a 5-column layout at
+   mid widths that split the From/To date pair (To wrapped next to the action
+   buttons). Explicit tracks keep the six filters balanced: two rows of four
+   (row 2 = From, To, actions) by default, a single seven-item row on wide
+   screens, and a stacked layout on narrow screens — the date pair is
+   adjacent at every width. */
+.audit-filters {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.audit-filters .developer-filter-actions {
+  grid-column: span 2;
+  justify-self: start;
+}
+
+@media (min-width: 1500px) {
+  .audit-filters {
+    grid-template-columns: repeat(6, minmax(0, 1fr)) auto;
+  }
+
+  .audit-filters .developer-filter-actions {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .audit-filters {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .audit-filters .developer-filter-actions {
+    grid-column: auto;
+  }
+}
+
 .developer-filter-actions {
   min-height: 38px;
 }
