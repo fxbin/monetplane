@@ -20,7 +20,7 @@ Status: implemented — PR #116 (aeb89a4) 落地;接受的残余风险记录在�
 
 ## Consequences
 
-- **接受的残余风险**(2026-10 更新,MP-REV-06 / #127 处置):只读端点(/api/credits/balance、/api/entitlements/check)的 Host 回退保留,但已加**过渡控制**——host-only 读按 应用+客户端 每分钟限流(`MONETPLANE_HOST_READ_LIMIT`,默认 60),超额 429 `rate_limited` 并输出异常信号;凭证读不受限。攻击面仍限于"知道域名+externalCustomerId 可读该应用数据",但枚举/批量抓取被限流压制。**再议条件**:部署多实例(内存限流失效,需共享存储)或引入跨应用敏感数据时,收紧为凭证必选+短时效 customer token。
+- **接受的残余风险**(2026-10 更新,MP-REV-06 / #127 处置;round-2 复核后加固):只读端点(/api/credits/balance、/api/entitlements/check)的 Host 回退保留,但已加**过渡控制**——host-only 读限流(`MONETPLANE_HOST_READ_LIMIT` 正整数,默认 60/分钟),超额 429 `rate_labeled`;**窗口内首次越限**才输出异常信号(防日志洪泛);凭证读不受限。客户端身份**仅在 `MONETPLANE_TRUST_PROXY=true**(部署于会覆写 x-forwarded-for 的代理之后)时**取 XFF——否则所有 host-only 客户端共享每应用单一桶(轮换伪造头不能铸桶);窗口表硬上限 `MONETPLANE_HOST_READ_MAX_WINDOWS`,满且无过期时 **fail-closed**(键洪水退化为共享稀缺,不再增长内存)。攻击面仍限于"知道域名+externalCustomerId 可读该应用数据",但枚举/批量抓取被限流压制。**再议条件**:部署多实例(内存限流失效,需共享存储)或引入跨应用敏感数据时,收紧为凭证必选+短时效 customer token(终态跟踪:#138)。
 - 部署前置条件(必须项):生产环境设置 `AUTH_SECRET` 与 `CRON_SECRET`,并给 cron 路由配 5–15 分钟调度(见 `docs/credits-ledger.md`)。
 - 依赖 host 回退调用资金端点的集成方会从 200 变 401—— breaking change,已在 PR 发版说明中声明。
 

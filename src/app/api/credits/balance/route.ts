@@ -28,9 +28,13 @@ export async function POST(request: Request) {
     if (context.source === "host") {
       const quota = consumeHostReadQuota(context.application.id, request);
       if (!quota.allowed) {
-        console.error(
-          `[security] host-only read rate limit exceeded for application ${context.application.id} (${quota.limit}/min); possible enumeration attempt`,
-        );
+        if (quota.anomaly) {
+          // First breach of this window only — a flooding attacker must not
+          // also flood the logs (round-2 review note).
+          console.error(
+            `[security] host-only read rate limit exceeded for application ${context.application.id} (${quota.limit}/min); possible enumeration attempt`,
+          );
+        }
         return NextResponse.json(
           {
             error:
