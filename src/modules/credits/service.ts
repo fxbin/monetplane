@@ -86,6 +86,15 @@ export class CreditReservationTerminalStateError extends Error {
   }
 }
 
+export class CreditReservationEnvironmentMismatchError extends Error {
+  constructor(
+    message = "Credit reservation belongs to a different environment",
+  ) {
+    super(message);
+    this.name = "CreditReservationEnvironmentMismatchError";
+  }
+}
+
 function normalizeCreditType(value: string): string {
   const creditType = value.trim().toLowerCase();
   if (!creditType || !/^[a-z0-9][a-z0-9._-]*$/.test(creditType)) {
@@ -720,6 +729,7 @@ export async function reserveCredits(
 async function lockReservation(
   applicationId: string,
   reservationId: string,
+  environment: CreditEnvironment,
   db: CreditStore,
 ): Promise<CreditReservationRow> {
   const [reservation] = await db
@@ -734,6 +744,17 @@ async function lockReservation(
     .for("update")
     .limit(1);
   if (!reservation) throw new CreditReservationNotFoundError();
+  // Environment isolation (project review 2026-10-04, finding 1.5): a
+  // capture/release previously locked the reservation regardless of
+  // environment, so an omitted SDK-default environment could book ledger
+  // rows for a live reservation into the test namespace. Locking is
+  // deliberately by id first so a mismatch reports as a conflict instead
+  // of masquerading as "not found".
+  if (reservation.environment !== environment) {
+    throw new CreditReservationEnvironmentMismatchError(
+      `Reservation belongs to environment '${reservation.environment}' but was addressed as '${environment}'`,
+    );
+  }
   return reservation;
 }
 
@@ -777,6 +798,7 @@ export async function captureReservation(
     const reservation = await lockReservation(
       input.applicationId,
       input.reservationId,
+      environment,
       tx,
     );
     if (reservation.status === "captured") {
@@ -889,6 +911,7 @@ export async function releaseReservation(
     const reservation = await lockReservation(
       input.applicationId,
       input.reservationId,
+      environment,
       tx,
     );
     if (reservation.status === "released") {
