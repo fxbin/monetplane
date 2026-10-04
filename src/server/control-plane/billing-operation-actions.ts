@@ -33,7 +33,22 @@ import {
  * Admin routes derive it from the admin guard (operatorId + display name);
  * portal flows omit it and audit through their own customer-portal entries.
  */
-export type BillingOperationActor = { id: string; label?: string | null };
+export type BillingOperationActor = {
+  id: string;
+  label?: string | null;
+  /**
+   * Audit-shaping for non-admin callers (project review 2026-10-04,
+   * roundtable batch 1): portal flows pass their actor together with the
+   * customer_portal actor type and their own action/metadata so the
+   * completion audit is written INSIDE the journal transaction instead of
+   * best-effort after it. Admin callers leave these unset and get the
+   * admin_session defaults.
+   */
+  actorType?: "admin_session" | "customer_portal";
+  auditAction?: string;
+  auditMetadata?: Record<string, unknown>;
+  request?: Request;
+};
 
 function auditEnvironmentOf(environment: string): AuditEnvironment {
   return environment === "live" || environment === "test" ? environment : null;
@@ -42,10 +57,11 @@ function auditEnvironmentOf(environment: string): AuditEnvironment {
 /**
  * Records the operation OUTCOME audit entry inside the same transaction that
  * completes the journal row, so the audit log cannot diverge from the journal
- * (audit A4). Writes only when an operator actor is supplied: admin routes
- * always supply one, portal flows keep their own customer-portal audit. When
- * the transaction rolls back (reconciliation failure), no audit entry is
- * written — failed and needs_reconciliation outcomes stay journal-only.
+ * (audit A4). Writes only when an actor is supplied: admin routes pass the
+ * session actor, portal flows pass a customer_portal actor with their own
+ * action/metadata (both land in-transaction). When the transaction rolls
+ * back (reconciliation failure), no audit entry is written — failed and
+ * needs_reconciliation outcomes stay journal-only.
  */
 async function recordOperationCompletionAudit(
   tx: Pick<Database, "insert">,
@@ -59,14 +75,20 @@ async function recordOperationCompletionAudit(
     {
       applicationId,
       environment: auditEnvironmentOf(operation.environment),
-      action: isRefund ? "payment.refunded" : "subscription.cancelled",
+      action:
+        actor.auditAction ??
+        (isRefund ? "payment.refunded" : "subscription.cancelled"),
       resourceType: "billing_operation",
       resourceId: operation.id,
-      metadata: isRefund
-        ? { paymentId: operation.resourceId }
-        : { subscriptionId: operation.resourceId },
+      metadata: {
+        ...(isRefund
+          ? { paymentId: operation.resourceId }
+          : { subscriptionId: operation.resourceId }),
+        ...(actor.auditMetadata ?? {}),
+      },
       actor,
-      actorType: "admin_session",
+      actorType: actor.actorType ?? "admin_session",
+      request: actor.request,
     },
     tx,
   );
@@ -341,6 +363,10 @@ export async function refundPaymentWithJournal(
       {
         providerPaymentId: payment.providerPaymentId,
         amountMinor: payment.amountMinor,
+        // Provider-side idempotency: retries of this operation reuse the
+        // journal key so the provider (e.g. PayPal via PayPal-Request-Id)
+        // can dedupe a timed-out request instead of refunding twice.
+        requestId: operation.idempotencyKey,
       },
     );
   } catch (error) {
@@ -551,6 +577,8 @@ export async function retryBillingOperation(
         {
           providerPaymentId: source.providerResourceId,
           amountMinor,
+          // Provider-side idempotency (see refundPaymentWithJournal).
+          requestId: operation.idempotencyKey,
         },
       );
     } catch (error) {

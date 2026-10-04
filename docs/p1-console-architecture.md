@@ -34,6 +34,15 @@ not import `next/*`/`react`, control-plane may not import concrete provider
 adapters). The test contains a small reviewed allowlist — each entry is a
 decision, not an invitation; add entries only with the same scrutiny.
 
+API routes (`src/app/api/**`) follow a deliberately narrower rule (Phase 2.2
+decision, 2026-10-04 roundtable): routes must not import `@/db` directly —
+they orchestrate through control-plane functions or module services. Legacy
+offenders sit in a zero-waiver ratchet whitelist that only shrinks (the test
+asserts the count never grows); see
+`.agents/notes/implemented/architecture/2026-10-04-api-layering-ratchet.md`.
+Wider convergence (route → control-plane for money paths) happens
+opportunistically as routes are touched, not by deadline.
+
 ## Console UI primitives
 
 `src/components/ui/console.tsx` and `src/components/ui/DataTable.tsx` are

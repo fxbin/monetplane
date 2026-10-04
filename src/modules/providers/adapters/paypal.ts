@@ -26,12 +26,12 @@ import type {
 } from "../contract";
 import {
   InvalidProviderWebhookSignatureError,
-  ProviderOperationError,
   UnsupportedProviderCapabilityError,
 } from "../contract";
 // Shared adapter kit (audit A8): JSON guards, credential access, base URL
 // resolution, and fetch-JSON boilerplate live in ./shared for all adapters.
 import {
+  classifyHttpFailure,
   headerValue,
   type JsonRecord,
   numberValue,
@@ -282,16 +282,12 @@ export function createPayPalProviderAdapter(
         payload,
         `PayPal request failed (${status})`,
       );
-      // Deterministic schema/validation rejections are retryable after
-      // input fixes; everything else stays outcome-uncertain (fail-safe).
-      // Audit A8: this now throws the CLASSIFIED error so
-      // classifyProviderOperationFailure actually sees "rejected" (the
-      // former bare Error with an attached failureKind property was
-      // silently classified as outcome_uncertain).
-      if (status === 400 || status === 422) {
-        throw new ProviderOperationError(message, "rejected");
-      }
-      throw new Error(message);
+      // Shared classification (roundtable batch 1): 4xx never executed
+      // server-side → retryable-after-fix; 5xx may have executed → stays
+      // outcome-uncertain so the journal never blind-retries it.
+      // (Audit A8 history: this must throw the CLASSIFIED error so
+      // classifyProviderOperationFailure sees the failure kind.)
+      throw classifyHttpFailure(status, message);
     }
     return payload;
   }
@@ -414,10 +410,19 @@ export function createPayPalProviderAdapter(
       if (!id || !currency) {
         throw new Error("PayPal capture response is incomplete");
       }
+      const amountMinor = parseProviderAmountToMinor(amount?.value, currency);
+      if (amountMinor === undefined) {
+        // Fail closed (project review 2026-10-04, finding 1.6): a missing
+        // or non-numeric amount must not normalize to a "0 minor" success,
+        // which would silently mint a free payment for reconciliation.
+        throw new Error(
+          `PayPal capture ${id} returned an unparseable amount for ${currency}`,
+        );
+      }
       return {
         providerPaymentId: id,
         status: mapPaymentStatus(payload.status),
-        amountMinor: parseProviderAmountToMinor(amount?.value, currency) ?? 0,
+        amountMinor,
         currency,
         providerCustomerId: stringValue(recordValue(payload.payer)?.payer_id),
       };
@@ -482,10 +487,22 @@ export function createPayPalProviderAdapter(
           value: minorToDisplayString(input.amountMinor, currency),
         };
       }
+      // Provider-side idempotency: PayPal dedupes refund requests that
+      // carry the same PayPal-Request-Id, so replaying the SAME journal
+      // operation's provider call cannot produce a second real refund.
+      // (Explicit retries create a new journal operation with its own key
+      // — by design, since retry is only allowed after a deterministic
+      // rejection, where PayPal never saw the original request.)
       const payload = await paypalCall(
         connection,
         `/v2/payments/captures/${encodeURIComponent(input.providerPaymentId)}/refund`,
-        { method: "POST", body: JSON.stringify(body) },
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: input.requestId
+            ? { "PayPal-Request-Id": input.requestId }
+            : undefined,
+        },
       );
       const id = stringValue(payload.id);
       if (!id) throw new Error("PayPal refund response is missing id");
@@ -741,12 +758,28 @@ export function createPayPalProviderAdapter(
         const id = stringValue(resource.id);
         const agreementId = stringValue(resource.billing_agreement_id);
         if (!id || !agreementId) return unknownEvent();
+        // Sale events carry no billing period. Without boundaries the
+        // commerce layer keys this cycle's grants off the subscription's
+        // previous period, colliding with the activation grant's
+        // idempotency key — the cycle is paid but delivers nothing. Fetch
+        // the authoritative period from the subscription API instead.
+        // Failures throw on purpose: PayPal redelivers the webhook, which
+        // is far safer than silently mis-accounting a paid cycle.
+        const subscription = normalizeSubscriptionObject(
+          await paypalCall(
+            connection,
+            `/v1/billing/subscriptions/${encodeURIComponent(agreementId)}`,
+          ),
+        );
         return {
           ...base,
           ...correlation,
           type: "subscription.renewed",
           providerSubscriptionId: agreementId,
           providerPaymentId: id,
+          subscriptionStatus: subscription.status,
+          subscriptionPeriodStart: subscription.currentPeriodStart,
+          subscriptionPeriodEnd: subscription.currentPeriodEnd,
           ...amountFields,
           rawEventReference: providerEventId,
         };

@@ -231,6 +231,12 @@ CreditTransaction +N grant.subscription
 
 A failed renewal never grants a new period's credits.
 
+Renewal grants are idempotent per billing cycle: the grant idempotency key derives
+from the renewal's period start, and a renewal that arrives without its own period
+boundaries (e.g. PayPal `PAYMENT.SALE.COMPLETED`, enriched from the subscription API
+when possible) keys off the provider event id instead — stable across redeliveries,
+unique per cycle, so a paid cycle can never collide with the previous cycle's grants.
+
 P0 grants accumulate. Credit expiration, rollover limits, and bucket-consumption policy are intentionally deferred until after the basic ledger is proven.
 
 ## API semantics

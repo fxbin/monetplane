@@ -127,8 +127,15 @@ get right is **failure classification**:
   the operation as `needs_reconciliation`. When unsure which kind applies,
   use `outcome_uncertain` — fail-safe beats fail-fast with money.
 - `UnsupportedProviderCapabilityError` — thrown by the runtime when a caller
-  invokes an operation the connection's capabilities do not claim. You do
-  not throw this yourself.
+  invokes an operation the connection's capabilities do not claim. You do not
+  throw this yourself.
+
+For plain HTTP failures, do not hand-classify: route them through
+`classifyHttpFailure(status, message)` from the shared kit — any 4xx
+is `rejected` (the request never executed server-side), 5xx and unknown
+statuses stay `outcome_uncertain`. All three current adapters use it; a fourth
+adapter that classifies differently will drift from operator retry semantics
+(roundtable batch 1).
 
 ## Shared adapter kit (reuse, don't re-implement)
 
@@ -136,9 +143,10 @@ get right is **failure classification**:
 copy-paste: JSON guards (`isRecord`, `stringValue`, `numberValue`,
 `recordValue`, `headerValue`), `requiredCredential` (throws a classified
 `ProviderOperationError(..., "rejected")` — missing credentials are
-deterministic refusals, retry-safe after input fixes), `providerBaseUrl`, and
-`providerFetchJson` (fetch with a 10s `AbortSignal` timeout — provider calls
-must never hang indefinitely). Currency/decimals handling comes from
+deterministic refusals, retry-safe after input fixes), `providerBaseUrl`,
+`classifyHttpFailure`, and `providerFetchJson` (fetch with a 10s
+`AbortSignal` timeout — provider calls must never hang indefinitely).
+Currency/decimals handling comes from
 `src/lib/money.ts` (`currencyDecimals`, `parseProviderAmountToMinor`) — never
 keep a provider-local zero-decimal table: the divergent tables that predated
 the unified registry produced provider-dependent 100x price errors.

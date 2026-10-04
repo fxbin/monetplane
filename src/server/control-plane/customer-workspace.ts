@@ -12,12 +12,13 @@ import {
   webhookEvents,
 } from "@/modules/commerce/schema";
 import { creditAccounts, creditTransactions } from "@/modules/credits/schema";
-import { grantCredits } from "@/modules/credits/service";
+import { grantCreditsInTransaction } from "@/modules/credits/service";
 import { applicationCustomers } from "@/modules/customers/schema";
 import { entitlementGrants } from "@/modules/entitlements/schema";
 import { getProviderCapabilities } from "@/modules/providers/runtime";
 import { providerConnections } from "@/modules/providers/schema";
 import { usageEvents, usageMeters } from "@/modules/usage/schema";
+import { recordAuditEntry, resolveSessionActor } from "./audit";
 
 export type CustomerListFilter = "all" | "subscribed" | "credits";
 
@@ -501,6 +502,16 @@ export async function grantCustomerCredits(
     idempotencyKey?: string;
   },
   environment: "test" | "live" = "test",
+  audit?: {
+    /**
+     * When present, the audit row is written INSIDE the grant's
+     * transaction (project review 2026-10-04, roundtable batch 1) — a
+     * crash between ledger write and audit write can no longer lose the
+     * audit trail for a granted mutation.
+     */
+    request?: Request;
+    actor?: { id: string; label?: string | null };
+  },
 ) {
   await requireApplicationCustomer(applicationId, applicationCustomerId);
   if (!Number.isSafeInteger(input.amount) || input.amount <= 0) {
@@ -509,16 +520,45 @@ export async function grantCustomerCredits(
 
   const clientKey = input.idempotencyKey?.trim();
   const sourceId = clientKey ? `admin_${clientKey}` : `admin_${randomUUID()}`;
-  return grantCredits({
-    applicationId,
-    applicationCustomerId,
-    creditType: input.creditType,
-    amount: input.amount,
-    transactionType: "adjustment.admin",
-    sourceType: "admin",
-    sourceId,
-    environment,
-    idempotencyKey: `admin-credit:${applicationCustomerId}:${sourceId}`,
-    metadata: { note: input.note?.trim() || undefined },
+  // Resolve the session actor before opening the transaction: auth() must
+  // not run inside the tx callback.
+  const actor =
+    audit?.actor ?? (audit ? await resolveSessionActor() : undefined);
+  return getDb().transaction(async (tx) => {
+    const result = await grantCreditsInTransaction(
+      {
+        applicationId,
+        applicationCustomerId,
+        creditType: input.creditType,
+        amount: input.amount,
+        transactionType: "adjustment.admin",
+        sourceType: "admin",
+        sourceId,
+        environment,
+        idempotencyKey: `admin-credit:${applicationCustomerId}:${sourceId}`,
+        metadata: { note: input.note?.trim() || undefined },
+      },
+      tx,
+    );
+    if (audit) {
+      await recordAuditEntry(
+        {
+          applicationId,
+          environment,
+          action: "credits.granted",
+          resourceType: "credit_transaction",
+          resourceId: result.transaction.id,
+          metadata: {
+            customerId: applicationCustomerId,
+            amount: input.amount,
+            creditType: input.creditType,
+          },
+          request: audit.request,
+          ...(actor ? { actor } : {}),
+        },
+        tx,
+      );
+    }
+    return result;
   });
 }

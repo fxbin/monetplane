@@ -135,6 +135,11 @@ await client.captureReservation({
 // The remaining 20 are automatically released back to available
 ```
 
+Pass the same `environment` on reserve, capture, and release. A reservation belongs
+to the environment it was reserved in; addressing it from another environment fails
+with `409 environment_mismatch` instead of booking the ledger into the wrong
+namespace. Omitting `environment` currently defaults to `test` (deprecated).
+
 ## 9. Customer read tokens (browser-side reads)
 
 Your backend holds the `mp_app_*` secret; browsers must not. To let a customer's

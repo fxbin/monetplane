@@ -36,6 +36,7 @@ import {
 // Shared adapter kit (audit A8): JSON guards, credential access, and
 // webhook JSON scaffolding live in ./shared for all adapters.
 import {
+  classifyHttpFailure,
   headerValue,
   isRecord,
   type JsonRecord,
@@ -169,12 +170,11 @@ function classifySdkError(
   operation: string,
 ): ProviderOperationError {
   if (error instanceof WaffoPancakeError) {
-    const message = `Waffo rejected ${operation} (HTTP ${error.status})`;
-    // 4xx is a deterministic provider rejection; 5xx may have executed
-    // server-side, so it stays uncertain (never blind-retried).
-    return new ProviderOperationError(
-      message,
-      error.status >= 500 ? "outcome_uncertain" : "rejected",
+    // Shared classification (roundtable batch 1) — also fixes status 0
+    // (network/unknown) previously falling into "rejected".
+    return classifyHttpFailure(
+      error.status,
+      `Waffo rejected ${operation} (HTTP ${error.status})`,
     );
   }
   const message =
@@ -218,25 +218,39 @@ function parsePancakeEvent(rawBody: string): ParsedPancakeEvent {
   return parsed as unknown as ParsedPancakeEvent;
 }
 
+/**
+ * Map Pancake `orderStatus` to our normalized subscription status.
+ *
+ * Fail-closed by design: entitlement grants require status "active", so a
+ * missing or unrecognized orderStatus must never infer "active". Known
+ * values follow the Pancake subscription state machine (SDK
+ * SubscriptionOrderStatus: pending -> active -> canceling/past_due ->
+ * canceled/expired; closed = never-activated terminal). Per the SDK docs,
+ * orderStatus is absent only on `subscription.payment_succeeded`, which is
+ * normalized as a payment event and never reaches this function.
+ */
 function subscriptionStatusFrom(
   orderStatus: string | undefined,
-  eventType: string,
 ): NormalizedSubscription["status"] {
   switch (orderStatus) {
     case "active":
+    case "canceling":
+      // "canceling" still delivers service until period end; the
+      // scheduled cancellation is expressed via cancelAtPeriodEnd.
       return "active";
     case "past_due":
     case "past-due":
       return "past_due";
     case "canceled":
     case "cancelled":
+    case "closed":
       return "cancelled";
     case "expired":
       return "expired";
-    case "pending":
-      return "pending";
     default:
-      return eventType === "subscription.activated" ? "active" : "active";
+      // Includes "pending", a missing value, and any unrecognized status:
+      // never infer active.
+      return "pending";
   }
 }
 
@@ -329,10 +343,7 @@ function normalizeWaffoPancakeWebhook(
             ? "subscription.renewed"
             : "subscription.updated",
         providerSubscriptionId: data.orderId,
-        subscriptionStatus: subscriptionStatusFrom(
-          data.orderStatus,
-          event.eventType,
-        ),
+        subscriptionStatus: subscriptionStatusFrom(data.orderStatus),
         subscriptionPeriodStart: stringValue(data.currentPeriodStart),
         subscriptionPeriodEnd: stringValue(data.currentPeriodEnd),
         cancelAtPeriodEnd: event.eventType === "subscription.canceling",

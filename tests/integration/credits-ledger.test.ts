@@ -326,6 +326,83 @@ describe("atomic credits ledger", () => {
     expect([25, 40]).toContain(balance.available);
   });
 
+  it("refuses capture/release addressed at the wrong environment (isolation)", async () => {
+    // Regression (project review 2026-10-04, finding 1.5): capture/release
+    // previously locked the reservation regardless of environment, so an
+    // omitted SDK-default environment booked ledger rows for a live
+    // reservation into the test namespace.
+    const fixture = await createFixture("credits-env");
+    await grantCredits(
+      {
+        applicationId: fixture.app.id,
+        applicationCustomerId: fixture.applicationCustomer.id,
+        creditType: "agent.run",
+        amount: 50,
+        transactionType: "grant.promotion",
+        sourceType: "test",
+        sourceId: "seed-live",
+        idempotencyKey: "seed-live",
+        environment: "live",
+      },
+      db,
+    );
+    const reserved = await reserveCredits(
+      {
+        applicationId: fixture.app.id,
+        externalCustomerId: "user-1",
+        creditType: "agent.run",
+        amount: 30,
+        referenceType: "agent_job",
+        referenceId: "job-env",
+        idempotencyKey: "reserve-live",
+        environment: "live",
+      },
+      db,
+    );
+
+    await expect(
+      captureReservation(
+        {
+          applicationId: fixture.app.id,
+          reservationId: reserved.reservation.id,
+          amount: 20,
+          idempotencyKey: "capture-live",
+          // environment omitted — resolves to the deprecated 'test' default
+        },
+        db,
+      ),
+    ).rejects.toMatchObject({
+      name: "CreditReservationEnvironmentMismatchError",
+    });
+
+    await expect(
+      releaseReservation(
+        {
+          applicationId: fixture.app.id,
+          reservationId: reserved.reservation.id,
+          idempotencyKey: "release-live",
+          // environment omitted — resolves to the deprecated 'test' default
+        },
+        db,
+      ),
+    ).rejects.toMatchObject({
+      name: "CreditReservationEnvironmentMismatchError",
+    });
+
+    // The reservation is untouched; same-environment capture still works.
+    const captured = await captureReservation(
+      {
+        applicationId: fixture.app.id,
+        reservationId: reserved.reservation.id,
+        amount: 20,
+        idempotencyKey: "capture-live",
+        environment: "live",
+      },
+      db,
+    );
+    expect(captured.duplicate).toBe(false);
+  });
+
   it("isolates balances by application and restores debited usage through an auditable refund path", async () => {
     const first = await createFixture("credits-first");
     const second = await createFixture("credits-second");

@@ -61,6 +61,28 @@ export function correlationIdFrom(request: Request | undefined): string {
   return `req_${randomUUID()}`;
 }
 
+/**
+ * Session-derived audit actor for admin routes. Exported so callers that
+ * must write the audit row inside a transaction can resolve the actor
+ * BEFORE opening it (auth() must not run inside a tx callback).
+ */
+export async function resolveSessionActor(): Promise<{
+  id: string;
+  label: string | null;
+}> {
+  // Lazy import keeps this module loadable outside the Next.js runtime
+  // (integration tests always pass an explicit actor).
+  const { auth } = await import("@/auth");
+  const session = await auth();
+  return {
+    id: session?.user?.id ?? session?.user?.email ?? "unknown-admin",
+    label:
+      (session?.user as { name?: string } | undefined)?.name ??
+      session?.user?.email ??
+      null,
+  };
+}
+
 export async function recordAuditEntry(
   input: {
     applicationId: string | null;
@@ -76,20 +98,7 @@ export async function recordAuditEntry(
   },
   db: AuditDb = getDb(),
 ) {
-  let actor = input.actor;
-  if (!actor) {
-    // Lazy import keeps this module loadable outside the Next.js runtime
-    // (integration tests always pass an explicit actor).
-    const { auth } = await import("@/auth");
-    const session = await auth();
-    actor = {
-      id: session?.user?.id ?? session?.user?.email ?? "unknown-admin",
-      label:
-        (session?.user as { name?: string } | undefined)?.name ??
-        session?.user?.email ??
-        null,
-    };
-  }
+  const actor = input.actor ?? (await resolveSessionActor());
 
   const [entry] = await db
     .insert(operatorAuditLog)

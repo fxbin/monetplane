@@ -1,6 +1,8 @@
+import { describe, expect, it } from "vitest";
 import { createWaffoProviderAdapter } from "../../src/modules/providers/adapters/waffo";
 import type { ProviderConnectionContext } from "../../src/modules/providers/contract";
 import { defineProviderAdapterContractTests } from "./adapter-contract";
+import { adapterWith, pancakeFake } from "./waffo-pancake-fake";
 
 const connection: ProviderConnectionContext = {
   id: "pc_waffo_contract",
@@ -15,67 +17,6 @@ const connection: ProviderConnectionContext = {
     storeId: "STO_contracttest",
   },
 };
-
-/** In-memory fake of the pancake-ts surface the adapter consumes. */
-export function pancakeFake() {
-  const calls: Array<{ op: string; params: Record<string, unknown> }> = [];
-  const client = {
-    onetimeProducts: {
-      create: async (params: Record<string, unknown>) => {
-        calls.push({ op: "onetimeProducts.create", params });
-        return { product: { id: "PROD_onetime_shell" } };
-      },
-    },
-    subscriptionProducts: {
-      create: async (params: Record<string, unknown>) => {
-        calls.push({ op: "subscriptionProducts.create", params });
-        return { product: { id: "PROD_subscription_shell" } };
-      },
-    },
-    checkout: {
-      createSession: async (params: Record<string, unknown>) => {
-        calls.push({ op: "checkout.createSession", params });
-        return {
-          sessionId: "CHK_contract_1",
-          checkoutUrl: "https://checkout.waffo.ai/CHK_contract_1",
-          expiresAt: "2026-09-20T00:00:00.000Z",
-        };
-      },
-    },
-    orders: {
-      cancelSubscription: async (params: Record<string, unknown>) => {
-        calls.push({ op: "orders.cancelSubscription", params });
-        return { orderId: String(params.orderId), status: "canceled" };
-      },
-    },
-    auth: {
-      issueSessionToken: async (params: Record<string, unknown>) => {
-        calls.push({ op: "auth.issueSessionToken", params });
-        return { token: "session_token" };
-      },
-    },
-    customer: (_token: string, _options?: Record<string, unknown>) => ({
-      createRefundTicket: async (params: Record<string, unknown>) => {
-        calls.push({ op: "customer.createRefundTicket", params });
-        return {
-          ticket: {
-            id: "TCK_refund_1",
-            status: "pending",
-            subjectId: String(params.paymentId),
-          },
-        };
-      },
-    }),
-  };
-  return { client, calls };
-}
-
-export function adapterWith(fake: ReturnType<typeof pancakeFake>) {
-  return createWaffoProviderAdapter({
-    clientFactory: () => fake.client as never,
-    verifyWebhookImpl: (payload) => JSON.parse(payload) as never,
-  });
-}
 
 const fake = pancakeFake();
 const adapter = adapterWith(fake);
@@ -160,4 +101,90 @@ defineProviderAdapterContractTests({
   expectedEventId: "wh_delivery_contract_1",
   expectedEventType: "payment.succeeded",
   expectedUnknownEventName: "definitely.not.a.real.event",
+});
+
+// Fail-closed subscription status mapping (project review 2026-10-04,
+// finding 1.1): a missing or unrecognized Pancake orderStatus must never
+// infer "active", because webhook entitlement grants key off status ===
+// "active". Known values follow the SDK SubscriptionOrderStatus machine.
+describe("waffo subscription status normalization (fail-closed)", () => {
+  const subscriptionEventBody = (overrides: {
+    eventType: string;
+    orderStatus?: string;
+  }) => {
+    const data: Record<string, unknown> = {
+      orderId: "ORD_sub_status",
+      buyerEmail: "buyer@test",
+      currency: "USD",
+      amount: "29.00",
+      currentPeriodStart: "2026-09-01T00:00:00.000Z",
+      currentPeriodEnd: "2026-10-01T00:00:00.000Z",
+    };
+    if (overrides.orderStatus !== undefined) {
+      data.orderStatus = overrides.orderStatus;
+    }
+    return JSON.stringify({
+      id: `wh_delivery_${overrides.eventType}_${overrides.orderStatus ?? "absent"}`,
+      timestamp: "2026-09-19T00:00:00.000Z",
+      eventType: overrides.eventType,
+      eventId: "PAY_sub_status",
+      storeId: "STO_contracttest",
+      storeName: "Contract Store",
+      mode: "test",
+      data,
+    });
+  };
+
+  const normalize = async (body: string) =>
+    adapter.normalizeWebhook(connection, { rawBody: body });
+
+  it("infers pending when orderStatus is absent on a past_due event", async () => {
+    const event = await normalize(
+      subscriptionEventBody({ eventType: "subscription.past_due" }),
+    );
+    expect(event.type).toBe("subscription.updated");
+    expect(event.subscriptionStatus).toBe("pending");
+  });
+
+  it("infers pending for an unrecognized orderStatus value", async () => {
+    const event = await normalize(
+      subscriptionEventBody({
+        eventType: "subscription.activated",
+        orderStatus: "brand_new_future_status",
+      }),
+    );
+    expect(event.subscriptionStatus).toBe("pending");
+  });
+
+  it("maps past_due orderStatus to past_due", async () => {
+    const event = await normalize(
+      subscriptionEventBody({
+        eventType: "subscription.past_due",
+        orderStatus: "past_due",
+      }),
+    );
+    expect(event.subscriptionStatus).toBe("past_due");
+  });
+
+  it("keeps service active for canceling with cancelAtPeriodEnd", async () => {
+    const event = await normalize(
+      subscriptionEventBody({
+        eventType: "subscription.canceling",
+        orderStatus: "canceling",
+      }),
+    );
+    expect(event.type).toBe("subscription.updated");
+    expect(event.subscriptionStatus).toBe("active");
+    expect(event.cancelAtPeriodEnd).toBe(true);
+  });
+
+  it("maps closed (never-activated terminal) to cancelled", async () => {
+    const event = await normalize(
+      subscriptionEventBody({
+        eventType: "subscription.plan_change_failed",
+        orderStatus: "closed",
+      }),
+    );
+    expect(event.subscriptionStatus).toBe("cancelled");
+  });
 });

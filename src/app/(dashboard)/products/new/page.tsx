@@ -53,6 +53,7 @@ export default async function NewProductPage() {
           provider: provider.provider,
           name: provider.name,
           mode: provider.mode,
+          capabilities: provider.capabilities,
         }))}
       />
     </PageContainer>

@@ -1006,14 +1006,12 @@ export async function processProviderWebhook(
           );
         })();
 
+        const eventPeriodStart = parseEventDate(event.subscriptionPeriodStart);
+        const eventPeriodEnd = parseEventDate(event.subscriptionPeriodEnd);
         const periodStart =
-          parseEventDate(event.subscriptionPeriodStart) ??
-          existingSubscription?.currentPeriodStart ??
-          null;
+          eventPeriodStart ?? existingSubscription?.currentPeriodStart ?? null;
         const periodEnd =
-          parseEventDate(event.subscriptionPeriodEnd) ??
-          existingSubscription?.currentPeriodEnd ??
-          null;
+          eventPeriodEnd ?? existingSubscription?.currentPeriodEnd ?? null;
         const cancelAtPeriodEnd =
           event.cancelAtPeriodEnd ??
           existingSubscription?.cancelAtPeriodEnd ??
@@ -1097,6 +1095,16 @@ export async function processProviderWebhook(
               "Active subscription entitlement requires period boundaries",
             );
           }
+          // A renewal that arrives without its own period boundaries must
+          // not key grants off the stored (stale) period: those keys
+          // collide with the previous cycle's grants, so the renewal
+          // delivers nothing while the customer paid. Key grants off the
+          // provider event id instead — stable across redeliveries
+          // (idempotent replay), unique per billing-cycle event.
+          const grantPeriodKey =
+            event.type === "subscription.renewed" && !eventPeriodStart
+              ? `event:${event.providerEventId}`
+              : periodStart.toISOString();
           const items = await tx
             .select({
               productId: subscriptionItems.productId,
@@ -1114,7 +1122,7 @@ export async function processProviderWebhook(
               sourceEventId: event.providerEventId,
               validFrom: periodStart,
               validUntil: periodEnd,
-              periodKey: periodStart.toISOString(),
+              periodKey: grantPeriodKey,
               environment,
             },
             tx,
@@ -1134,7 +1142,7 @@ export async function processProviderWebhook(
                 sourceId: subscription.id,
                 environment,
                 sourceEventId: event.providerEventId,
-                periodKey: periodStart.toISOString(),
+                periodKey: grantPeriodKey,
               },
               tx,
             );

@@ -1,6 +1,10 @@
 import { createHmac } from "node:crypto";
+import { describe, expect, it } from "vitest";
 import { createCreemProviderAdapter } from "../../src/modules/providers/adapters/creem";
-import type { ProviderConnectionContext } from "../../src/modules/providers/contract";
+import {
+  type ProviderConnectionContext,
+  ProviderOperationError,
+} from "../../src/modules/providers/contract";
 import { defineProviderAdapterContractTests } from "./adapter-contract";
 
 const webhookSecret = "creem-contract-secret";
@@ -119,4 +123,102 @@ defineProviderAdapterContractTests({
   expectedEventId: "evt_contract",
   expectedEventType: "payment.succeeded",
   expectedUnknownEventName: "definitely.not.a.real.event",
+});
+
+// Money discipline (project review 2026-10-04, finding 1.6): Creem amount
+// fields are minor-unit integers; a finite non-integer must fail closed
+// during normalization instead of entering the ledger as a plausible
+// integer (e.g. a display-unit value leaking into an amount field).
+describe("creem amount normalization fails closed on non-integer amounts", () => {
+  async function normalizePaidAmount(amount: unknown) {
+    const payload = JSON.stringify({
+      id: "evt_money_contract",
+      eventType: "checkout.completed",
+      created_at: 1787076000000,
+      object: {
+        id: "ch_money_1",
+        request_id: "ord_money",
+        metadata: {
+          monetplane_order_id: "ord_money",
+          monetplane_customer_id: "cus_money",
+        },
+        customer: { id: "cust_money_1" },
+        order: {
+          transaction: "tran_money_1",
+          amount_paid: amount,
+          currency: "USD",
+          type: "onetime",
+        },
+      },
+    });
+    const verified = await adapter.verifyWebhook(connection, {
+      rawBody: payload,
+      headers: signWebhook(payload),
+    });
+    return adapter.normalizeWebhook(connection, verified);
+  }
+
+  it("accepts integer minor-unit amounts", async () => {
+    const event = await normalizePaidAmount(2500);
+    expect(event.amountMinor).toBe(2500);
+  });
+
+  it("rejects a fractional amount instead of booking it", async () => {
+    await expect(normalizePaidAmount(25.5)).rejects.toThrow(
+      /not a safe integer/,
+    );
+  });
+
+  it("leaves a missing amount undefined for downstream fail-closed validation", async () => {
+    const event = await normalizePaidAmount(undefined);
+    expect(event.amountMinor).toBeUndefined();
+  });
+});
+
+/**
+ * Failure classification (roundtable batch 1): creemRequest previously
+ * threw a bare Error for every non-2xx, so deterministic 4xx rejections
+ * were classified outcome_uncertain — operators could NEVER retry a failed
+ * Creem operation, because retryBillingOperation only allows "rejected".
+ */
+describe("creem HTTP failure classification", () => {
+  function adapterWithFailureStatus(status: number, body: string) {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/v1/oauth2/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "x", expires_in: 32400 }),
+        );
+      }
+      return new Response(body, { status });
+    };
+    return createCreemProviderAdapter({
+      fetchImpl,
+      baseUrls: { test: "https://creem.test" },
+    });
+  }
+
+  it("classifies deterministic 4xx as rejected (retryable after a fix)", async () => {
+    const adapter = adapterWithFailureStatus(
+      400,
+      JSON.stringify({ message: "transaction_id is invalid" }),
+    );
+    const error = await adapter
+      .refundPayment(connection, { providerPaymentId: "tran_bad" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProviderOperationError);
+    expect((error as ProviderOperationError).failureKind).toBe("rejected");
+    expect((error as Error).message).toContain("transaction_id is invalid");
+  });
+
+  it("keeps 5xx outcome-uncertain so the journal never blind-retries", async () => {
+    const adapter = adapterWithFailureStatus(503, JSON.stringify({}));
+    const error = await adapter
+      .refundPayment(connection, { providerPaymentId: "tran_flaky" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProviderOperationError);
+    expect((error as ProviderOperationError).failureKind).toBe(
+      "outcome_uncertain",
+    );
+  });
 });

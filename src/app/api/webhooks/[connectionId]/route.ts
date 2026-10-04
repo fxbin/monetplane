@@ -18,6 +18,8 @@ import { publishBillingLifecycleEvent } from "@/server/control-plane/billing-eve
  *
  * Response policy (replaces the blanket 200 of #97):
  * - signature failure -> 401 (provider/scanner sees the rejection)
+ * - unknown/revoked/inactive connection or unregistered provider -> 404
+ *   (permanent: no redelivery can fix it)
  * - permanent validation failure (event data inconsistent with recorded
  *   state) -> 422 processed:false; the event is durably recorded as
  *   `failed` in the inbox for inspection and no provider retry can fix it
@@ -88,6 +90,16 @@ export async function POST(
         // catch answers 404 so the operator fixes the deployment instead of
         // the provider retrying.
         throw error;
+      }
+      if (name === "ProviderConnectionNotFoundError") {
+        // The connection exists (checked above) but is revoked/inactive —
+        // commerce only processes events for active connections. Retrying
+        // can never succeed, so answer 404 instead of 503 to stop the
+        // provider's redelivery loop (project review 2026-10-04, 1.7).
+        return NextResponse.json(
+          { error: "Webhook connection is not active" },
+          { status: 404 },
+        );
       }
       // Transient failure (DB contention, deadlock abort, ...): the event is
       // recorded as failed and reprocessable — a 503 asks the provider to

@@ -1,15 +1,17 @@
 import { and, eq } from "drizzle-orm";
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as creditsPOST } from "../../src/app/api/admin/customers/[customerId]/credits/route";
-import { getDb, getSqlClient } from "../../src/db/client";
+import { getDb } from "../../src/db/client";
 import { createApplication } from "../../src/modules/applications/service";
 import { creditTransactions } from "../../src/modules/credits/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
+import { operatorAuditLog } from "../../src/modules/operations/audit-schema";
 import {
   acceptInvitation,
   findMembershipByEmail,
   inviteMember,
 } from "../../src/modules/team/service";
+import { setupIntegrationFile } from "./test-setup";
 
 /**
  * Admin credit-grant route (audit M5/M6):
@@ -40,9 +42,9 @@ const mockCookies = vi.mocked(cookies);
 
 const db = getDb();
 
-afterAll(async () => {
-  await getSqlClient().end({ timeout: 1 });
-});
+// Shared per-file setup (roundtable batch 1): test encryption key + SQL
+// client teardown, replacing this file's hand-rolled afterAll.
+setupIntegrationFile();
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -188,5 +190,44 @@ describe("admin credit-grant idempotency and amount strictness (M5/M6)", () => {
     expect(response.status).toBe(200);
     const rows = await adminGrantRows(customer.id);
     expect(rows).toHaveLength(1);
+  });
+
+  it("writes the grant audit row in the grant's transaction (roundtable batch 1)", async () => {
+    const { app, customer, operatorId } = await seedOperatorAndCustomer(
+      Math.random().toString(36).slice(2, 8),
+    );
+
+    const response = await postCredits(customer.id, {
+      creditType: "generation",
+      amount: 120,
+      idempotencyKey: "audit-tx-1",
+    });
+    expect(response.status).toBe(200);
+    const { transaction } = (await response.json()) as {
+      transaction: { id: string };
+    };
+
+    // The audit entry must reference the ledger row, the acting operator,
+    // and the granted amount — written atomically with the transaction.
+    const [audit] = await db
+      .select()
+      .from(operatorAuditLog)
+      .where(
+        and(
+          eq(operatorAuditLog.applicationId, app.id),
+          eq(operatorAuditLog.action, "credits.granted"),
+        ),
+      )
+      .limit(1);
+    expect(audit).toMatchObject({
+      resourceId: transaction.id,
+      actorId: operatorId,
+      actorType: "admin_session",
+    });
+    expect(audit?.metadata).toMatchObject({
+      customerId: customer.id,
+      amount: 120,
+      creditType: "generation",
+    });
   });
 });

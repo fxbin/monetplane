@@ -94,6 +94,15 @@ export async function POST(request: Request) {
         { status: 409 },
       );
     }
+    if (name === "CreditReservationEnvironmentMismatchError") {
+      return NextResponse.json(
+        {
+          error: "Reservation environment mismatch",
+          code: "environment_mismatch",
+        },
+        { status: 409 },
+      );
+    }
     if (name === "CreditIdempotencyConflictError") {
       return NextResponse.json(
         { error: "Idempotency key conflict", code: "invalid_state" },

@@ -13,6 +13,14 @@ type ProviderOption = {
   provider: string;
   name: string;
   mode: "test" | "live";
+  // Interval/trial capability flags from the control plane so the builder
+  // only offers billing shapes the selected provider supports (#64). The
+  // page must pass these through — dropping them silently disabled weekly
+  // billing in the UI (project review 2026-10-04, finding 1.4).
+  capabilities: {
+    weeklyInterval: boolean;
+    trialPeriods: boolean;
+  };
 };
 
 type ProductType = "one_time" | "subscription" | "credit_pack" | "usage_based";
@@ -122,11 +130,7 @@ export function ProductBuilderWizard({
     (provider) => provider.id === providerConnectionId,
   );
   const weeklySupported =
-    (
-      selectedProvider as
-        | { capabilities?: { weeklyInterval?: boolean } }
-        | undefined
-    )?.capabilities?.weeklyInterval ?? false;
+    selectedProvider?.capabilities.weeklyInterval ?? false;
   const amountMinor = parseDisplayAmountToMinor(amount, currency);
 
   const typeDefinition = useMemo(
