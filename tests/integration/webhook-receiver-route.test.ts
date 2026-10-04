@@ -9,7 +9,10 @@ import {
   signMockWebhookPayload,
 } from "../../src/modules/providers/adapters/mock";
 import { registerProviderAdapter } from "../../src/modules/providers/registry";
-import { createProviderConnection } from "../../src/modules/providers/service";
+import {
+  createProviderConnection,
+  revokeProviderConnection,
+} from "../../src/modules/providers/service";
 
 const db = getDb();
 
@@ -76,6 +79,47 @@ describe("inbound provider webhook receiver (#95)", () => {
     const response = await receiveWebhook(
       request("http://localhost/api/webhooks/x", "{}", {}),
       { params: Promise.resolve({ connectionId: "pconn_does_not_exist" }) },
+    );
+    expect(response.status).toBe(404);
+  });
+
+  it("answers 404 for revoked connections instead of a 503 retry loop", async () => {
+    // Regression (project review 2026-10-04, finding 1.7): a revoked
+    // connection exists, so the route's first lookup passed, but commerce
+    // only loads active connections — the resulting ProviderConnectionNotFound
+    // fell into the transient 503 bucket and the provider retried forever.
+    const slug = `receiver-revoked-${Math.random().toString(36).slice(2, 6)}`;
+    const app = await createApplication({ slug, name: slug }, db);
+    const connection = await createProviderConnection(
+      {
+        applicationId: app.id,
+        provider: "mock",
+        name: "receiver",
+        mode: "test",
+        credentials: { webhookSecret: `${slug}-secret` },
+      },
+      db,
+    );
+    await revokeProviderConnection(app.id, connection.id, db);
+
+    const rawBody = JSON.stringify({
+      id: "evt_revoked_1",
+      type: "payment.succeeded",
+      occurred_at: new Date().toISOString(),
+      data: {
+        provider_payment_id: "pay_revoked_1",
+        amount_minor: 1900,
+        currency: "USD",
+      },
+    });
+    const response = await receiveWebhook(
+      request("http://localhost/api/webhooks/x", rawBody, {
+        "x-monetplane-mock-signature": signMockWebhookPayload(
+          rawBody,
+          `${slug}-secret`,
+        ),
+      }),
+      { params: Promise.resolve({ connectionId: connection.id }) },
     );
     expect(response.status).toBe(404);
   });

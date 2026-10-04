@@ -189,7 +189,8 @@ Duplicate deliveries must return success without duplicating effects.
 Response policy (post #118): permanent validation failures answer `422 {permanent: true}`
 (deterministic — retrying cannot fix them); transient failures answer `503` so the
 provider's redelivery acts as the automatic retry path (failed inbox rows are
-reprocessable); signature failures stay 401 and unregistered adapters 404.
+reprocessable); signature failures stay 401; unknown/revoked/inactive connections and
+unregistered adapters answer 404 (permanent — no redelivery can fix them).
 
 ## 4. Core domain model
 
