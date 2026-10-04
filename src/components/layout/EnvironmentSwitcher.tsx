@@ -2,25 +2,28 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 import type { ConsoleEnvironment } from "@/server/control-plane/context";
 
 type EnvironmentSwitcherProps = {
   applicationId: string | null;
   environment: ConsoleEnvironment;
+  /** Locale-resolved labels (client components receive dictionary slices). */
+  labels: Dictionary["common"];
 };
-
-const environments: Array<{
-  value: ConsoleEnvironment;
-  label: string;
-}> = [
-  { value: "test", label: "Sandbox" },
-  { value: "live", label: "Production" },
-];
 
 export function EnvironmentSwitcher({
   applicationId,
   environment,
+  labels,
 }: EnvironmentSwitcherProps) {
+  const environments: Array<{
+    value: ConsoleEnvironment;
+    label: string;
+  }> = [
+    { value: "test", label: labels.sandbox },
+    { value: "live", label: labels.production },
+  ];
   const router = useRouter();
   const [pending, setPending] = useState(false);
 

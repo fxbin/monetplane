@@ -67,6 +67,21 @@ Existing pages migrate opportunistically; the shared `.data-table` /
   `src/server/control-plane/console-queries.ts`; `src/modules/admin` now
   only holds the API session guard.
 
+## Internationalization
+
+The console is bilingual (English default, Simplified Chinese) via a
+zero-dependency dictionary system: `src/i18n/dictionaries/en.ts` is the
+typed source of truth (`type Dictionary = typeof en`) and every locale —
+currently `zh.ts` — must satisfy it, so a missing key is a compile error.
+Locale resolves from the `monetplane_locale` cookie (unknown values fall
+back to English); the Topbar switcher is a Server Action form. Client
+components receive dictionary slices via props. The shell, login, and
+overview pages are migrated; remaining pages migrate when touched — a page
+migration moves its strings into the dictionaries and reads
+`dictionary.<page>`, nothing else changes. Interpolation uses
+`{placeholder}` tokens via `formatMessage`. See
+`.agents/notes/implemented/feature/2026-10-04-console-i18n.md`.
+
 ## Conventions
 
 - Loading/empty/error states: server components render `EmptyState` for

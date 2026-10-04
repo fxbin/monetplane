@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
+import { getDictionary } from "@/i18n/server";
 
 /**
  * Operator sign-in (#70).
@@ -17,7 +18,10 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
+  const [params, dictionary] = await Promise.all([
+    searchParams,
+    getDictionary(),
+  ]);
   const failed = typeof params.error === "string";
   const redirectTo =
     typeof params.callbackUrl === "string" && params.callbackUrl.startsWith("/")
@@ -43,18 +47,18 @@ export default async function LoginPage({
       <div className="login-card">
         <div className="login-header">
           <h1 className="login-title">MonetPlane</h1>
-          <p className="login-subtitle">Operator console</p>
+          <p className="login-subtitle">{dictionary.login.subtitle}</p>
         </div>
 
         <form action={authenticate} className="login-form">
           <div className="form-field">
             <label className="form-label">
-              Email
+              {dictionary.login.email}
               <input
                 name="email"
                 type="email"
                 className="form-input"
-                placeholder="operator@yourcompany.com"
+                placeholder={dictionary.login.emailPlaceholder}
                 autoComplete="email"
                 required
               />
@@ -63,24 +67,26 @@ export default async function LoginPage({
 
           <div className="form-field">
             <label className="form-label">
-              Password
+              {dictionary.login.password}
               <input
                 name="password"
                 type="password"
                 className="form-input"
-                placeholder="Enter your password"
+                placeholder={dictionary.login.passwordPlaceholder}
                 autoComplete="current-password"
                 required
               />
             </label>
           </div>
 
-          {failed && <p className="form-error">Invalid email or password</p>}
+          {failed && (
+            <p className="form-error">{dictionary.login.invalidCredentials}</p>
+          )}
 
           <input type="hidden" name="redirectTo" value={redirectTo} />
 
           <button type="submit" className="login-btn">
-            Sign in
+            {dictionary.login.submit}
           </button>
         </form>
       </div>

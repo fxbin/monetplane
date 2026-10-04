@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 import type {
   ConsoleApplication,
   ConsoleEnvironment,
@@ -11,12 +12,15 @@ type ProjectSwitcherProps = {
   applications: ConsoleApplication[];
   selectedApplicationId: string | null;
   environment: ConsoleEnvironment;
+  /** Locale-resolved labels. */
+  labels: Dictionary["projectSwitcher"];
 };
 
 export function ProjectSwitcher({
   applications,
   selectedApplicationId,
   environment,
+  labels,
 }: ProjectSwitcherProps) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -40,8 +44,8 @@ export function ProjectSwitcher({
   if (applications.length === 0) {
     return (
       <div className="project-switcher-empty">
-        <span>No applications</span>
-        <a href="/applications/new">Create project</a>
+        <span>{labels.noApplications}</span>
+        <a href="/applications/new">{labels.createProject}</a>
       </div>
     );
   }
@@ -52,7 +56,7 @@ export function ProjectSwitcher({
       <span className="project-switcher-control">
         <span className="project-switcher-dot" aria-hidden="true" />
         <select
-          aria-label="Current project"
+          aria-label={labels.ariaCurrentProject}
           disabled={pending}
           value={selectedApplicationId ?? applications[0]?.id ?? ""}
           onChange={(event) => void selectApplication(event.target.value)}
@@ -65,7 +69,7 @@ export function ProjectSwitcher({
         </select>
       </span>
       <span className="project-switcher-meta">
-        {pending ? "Switching…" : "Application-scoped console data"}
+        {pending ? labels.switching : labels.scopedData}
       </span>
     </label>
   );
