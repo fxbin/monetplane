@@ -482,10 +482,22 @@ export function createPayPalProviderAdapter(
           value: minorToDisplayString(input.amountMinor, currency),
         };
       }
+      // Provider-side idempotency: PayPal dedupes refund requests that
+      // carry the same PayPal-Request-Id, so replaying the SAME journal
+      // operation's provider call cannot produce a second real refund.
+      // (Explicit retries create a new journal operation with its own key
+      // — by design, since retry is only allowed after a deterministic
+      // rejection, where PayPal never saw the original request.)
       const payload = await paypalCall(
         connection,
         `/v2/payments/captures/${encodeURIComponent(input.providerPaymentId)}/refund`,
-        { method: "POST", body: JSON.stringify(body) },
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: input.requestId
+            ? { "PayPal-Request-Id": input.requestId }
+            : undefined,
+        },
       );
       const id = stringValue(payload.id);
       if (!id) throw new Error("PayPal refund response is missing id");

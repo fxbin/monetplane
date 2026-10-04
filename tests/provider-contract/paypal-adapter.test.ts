@@ -392,3 +392,66 @@ describe("paypal PAYMENT.SALE.COMPLETED renewal period enrichment", () => {
     ).rejects.toThrow(/PayPal request failed|upstream unavailable/);
   });
 });
+
+/**
+ * Refund provider-side idempotency (project review 2026-10-04, finding
+ * 1.3): the journal passes its operation idempotency key down as
+ * RefundPaymentInput.requestId; PayPal dedupes mutating requests by the
+ * PayPal-Request-Id header, closing the double-refund window after a
+ * timed-out request.
+ */
+describe("paypal refund provider idempotency", () => {
+  function refundCapturingFetch(refundRequests: Array<Record<string, string>>) {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      if (url.endsWith("/v1/oauth2/token")) {
+        return jsonResponse({
+          access_token: "pp_test_token",
+          expires_in: 32400,
+        });
+      }
+      if (
+        url.includes("/v2/payments/captures/CAPTURE_REFUND_1/refund") &&
+        init?.method === "POST"
+      ) {
+        const headers: Record<string, string> = {};
+        new Headers(init.headers).forEach((value, key) => {
+          headers[key] = value;
+        });
+        refundRequests.push(headers);
+        return jsonResponse({ id: "REFUND_1", status: "COMPLETED" });
+      }
+      return jsonResponse({ message: `Unexpected request: ${url}` }, 404);
+    };
+    return fetchImpl;
+  }
+
+  it("sends PayPal-Request-Id when the journal passes a requestId", async () => {
+    const refundRequests: Array<Record<string, string>> = [];
+    const adapter = createPayPalProviderAdapter({
+      fetchImpl: refundCapturingFetch(refundRequests),
+    });
+    const result = await adapter.refundPayment(connection, {
+      providerPaymentId: "CAPTURE_REFUND_1",
+      requestId: "refund:pay_123:full",
+    });
+    expect(result.providerRefundId).toBe("REFUND_1");
+    expect(result.status).toBe("succeeded");
+    expect(refundRequests).toHaveLength(1);
+    expect(refundRequests[0]?.["paypal-request-id"]).toBe(
+      "refund:pay_123:full",
+    );
+  });
+
+  it("omits the header when no requestId is provided", async () => {
+    const refundRequests: Array<Record<string, string>> = [];
+    const adapter = createPayPalProviderAdapter({
+      fetchImpl: refundCapturingFetch(refundRequests),
+    });
+    await adapter.refundPayment(connection, {
+      providerPaymentId: "CAPTURE_REFUND_1",
+    });
+    expect(refundRequests).toHaveLength(1);
+    expect(refundRequests[0]?.["paypal-request-id"]).toBeUndefined();
+  });
+});

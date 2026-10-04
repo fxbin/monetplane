@@ -341,6 +341,10 @@ export async function refundPaymentWithJournal(
       {
         providerPaymentId: payment.providerPaymentId,
         amountMinor: payment.amountMinor,
+        // Provider-side idempotency: retries of this operation reuse the
+        // journal key so the provider (e.g. PayPal via PayPal-Request-Id)
+        // can dedupe a timed-out request instead of refunding twice.
+        requestId: operation.idempotencyKey,
       },
     );
   } catch (error) {
@@ -551,6 +555,8 @@ export async function retryBillingOperation(
         {
           providerPaymentId: source.providerResourceId,
           amountMinor,
+          // Provider-side idempotency (see refundPaymentWithJournal).
+          requestId: operation.idempotencyKey,
         },
       );
     } catch (error) {
