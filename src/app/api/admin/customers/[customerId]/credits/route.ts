@@ -3,7 +3,6 @@ import {
   requireApplicationAccess,
   requirePermission,
 } from "@/modules/admin/guard";
-import { recordAuditEntry } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { grantCustomerCredits } from "@/server/control-plane/customer-workspace";
 
@@ -65,21 +64,18 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
+    // The audit row is written inside the grant's transaction
+    // (roundtable batch 1) — actor comes from the permission guard.
     const result = await grantCustomerCredits(
       context.selectedApplication.id,
       customerId,
       { creditType, amount, note, idempotencyKey },
       context.environment,
+      {
+        request,
+        actor: { id: guard.operatorId, label: guard.name || guard.email },
+      },
     );
-    await recordAuditEntry({
-      applicationId: context.selectedApplication?.id ?? null,
-      environment: context.environment,
-      action: "credits.granted",
-      resourceType: "credit_transaction",
-      resourceId: result.transaction.id,
-      metadata: { customerId, amount, creditType },
-      request: request,
-    });
     return NextResponse.json({ transaction: result.transaction });
   } catch (error) {
     console.error("[admin/customers/credits] Error:", error);

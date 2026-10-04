@@ -377,27 +377,28 @@ export async function cancelSubscriptionFromPortal(
     );
   }
 
+  // The completion audit is written inside the journal's transaction
+  // (roundtable batch 1): the actor carries the portal actor type plus the
+  // portal action/metadata, so a crash between journal commit and audit
+  // write can no longer lose the audit trail. Replays of an
+  // already-completed operation no longer emit duplicate audit rows.
   const operation = await cancelSubscriptionWithJournal(
     session.applicationId,
     subscription.id,
     session.environment,
-  );
-
-  await recordAuditEntry({
-    applicationId: session.applicationId,
-    environment: session.environment,
-    action: "portal.subscription_cancelled",
-    resourceType: "billing_operation",
-    resourceId: operation.id,
-    metadata: {
-      subscriptionId: subscription.id,
-      portalSessionId: session.sessionId,
-      externalCustomerId: session.customer.externalCustomerId,
+    {
+      id: session.sessionId,
+      label: session.customer.email,
+      actorType: "customer_portal",
+      auditAction: "portal.subscription_cancelled",
+      auditMetadata: {
+        subscriptionId: subscription.id,
+        portalSessionId: session.sessionId,
+        externalCustomerId: session.customer.externalCustomerId,
+      },
+      request,
     },
-    request,
-    actorType: "customer_portal",
-    actor: { id: session.sessionId, label: session.customer.email },
-  });
+  );
 
   return operation;
 }
