@@ -39,6 +39,12 @@ export function sdkRouteError(
         "credential_required",
         "Application credential required",
       );
+    case "CustomerReadTokenError":
+      return jsonError(
+        401,
+        "read_token_invalid",
+        "Read token is invalid or expired",
+      );
     case "CallbackUrlNotAllowedError":
       return jsonError(
         400,

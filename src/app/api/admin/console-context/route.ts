@@ -1,8 +1,6 @@
-import { and, eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
 import { requireAdmin } from "@/modules/admin/guard";
-import { applications } from "@/modules/applications/schema";
+import { getActiveConsoleApplication } from "@/server/control-plane/console-queries";
 import {
   CONSOLE_APPLICATION_COOKIE,
   CONSOLE_ENVIRONMENT_COOKIE,
@@ -43,17 +41,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const db = getDb();
-  const [application] = await db
-    .select({ id: applications.id, name: applications.name })
-    .from(applications)
-    .where(
-      and(
-        eq(applications.id, applicationId),
-        eq(applications.status, "active"),
-      ),
-    )
-    .limit(1);
+  const application = await getActiveConsoleApplication(applicationId);
 
   if (!application) {
     return NextResponse.json(

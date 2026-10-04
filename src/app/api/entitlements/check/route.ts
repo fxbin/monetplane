@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
 import { resolveApplicationContext } from "@/modules/applications";
 import { consumeHostReadQuota } from "@/modules/applications/host-read-guards";
 import {
@@ -75,10 +74,7 @@ export async function POST(request: Request) {
         : "";
 
     if (readTokenValue) {
-      const tokenContext = await resolveCustomerReadToken(
-        readTokenValue,
-        getDb(),
-      );
+      const tokenContext = await resolveCustomerReadToken(readTokenValue);
       applicationId = tokenContext.applicationId;
       externalCustomerId = tokenContext.externalCustomerId;
       environment = tokenContext.environment;

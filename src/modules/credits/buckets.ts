@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
+import { getDb } from "@/db/client";
 import {
   creditAccounts,
   creditBuckets,
@@ -164,7 +165,7 @@ export async function consumeBuckets(
  * silent mutation. Returns the expired buckets.
  */
 export async function expireDueCreditBuckets(
-  db: CreditStore & { transaction: Database["transaction"] },
+  db: CreditStore & { transaction: Database["transaction"] } = getDb(),
   now: Date = new Date(),
 ) {
   // Deterministic scan order (same canonical order as consumption). The

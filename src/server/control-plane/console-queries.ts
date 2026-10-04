@@ -16,6 +16,29 @@ import { providerConnections } from "@/modules/providers/schema";
  * JSON serialization and perform no mutations.
  */
 
+/**
+ * Resolve an ACTIVE application for the console context switch (roundtable
+ * batch 3: the route previously selected the row inline). Returns null for
+ * unknown/inactive ids — the route answers 404 so in- and out-of-scope
+ * unknowns stay indistinguishable (#70).
+ */
+export async function getActiveConsoleApplication(
+  applicationId: string,
+  db = getDb(),
+): Promise<{ id: string; name: string } | null> {
+  const [application] = await db
+    .select({ id: applications.id, name: applications.name })
+    .from(applications)
+    .where(
+      and(
+        eq(applications.id, applicationId),
+        eq(applications.status, "active"),
+      ),
+    )
+    .limit(1);
+  return application ?? null;
+}
+
 export async function getOverviewStats(
   applicationId?: string,
   providerMode?: "test" | "live",

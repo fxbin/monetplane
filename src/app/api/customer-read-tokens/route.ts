@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
 import { resolveCredentialApplicationContext } from "@/modules/applications";
 import { issueCustomerReadToken } from "@/modules/customers/read-tokens";
 import { findApplicationCustomer } from "@/modules/customers/service";
@@ -66,15 +65,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const issued = await issueCustomerReadToken(
-      {
-        applicationId: context.application.id,
-        applicationCustomerId: customer.id,
-        environment,
-        ttlSeconds,
-      },
-      getDb(),
-    );
+    const issued = await issueCustomerReadToken({
+      applicationId: context.application.id,
+      applicationCustomerId: customer.id,
+      environment,
+      ttlSeconds,
+    });
 
     return NextResponse.json(
       {

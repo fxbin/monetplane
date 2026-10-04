@@ -189,7 +189,7 @@ describe("module boundaries", () => {
     expect(
       API_DIRECT_DB_ALLOWLIST.length,
       "API_DIRECT_DB_ALLOWLIST grew — the whitelist only shrinks (zero-waiver ratchet)",
-    ).toBeLessThanOrEqual(8);
+    ).toBeLessThanOrEqual(1);
   });
 });
 
@@ -216,19 +216,12 @@ const UI_MODULE_IMPORT_ALLOWLIST = [
 // documented follow-up (audit C2).
 const FRAMEWORK_IMPORT_ALLOWLIST = ["src/modules/admin/guard.ts"];
 
-// API routes that still import @/db directly (roundtable batch 1 ratchet).
-// Entries are deleted as routes are fixed — never added. health is a
-// deliberate permanent resident (liveness probe reads the DB by design).
-const API_DIRECT_DB_ALLOWLIST = [
-  "src/app/api/admin/console-context/route.ts",
-  "src/app/api/credits/balance/route.ts",
-  "src/app/api/cron/credit-expiry/route.ts",
-  "src/app/api/customer-read-tokens/route.ts",
-  "src/app/api/customer-read-tokens/[tokenId]/route.ts",
-  "src/app/api/entitlements/check/route.ts",
-  "src/app/api/health/route.ts",
-  "src/app/api/webhooks/[connectionId]/route.ts",
-];
+// API routes that still import @/db directly (roundtable ratchet).
+// Batch 3 converged the remaining money/portal/cron routes through
+// control-plane functions or module services; health is the deliberate
+// permanent resident (a liveness probe reads the DB by design). Entries
+// are deleted as routes are fixed — never added.
+const API_DIRECT_DB_ALLOWLIST = ["src/app/api/health/route.ts"];
 
 /**
  * Concrete provider names — extend this list when adding an adapter so the

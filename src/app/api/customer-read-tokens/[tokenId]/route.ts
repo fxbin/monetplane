@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
 import { resolveCredentialApplicationContext } from "@/modules/applications";
 import { revokeCustomerReadToken } from "@/modules/customers/read-tokens";
 
@@ -12,10 +11,10 @@ export async function DELETE(
 
   try {
     const appContext = await resolveCredentialApplicationContext(request);
-    const revoked = await revokeCustomerReadToken(
-      { applicationId: appContext.application.id, tokenId },
-      getDb(),
-    );
+    const revoked = await revokeCustomerReadToken({
+      applicationId: appContext.application.id,
+      tokenId,
+    });
     if (!revoked) {
       return NextResponse.json(
         { error: "Read token not found or already revoked", code: "not_found" },
