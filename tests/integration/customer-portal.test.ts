@@ -584,6 +584,6 @@ describe("portal payment management redirect", () => {
     });
     await expect(
       createPortalPaymentManagementRedirect(token),
-    ).rejects.toMatchObject({ code: "capability_unsupported" });
+    ).rejects.toMatchObject({ code: "unsupported_capability" });
   });
 });
