@@ -9,7 +9,11 @@ import { createPrice, createProduct } from "../../src/modules/catalog/service";
 import { createCommerceCheckout } from "../../src/modules/commerce/checkout";
 import { NoProviderRouteError } from "../../src/modules/commerce/router";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
-import { mockProviderAdapter } from "../../src/modules/providers/adapters/mock";
+import {
+  MOCK_CAPABILITIES,
+  mockProviderAdapter,
+} from "../../src/modules/providers/adapters/mock";
+import type { PaymentProviderAdapter } from "../../src/modules/providers/contract";
 import { registerProviderAdapter } from "../../src/modules/providers/registry";
 import { createProviderConnection } from "../../src/modules/providers/service";
 
@@ -209,5 +213,96 @@ describe("payment router v1 (#60)", () => {
       db,
     );
     expect(result.routing?.source).toBe("explicit");
+  });
+});
+
+// Interval capability gating (project review 2026-10-04, finding 1.4):
+// recurringInterval/trialPeriodDays previously sat unused in
+// assertConnectionUsable, so the ROUTED checkout path could send a weekly
+// subscription to a provider that cannot bill weekly (only the explicit
+// path checked). The router must reject unsupported billing shapes.
+describe("interval capability gating on the routing path", () => {
+  it("refuses to route a weekly subscription to a provider without weekly_interval", async () => {
+    const noWeeklyAdapter: PaymentProviderAdapter = {
+      ...mockProviderAdapter,
+      provider: "mock-noweekly",
+      getCapabilities() {
+        return { ...MOCK_CAPABILITIES, weekly_interval: false };
+      },
+    };
+    registerProviderAdapter(noWeeklyAdapter);
+
+    const slug = `router-weekly-${Math.random().toString(36).slice(2, 8)}`;
+    const app = await createApplication({ slug, name: slug }, db);
+    await registerCallbackOrigin(app.id, "https://product.test/success", db);
+    await registerCallbackOrigin(app.id, "https://product.test/cancel", db);
+    await createApplicationCustomer(
+      { applicationId: app.id, externalCustomerId: "user-1", email: "r@test" },
+      db,
+    );
+    await createProviderConnection(
+      {
+        applicationId: app.id,
+        provider: "mock-noweekly",
+        name: "sandbox",
+        mode: "test",
+        credentials: { webhookSecret: slug },
+      },
+      db,
+    );
+    const product = await createProduct(
+      { applicationId: app.id, key: "pro", name: "Pro" },
+      db,
+    );
+    const weeklyPrice = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "weekly",
+        currency: "USD",
+        amountMinor: 500,
+        billingType: "recurring",
+        recurringInterval: "week",
+      },
+      db,
+    );
+    const monthlyPrice = await createPrice(
+      {
+        applicationId: app.id,
+        productId: product.id,
+        key: "monthly",
+        currency: "USD",
+        amountMinor: 1900,
+        billingType: "recurring",
+        recurringInterval: "month",
+      },
+      db,
+    );
+
+    await expect(
+      createCommerceCheckout(
+        app.id,
+        {
+          externalCustomerId: "user-1",
+          items: [{ priceId: weeklyPrice.id, quantity: 1 }],
+          successUrl: "https://product.test/success",
+          cancelUrl: "https://product.test/cancel",
+        },
+        db,
+      ),
+    ).rejects.toThrow(/weekly/);
+
+    // Monthly billing stays routable on the same provider.
+    const monthly = await createCommerceCheckout(
+      app.id,
+      {
+        externalCustomerId: "user-1",
+        items: [{ priceId: monthlyPrice.id, quantity: 1 }],
+        successUrl: "https://product.test/success",
+        cancelUrl: "https://product.test/cancel",
+      },
+      db,
+    );
+    expect(monthly.routing?.source).toBe("default");
   });
 });

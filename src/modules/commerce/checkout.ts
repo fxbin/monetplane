@@ -193,8 +193,9 @@ export async function createCommerceCheckout(
     throw new CommerceEnvironmentMismatchError();
   }
 
-  // Interval/trial capabilities apply on every path, including explicit
-  // internal overrides — unsupported terms must fail before provider
+  // Interval/trial capability gate for the EXPLICIT path only — the routed
+  // path is gated inside resolveCheckoutProviderRoute (project review
+  // 2026-10-04, finding 1.4). Unsupported terms must fail before provider
   // invocation (#64).
   if (routingSource === "explicit" && billingMode === "subscription") {
     const capabilities = await getProviderCapabilities(

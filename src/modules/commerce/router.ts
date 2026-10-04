@@ -82,7 +82,6 @@ async function loadActiveConnections(
 async function assertConnectionUsable(
   applicationId: string,
   connectionId: string,
-  environment: RoutingEnvironment,
   billingMode: CheckoutBillingMode,
   activeIds: Set<string>,
   db: Database,
@@ -122,6 +121,29 @@ async function assertConnectionUsable(
     throw new NoProviderRouteError(
       `Payment provider does not support ${billingMode} checkout in this environment`,
     );
+  }
+  // Interval/trial gates: these routing dimensions previously sat unused
+  // in the signature (project review 2026-10-04, finding 1.4) — checkouts
+  // could route to a provider that cannot actually bill that shape.
+  if (billingMode !== "one_time") {
+    const intervalCapability = {
+      week: "weekly_interval",
+      month: "monthly_interval",
+      year: "annual_interval",
+    } as const;
+    const requiredInterval = recurringInterval
+      ? intervalCapability[recurringInterval]
+      : undefined;
+    if (requiredInterval && !capabilities[requiredInterval]) {
+      throw new NoProviderRouteError(
+        `Payment provider does not support ${recurringInterval}ly billing intervals`,
+      );
+    }
+    if (trialPeriodDays && !capabilities.trial_periods) {
+      throw new NoProviderRouteError(
+        "Payment provider does not support trial periods",
+      );
+    }
   }
 
   return {
@@ -183,7 +205,6 @@ export async function resolveCheckoutProviderRoute(
     return assertConnectionUsable(
       input.applicationId,
       connectionId,
-      input.environment,
       input.billingMode,
       activeIds,
       db,
@@ -201,7 +222,6 @@ export async function resolveCheckoutProviderRoute(
     const route = await assertConnectionUsable(
       input.applicationId,
       connection.id,
-      input.environment,
       input.billingMode,
       activeIds,
       db,
