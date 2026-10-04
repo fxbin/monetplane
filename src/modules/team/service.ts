@@ -17,6 +17,7 @@ import {
   operators,
   workspaceMembers,
 } from "@/modules/team/schema";
+import { getAdminPassword } from "../../config/env";
 
 /**
  * Team service (#70) — invitation, membership, and operator lifecycle.
@@ -171,7 +172,7 @@ export async function authenticateWithBootstrap(input: {
 
   if ((await countOperators()) > 0) return null;
 
-  const adminPassword = process.env.ADMIN_PASSWORD?.trim();
+  const adminPassword = getAdminPassword();
   if (!adminPassword || !secretsMatch(password, adminPassword)) return null;
 
   const operatorId = `op_${randomUUID()}`;

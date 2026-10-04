@@ -1,6 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
+import { isAuthorizedCronRequest } from "@/lib/cron-auth";
 import { expireDueCreditBuckets } from "@/modules/credits/buckets";
 
 /**
@@ -18,32 +17,13 @@ import { expireDueCreditBuckets } from "@/modules/credits/buckets";
  */
 export const runtime = "nodejs";
 
-function isAuthorized(request: Request): boolean {
-  const expected = process.env.CRON_SECRET?.trim();
-  if (!expected) return false;
-
-  const header = request.headers.get("authorization") ?? "";
-  const prefix = "Bearer ";
-  if (!header.startsWith(prefix)) return false;
-
-  const expectedBuffer = Buffer.from(expected, "utf8");
-  const providedBuffer = Buffer.from(
-    header.slice(prefix.length).trim(),
-    "utf8",
-  );
-  return (
-    providedBuffer.length === expectedBuffer.length &&
-    timingSafeEqual(providedBuffer, expectedBuffer)
-  );
-}
-
 async function runCreditExpiry(request: Request) {
-  if (!isAuthorized(request)) {
+  if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
-    const expired = await expireDueCreditBuckets(getDb());
+    const expired = await expireDueCreditBuckets();
     return NextResponse.json({
       expiredBuckets: expired.length,
       expiredAmountMinor: expired.reduce(

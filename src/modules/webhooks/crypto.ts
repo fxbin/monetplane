@@ -4,6 +4,7 @@ import {
   createHmac,
   randomBytes,
 } from "node:crypto";
+import { getEncryptionKeyMaterial } from "../../config/env";
 
 const CIPHER = "aes-256-gcm";
 const VERSION = "v1";
@@ -11,7 +12,7 @@ const AAD = Buffer.from("monetplane:developer-webhook-secret:v1", "utf8");
 const SECRET_PREFIX = "mp_whsec_";
 
 function getEncryptionKey(): Buffer {
-  const value = process.env.MONETPLANE_ENCRYPTION_KEY?.trim();
+  const value = getEncryptionKeyMaterial();
   if (!value) {
     throw new Error("MONETPLANE_ENCRYPTION_KEY is required");
   }
