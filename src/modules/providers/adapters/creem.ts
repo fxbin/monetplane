@@ -72,6 +72,24 @@ function providerObjectId(value: unknown): string | undefined {
   return stringValue(value.id);
 }
 
+/**
+ * Money discipline: Creem amount fields are minor-unit integers. A value
+ * that parses to a finite non-integer must fail closed — passing it
+ * downstream could book a plausible-looking wrong amount (project review
+ * 2026-10-04, finding 1.6). Missing values stay undefined so the commerce
+ * layer's own fail-closed amount validation decides.
+ */
+function minorAmountValue(value: unknown): number | undefined {
+  const parsed = numberValue(value);
+  if (parsed === undefined) return undefined;
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error(
+      `Creem amount is not a safe integer (minor units): ${String(value)}`,
+    );
+  }
+  return parsed;
+}
+
 function baseUrl(
   connection: ProviderConnectionContext,
   options: CreemAdapterOptions,
@@ -275,9 +293,9 @@ function normalizeCreemWebhook(
       providerPaymentId: transactionId,
       providerCustomerId: customerId ?? providerObjectId(order?.customer),
       amountMinor:
-        numberValue(order?.amount_paid) ??
-        numberValue(order?.amount_due) ??
-        numberValue(order?.amount),
+        minorAmountValue(order?.amount_paid) ??
+        minorAmountValue(order?.amount_due) ??
+        minorAmountValue(order?.amount),
       currency: stringValue(order?.currency),
       rawEventReference: event.providerEventId,
     };
@@ -329,7 +347,7 @@ function normalizeCreemWebhook(
         stringValue(object.last_transaction_id) ??
         `creem-event:${event.providerEventId}`,
       providerCustomerId: customerId,
-      amountMinor: numberValue(recordValue(object.product)?.price),
+      amountMinor: minorAmountValue(recordValue(object.product)?.price),
       currency: stringValue(recordValue(object.product)?.currency),
       rawEventReference: event.providerEventId,
     };
@@ -404,23 +422,6 @@ function normalizeCreemWebhook(
     };
   }
 
-  if (event.providerEventName === "subscription.update") {
-    const subscriptionId = stringValue(object.id);
-    if (!subscriptionId) return unknownEvent(connection, event);
-    return {
-      ...base,
-      ...correlation,
-      type: "subscription.updated",
-      providerSubscriptionId: subscriptionId,
-      providerCustomerId: customerId,
-      subscriptionStatus: mapSubscriptionStatus(object.status),
-      subscriptionPeriodStart: stringValue(object.current_period_start_date),
-      subscriptionPeriodEnd: stringValue(object.current_period_end_date),
-      cancelAtPeriodEnd: object.status === "scheduled_cancel",
-      rawEventReference: event.providerEventId,
-    };
-  }
-
   if (event.providerEventName === "refund.created") {
     const transaction = recordValue(object.transaction);
     const refundId = stringValue(object.id);
@@ -434,7 +435,7 @@ function normalizeCreemWebhook(
       providerRefundId: refundId,
       providerSubscriptionId: providerObjectId(object.subscription),
       providerCustomerId: customerId,
-      amountMinor: numberValue(object.refund_amount),
+      amountMinor: minorAmountValue(object.refund_amount),
       currency: stringValue(object.refund_currency),
       rawEventReference: event.providerEventId,
     };
@@ -520,7 +521,8 @@ export function createCreemProviderAdapter(
       );
       const id = stringValue(response.id);
       const amount =
-        numberValue(response.amount_paid) ?? numberValue(response.amount);
+        minorAmountValue(response.amount_paid) ??
+        minorAmountValue(response.amount);
       const currency = stringValue(response.currency);
       if (!id || amount === undefined || !currency) {
         throw new Error("Creem transaction response is incomplete");

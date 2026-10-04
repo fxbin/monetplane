@@ -414,10 +414,19 @@ export function createPayPalProviderAdapter(
       if (!id || !currency) {
         throw new Error("PayPal capture response is incomplete");
       }
+      const amountMinor = parseProviderAmountToMinor(amount?.value, currency);
+      if (amountMinor === undefined) {
+        // Fail closed (project review 2026-10-04, finding 1.6): a missing
+        // or non-numeric amount must not normalize to a "0 minor" success,
+        // which would silently mint a free payment for reconciliation.
+        throw new Error(
+          `PayPal capture ${id} returned an unparseable amount for ${currency}`,
+        );
+      }
       return {
         providerPaymentId: id,
         status: mapPaymentStatus(payload.status),
-        amountMinor: parseProviderAmountToMinor(amount?.value, currency) ?? 0,
+        amountMinor,
         currency,
         providerCustomerId: stringValue(recordValue(payload.payer)?.payer_id),
       };
