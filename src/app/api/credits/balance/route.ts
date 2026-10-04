@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
 import { resolveApplicationContext } from "@/modules/applications";
 import { consumeHostReadQuota } from "@/modules/applications/host-read-guards";
 import {
@@ -11,6 +10,7 @@ import {
   CustomerReadTokenError,
   resolveCustomerReadToken,
 } from "@/modules/customers/read-tokens";
+import { sdkRouteError } from "@/server/control-plane/sdk-route-errors";
 
 function parseEnvironment(
   body: Record<string, unknown>,
@@ -75,10 +75,7 @@ export async function POST(request: Request) {
         : "";
 
     if (readTokenValue) {
-      const tokenContext = await resolveCustomerReadToken(
-        readTokenValue,
-        getDb(),
-      );
+      const tokenContext = await resolveCustomerReadToken(readTokenValue);
       applicationId = tokenContext.applicationId;
       externalCustomerId = tokenContext.externalCustomerId;
       environment = tokenContext.environment;
@@ -155,34 +152,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
-    const name = error instanceof Error ? error.name : "";
-    if (name === "CustomerReadTokenError") {
-      return NextResponse.json(
-        {
-          error: "Read token is invalid or expired",
-          code: "read_token_invalid",
-        },
-        { status: 401 },
-      );
-    }
-    if (
-      name === "InvalidApplicationCredentialError" ||
-      name === "ApplicationContextNotFoundError"
-    ) {
-      return NextResponse.json(
-        { error: "Unauthorized", code: "unauthorized" },
-        { status: 401 },
-      );
-    }
-    if (name === "CreditCustomerNotFoundError") {
-      return NextResponse.json(
-        { error: "Customer not found", code: "invalid_state" },
-        { status: 404 },
-      );
-    }
-    return NextResponse.json(
-      { error: "Failed to get credit balance" },
-      { status: 500 },
-    );
+    return sdkRouteError(error, "Failed to get credit balance");
   }
 }

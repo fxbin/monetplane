@@ -48,7 +48,6 @@ export default async function DeveloperQuickstartPage() {
     getDeveloperHealth(application.id, context.environment),
     getDeveloperQuickstart(application.id, context.environment),
   ]);
-  const providerId = quickstart.provider?.id ?? "pc_your_provider_connection";
   const priceId = quickstart.catalog?.priceId ?? "price_your_price";
   const checks = [
     {

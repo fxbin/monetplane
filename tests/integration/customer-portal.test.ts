@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import { applications } from "../../src/modules/applications/schema";
@@ -9,7 +9,7 @@ import {
 } from "../../src/modules/applications/service";
 import { createPrice, createProduct } from "../../src/modules/catalog/service";
 import { createCommerceCheckout } from "../../src/modules/commerce/checkout";
-import { orders, subscriptions } from "../../src/modules/commerce/schema";
+import { subscriptions } from "../../src/modules/commerce/schema";
 import { processProviderWebhook } from "../../src/modules/commerce/webhook";
 import { grantCredits } from "../../src/modules/credits/service";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
@@ -18,7 +18,6 @@ import { operatorAuditLog } from "../../src/modules/operations/audit-schema";
 import { portalSessions } from "../../src/modules/portal/schema";
 import {
   createPortalSession,
-  PortalServiceError,
   resolvePortalSession,
   revokePortalSession,
 } from "../../src/modules/portal/service";

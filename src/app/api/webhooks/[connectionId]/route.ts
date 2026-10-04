@@ -1,11 +1,9 @@
-import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
-import { getDb } from "@/db/client";
 import {
   InvalidNormalizedCommerceEventError,
   processProviderWebhook,
 } from "@/modules/commerce/webhook";
-import { providerConnections } from "@/modules/providers/schema";
+import { getProviderConnectionApplicationId } from "@/modules/providers/service";
 import { publishBillingLifecycleEvent } from "@/server/control-plane/billing-events";
 
 /**
@@ -42,18 +40,14 @@ export async function POST(
     // application from the connection itself. Real providers never send
     // custom routing headers; signature verification authenticates the
     // payload.
-    const [connection] = await getDb()
-      .select({ applicationId: providerConnections.applicationId })
-      .from(providerConnections)
-      .where(eq(providerConnections.id, connectionId))
-      .limit(1);
-    if (!connection) {
+    const applicationId =
+      await getProviderConnectionApplicationId(connectionId);
+    if (!applicationId) {
       return NextResponse.json(
         { error: "Unknown webhook connection" },
         { status: 404 },
       );
     }
-    const applicationId = connection.applicationId;
 
     let result: Awaited<ReturnType<typeof processProviderWebhook>>;
     try {

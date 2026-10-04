@@ -54,3 +54,60 @@ describe("getAuthSecret", () => {
     expect(() => getAuthSecret()).toThrow("AUTH_SECRET is required");
   });
 });
+
+describe("centralized env getters (roundtable batch 3)", () => {
+  const keys = [
+    "CRON_SECRET",
+    "ADMIN_PASSWORD",
+    "MONETPLANE_ENCRYPTION_KEY",
+    "MONETPLANE_HOST_READ_LIMIT",
+    "MONETPLANE_HOST_READ_MAX_WINDOWS",
+    "MONETPLANE_TRUST_PROXY",
+  ] as const;
+  const originals = new Map<string, string | undefined>(
+    keys.map((key) => [key, process.env[key]]),
+  );
+
+  afterEach(() => {
+    for (const key of keys) {
+      const original = originals.get(key);
+      if (original === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = original;
+      }
+    }
+  });
+
+  it("trims secret getters and treats unset as undefined (fail closed)", async () => {
+    const { getCronSecret, getAdminPassword, getEncryptionKeyMaterial } =
+      await import("../src/config/env");
+    delete process.env.CRON_SECRET;
+    expect(getCronSecret()).toBeUndefined();
+    process.env.CRON_SECRET = "  spaced-secret  ";
+    expect(getCronSecret()).toBe("spaced-secret");
+    expect(getAdminPassword()).toBeUndefined();
+    expect(getEncryptionKeyMaterial()).toBeUndefined();
+  });
+
+  it("applies safe defaults to host-read tunables", async () => {
+    const {
+      getHostReadLimitPerMinute,
+      getHostReadMaxWindows,
+      isTrustProxyEnabled,
+    } = await import("../src/config/env");
+    delete process.env.MONETPLANE_HOST_READ_LIMIT;
+    delete process.env.MONETPLANE_HOST_READ_MAX_WINDOWS;
+    expect(getHostReadLimitPerMinute()).toBe(60);
+    expect(getHostReadMaxWindows()).toBe(10_000);
+    process.env.MONETPLANE_HOST_READ_LIMIT = "3";
+    process.env.MONETPLANE_HOST_READ_MAX_WINDOWS = "500";
+    expect(getHostReadLimitPerMinute()).toBe(3);
+    expect(getHostReadMaxWindows()).toBe(500);
+    process.env.MONETPLANE_HOST_READ_LIMIT = "not-a-number";
+    expect(getHostReadLimitPerMinute()).toBe(60);
+    expect(isTrustProxyEnabled()).toBe(false);
+    process.env.MONETPLANE_TRUST_PROXY = "true";
+    expect(isTrustProxyEnabled()).toBe(true);
+  });
+});

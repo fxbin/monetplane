@@ -84,6 +84,25 @@ export async function createProviderConnection(
   return toView(row);
 }
 
+/**
+ * Resolve a webhook receiver route's application from the connection id in
+ * the URL alone (roundtable batch 3: the receiver previously selected the
+ * row inline). Deliberately NOT status-filtered — a revoked connection
+ * still resolves so the commerce layer's active-only load decides the
+ * response (404), keeping existence probing useless.
+ */
+export async function getProviderConnectionApplicationId(
+  connectionId: string,
+  db: Database = getDb(),
+): Promise<string | null> {
+  const [row] = await db
+    .select({ applicationId: providerConnections.applicationId })
+    .from(providerConnections)
+    .where(eq(providerConnections.id, connectionId))
+    .limit(1);
+  return row?.applicationId ?? null;
+}
+
 export async function getProviderConnection(
   applicationId: string,
   connectionId: string,

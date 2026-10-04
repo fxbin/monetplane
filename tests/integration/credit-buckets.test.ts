@@ -3,8 +3,6 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, getSqlClient } from "../../src/db/client";
 import { createApplication } from "../../src/modules/applications/service";
 import {
-  consumeBuckets,
-  createBucketForGrant,
   expireDueCreditBuckets,
   getBucketSummary,
 } from "../../src/modules/credits/buckets";

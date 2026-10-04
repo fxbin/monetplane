@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { createWaffoProviderAdapter } from "../../src/modules/providers/adapters/waffo";
 import type { ProviderConnectionContext } from "../../src/modules/providers/contract";
 import { defineProviderAdapterContractTests } from "./adapter-contract";
 import { adapterWith, pancakeFake } from "./waffo-pancake-fake";

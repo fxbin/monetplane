@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { getEncryptionKeyMaterial } from "../../config/env";
 
 const CIPHER = "aes-256-gcm";
 const VERSION = "v1";
@@ -15,7 +16,7 @@ export function decodeProviderEncryptionKey(value: string): Buffer {
 }
 
 export function getProviderEncryptionKey(): Buffer {
-  const value = process.env.MONETPLANE_ENCRYPTION_KEY?.trim();
+  const value = getEncryptionKeyMaterial();
   if (!value) {
     throw new Error("MONETPLANE_ENCRYPTION_KEY is required");
   }

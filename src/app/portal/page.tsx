@@ -75,7 +75,10 @@ export default async function PortalPage({
           <div className="portal-brand">
             {state.branding.logoUrl && (
               /* Branding is application-controlled content; referrerpolicy
-                 keeps MonetPlane URLs out of the third-party request. */
+                 keeps MonetPlane URLs out of the third-party request.
+                 Plain <img> on purpose: an application-supplied remote URL
+                 must not flow through next/image optimization. */
+              /* biome-ignore lint/performance/noImgElement: application-controlled remote URL, not an optimized asset */
               <img
                 src={state.branding.logoUrl}
                 alt=""

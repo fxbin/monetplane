@@ -1,3 +1,9 @@
+import {
+  getHostReadLimitPerMinute,
+  getHostReadMaxWindows,
+  isTrustProxyEnabled,
+} from "../../config/env";
+
 /**
  * Transitional host-only read guards (#127).
  *
@@ -29,17 +35,15 @@ const WINDOW_MS = 60_000;
 let lastSaturationLoggedAt = 0;
 
 export function hostReadLimitPerMinute(): number {
-  const parsed = Number(process.env.MONETPLANE_HOST_READ_LIMIT);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 60;
+  return getHostReadLimitPerMinute();
 }
 
 export function hostReadMaxWindows(): number {
-  const parsed = Number(process.env.MONETPLANE_HOST_READ_MAX_WINDOWS);
-  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 10_000;
+  return getHostReadMaxWindows();
 }
 
 function trustProxyHeaders(): boolean {
-  return process.env.MONETPLANE_TRUST_PROXY === "true";
+  return isTrustProxyEnabled();
 }
 
 function clientBucket(request: Request): string {
