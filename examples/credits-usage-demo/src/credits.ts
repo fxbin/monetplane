@@ -4,9 +4,17 @@
  */
 import { createMonetPlaneClient } from "@monetplane/sdk/server";
 
+function requiredEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing required environment variable: ${name}`);
+  }
+  return value;
+}
+
 const monetplane = createMonetPlaneClient({
-  baseUrl: process.env.MONETPLANE_BASE_URL!,
-  appSecret: process.env.MONETPLANE_APP_SECRET!,
+  baseUrl: requiredEnv("MONETPLANE_BASE_URL"),
+  appSecret: requiredEnv("MONETPLANE_APP_SECRET"),
 });
 
 export async function runAgentJob(externalCustomerId: string) {

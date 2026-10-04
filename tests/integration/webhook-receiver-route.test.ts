@@ -1,5 +1,3 @@
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
 import { afterAll, describe, expect, it } from "vitest";
 import { POST as receiveWebhook } from "../../src/app/api/webhooks/[connectionId]/route";
 import { getDb, getSqlClient } from "../../src/db/client";

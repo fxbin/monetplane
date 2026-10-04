@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, desc, eq, gte, ilike, inArray, lt, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { prices, products } from "@/modules/catalog/schema";
 import {
@@ -17,7 +17,6 @@ import { applicationCustomers } from "@/modules/customers/schema";
 import { entitlementGrants } from "@/modules/entitlements/schema";
 import { getProviderCapabilities } from "@/modules/providers/runtime";
 import { providerConnections } from "@/modules/providers/schema";
-import { usageEvents, usageMeters } from "@/modules/usage/schema";
 import { recordAuditEntry, resolveSessionActor } from "./audit";
 
 export type CustomerListFilter = "all" | "subscribed" | "credits";
@@ -159,52 +158,6 @@ export async function getCustomerWorkspace(
     applicationId,
     applicationCustomerId,
   );
-
-  const now = new Date();
-  const periodStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1),
-  );
-  const periodEnd = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1),
-  );
-  const usageRows = await db
-    .select({
-      meterKey: usageMeters.key,
-      unit: usageMeters.unit,
-      currency: usageMeters.currency,
-      billingScheme: usageMeters.billingScheme,
-      includedQuantity: usageMeters.includedQuantity,
-      perUnitAmountMinor: usageMeters.perUnitAmountMinor,
-      overageUnitAmountMinor: usageMeters.overageUnitAmountMinor,
-      measured: sql<number>`coalesce(sum(${usageEvents.quantity}), 0)`,
-    })
-    .from(usageMeters)
-    .leftJoin(
-      usageEvents,
-      and(
-        eq(usageEvents.meterId, usageMeters.id),
-        eq(usageEvents.environment, environment),
-        eq(usageEvents.applicationCustomerId, applicationCustomerId),
-        gte(usageEvents.occurredAt, periodStart),
-        lt(usageEvents.occurredAt, periodEnd),
-      ),
-    )
-    .where(
-      and(
-        eq(usageMeters.applicationId, applicationId),
-        eq(usageMeters.status, "active"),
-      ),
-    )
-    .groupBy(
-      usageMeters.id,
-      usageMeters.key,
-      usageMeters.unit,
-      usageMeters.currency,
-      usageMeters.billingScheme,
-      usageMeters.includedQuantity,
-      usageMeters.perUnitAmountMinor,
-      usageMeters.overageUnitAmountMinor,
-    );
 
   const [
     creditAccountRows,
