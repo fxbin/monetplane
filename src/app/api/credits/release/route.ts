@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveCredentialApplicationContext } from "@/modules/applications";
 import { releaseReservation } from "@/modules/credits/service";
+import { sdkRouteError } from "@/server/control-plane/sdk-route-errors";
 
 function parseEnvironment(
   body: Record<string, unknown>,
@@ -50,55 +51,6 @@ export async function POST(request: Request) {
       duplicate: result.duplicate,
     });
   } catch (error) {
-    const name = error instanceof Error ? error.name : "";
-    if (
-      name === "InvalidApplicationCredentialError" ||
-      name === "ApplicationContextNotFoundError"
-    ) {
-      return NextResponse.json(
-        { error: "Unauthorized", code: "unauthorized" },
-        { status: 401 },
-      );
-    }
-    if (name === "ApplicationCredentialRequiredError") {
-      return NextResponse.json(
-        {
-          error: "Application credential required",
-          code: "credential_required",
-        },
-        { status: 401 },
-      );
-    }
-    if (name === "CreditReservationNotFoundError") {
-      return NextResponse.json(
-        { error: "Reservation not found", code: "invalid_state" },
-        { status: 404 },
-      );
-    }
-    if (name === "CreditReservationTerminalStateError") {
-      return NextResponse.json(
-        { error: "Reservation is in terminal state", code: "invalid_state" },
-        { status: 409 },
-      );
-    }
-    if (name === "CreditReservationEnvironmentMismatchError") {
-      return NextResponse.json(
-        {
-          error: "Reservation environment mismatch",
-          code: "environment_mismatch",
-        },
-        { status: 409 },
-      );
-    }
-    if (name === "CreditIdempotencyConflictError") {
-      return NextResponse.json(
-        { error: "Idempotency key conflict", code: "invalid_state" },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json(
-      { error: "Failed to release reservation" },
-      { status: 500 },
-    );
+    return sdkRouteError(error, "Failed to release reservation");
   }
 }

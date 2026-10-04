@@ -1,64 +1,24 @@
 import { NextResponse } from "next/server";
-import {
-  requireApplicationAccess,
-  requirePermission,
-} from "@/modules/admin/guard";
 import { recordAuditEntry } from "@/server/control-plane/audit";
 import { retryBillingOperation } from "@/server/control-plane/billing-operation-actions";
-import { getConsoleContext } from "@/server/control-plane/context";
+import { adminAction } from "@/server/control-plane/route-helpers";
 
-type RouteContext = {
-  params: Promise<{ operationId: string }>;
-};
-
-export async function POST(_request: Request, { params }: RouteContext) {
-  const guard = await requirePermission("billing:write");
-  if (guard instanceof NextResponse) return guard;
-
-  try {
-    const [{ operationId }, context] = await Promise.all([
-      params,
-      getConsoleContext(),
-    ]);
-    if (!context.selectedApplication) {
-      return NextResponse.json(
-        { error: "Select a project first" },
-        { status: 400 },
-      );
-    }
-
-    const scopeCheck = requireApplicationAccess(
-      guard,
-      context.selectedApplication.id,
-    );
-    if (scopeCheck) return scopeCheck;
-
-    const operation = await retryBillingOperation(
-      context.selectedApplication.id,
-      operationId,
-      context.environment,
-      { id: guard.operatorId, label: guard.name || guard.email },
-    );
-    await recordAuditEntry({
-      applicationId: context.selectedApplication?.id ?? null,
-      environment: context.environment,
-      action: "operation.retried",
-      resourceType: "billing_operation",
-      resourceId: operation.id,
-      metadata: { sourceOperationId: operationId },
-      request: _request,
-    });
-    return NextResponse.json({ operation });
-  } catch (error) {
-    console.error("[admin/operations/retry] Error:", error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to retry billing operation",
-      },
-      { status: 400 },
-    );
-  }
-}
+export const POST = adminAction("billing:write", async (ctx) => {
+  const { operationId } = await ctx.params;
+  const operation = await retryBillingOperation(
+    ctx.applicationId,
+    operationId,
+    ctx.environment,
+    { id: ctx.guard.operatorId, label: ctx.guard.name || ctx.guard.email },
+  );
+  await recordAuditEntry({
+    applicationId: ctx.applicationId,
+    environment: ctx.environment,
+    action: "operation.retried",
+    resourceType: "billing_operation",
+    resourceId: operation.id,
+    metadata: { sourceOperationId: operationId },
+    request: ctx.request,
+  });
+  return NextResponse.json({ operation });
+});
