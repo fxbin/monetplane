@@ -5,6 +5,7 @@
       "**",
       "!node_modules",
       "!.next",
+      "!.vidt",
       "!drizzle/meta",
       "!packages/sdk/dist",
       "!examples/*/node_modules",
