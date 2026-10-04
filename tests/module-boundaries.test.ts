@@ -153,6 +153,44 @@ describe("module boundaries", () => {
       );
     }
   });
+
+  it("keeps API routes off direct database access (zero-waiver ratchet)", async () => {
+    // Phase 2.2 decision (2026-10-04 roundtable; see
+    // .agents/notes/implemented/architecture/2026-10-04-api-layering-ratchet.md):
+    // API routes orchestrate through the control plane / module services and
+    // must not import @/db directly — in ANY form, including `import type`
+    // (deliberately stricter than the UI rule above, which exempts type
+    // imports). Legacy offenders live in the explicit whitelist below which
+    // ONLY SHRINKS: fixing a route means deleting its entry, and a new route
+    // can never be added to the list without first removing another (the
+    // length cap enforces this mechanically — no human-approval escape
+    // hatch).
+    const apiDirectory = path.join(process.cwd(), "src/app/api");
+    const files = await collectTypeScriptFiles(apiDirectory);
+
+    const offenders: string[] = [];
+    for (const file of files) {
+      const source = await readFile(file, "utf8");
+      if (/import\s+[^;]*?from\s+"@\/db(?:\/[^"]*)?"/.test(source)) {
+        offenders.push(path.relative(process.cwd(), file));
+      }
+    }
+
+    const unlisted = offenders.filter(
+      (file) => !API_DIRECT_DB_ALLOWLIST.includes(file),
+    );
+    expect(
+      unlisted,
+      "API routes must not import @/db directly — route the data access through src/server/control-plane or a module service",
+    ).toEqual([]);
+
+    // The ratchet itself: this number may only go DOWN. If it fails after
+    // you fixed a route, delete that route's entry above.
+    expect(
+      API_DIRECT_DB_ALLOWLIST.length,
+      "API_DIRECT_DB_ALLOWLIST grew — the whitelist only shrinks (zero-waiver ratchet)",
+    ).toBeLessThanOrEqual(8);
+  });
 });
 
 // Value imports from the module layer that the UI layer is allowed to make.
@@ -177,6 +215,20 @@ const UI_MODULE_IMPORT_ALLOWLIST = [
 // NextResponse for route guards; relocating it out of modules is a
 // documented follow-up (audit C2).
 const FRAMEWORK_IMPORT_ALLOWLIST = ["src/modules/admin/guard.ts"];
+
+// API routes that still import @/db directly (roundtable batch 1 ratchet).
+// Entries are deleted as routes are fixed — never added. health is a
+// deliberate permanent resident (liveness probe reads the DB by design).
+const API_DIRECT_DB_ALLOWLIST = [
+  "src/app/api/admin/console-context/route.ts",
+  "src/app/api/credits/balance/route.ts",
+  "src/app/api/cron/credit-expiry/route.ts",
+  "src/app/api/customer-read-tokens/route.ts",
+  "src/app/api/customer-read-tokens/[tokenId]/route.ts",
+  "src/app/api/entitlements/check/route.ts",
+  "src/app/api/health/route.ts",
+  "src/app/api/webhooks/[connectionId]/route.ts",
+];
 
 /**
  * Concrete provider names — extend this list when adding an adapter so the
