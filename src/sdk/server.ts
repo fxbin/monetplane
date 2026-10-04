@@ -23,7 +23,12 @@
  * ```
  */
 
-import { MonetPlaneError, NetworkError, responseToError } from "./errors";
+import {
+  MalformedResponseError,
+  MonetPlaneError,
+  NetworkError,
+  responseToError,
+} from "./errors";
 import type {
   CaptureReservationInput,
   CaptureReservationResult,
@@ -157,6 +162,21 @@ export function createMonetPlaneClient(
       body,
     );
 
+  /**
+   * Money-field trust boundary (roundtable batch 2): balances and ledger
+   * positions must be safe integers before they reach product code. A
+   * server-side shape change used to surface as `undefined` arithmetic
+   * downstream; it now fails fast with MalformedResponseError.
+   */
+  function requireSafeInteger(value: unknown, field: string): number {
+    if (typeof value !== "number" || !Number.isSafeInteger(value)) {
+      throw new MalformedResponseError(
+        `Response field "${field}" must be a safe integer, got ${value === null ? "null" : typeof value}`,
+      );
+    }
+    return value;
+  }
+
   return {
     async createCheckout(input: CheckoutInput): Promise<CheckoutResult> {
       const data = await call("/api/checkout", input);
@@ -210,12 +230,17 @@ export function createMonetPlaneClient(
         creditType,
         environment,
       });
-      return data as CreditBalance;
+      const balance = data as CreditBalance;
+      requireSafeInteger(balance.available, "available");
+      requireSafeInteger(balance.reserved, "reserved");
+      return balance;
     },
 
     async debitCredits(input: DebitCreditsInput): Promise<DebitCreditsResult> {
       const data = await call("/api/credits/debit", input);
-      return data as DebitCreditsResult;
+      const result = data as DebitCreditsResult;
+      requireSafeInteger(result.availableAfter, "availableAfter");
+      return result;
     },
 
     async reserveCredits(

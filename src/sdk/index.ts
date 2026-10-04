@@ -9,6 +9,7 @@ export {
   AuthorizationError,
   InsufficientCreditsError,
   InvalidStateError,
+  MalformedResponseError,
   MonetPlaneError,
   NetworkError,
   NoProviderRouteError,
