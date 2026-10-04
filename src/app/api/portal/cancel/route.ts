@@ -56,7 +56,7 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "The connected provider does not support cancellation",
-          code: "capability_unsupported",
+          code: "unsupported_capability",
         },
         { status: 409 },
       );

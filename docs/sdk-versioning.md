@@ -41,12 +41,18 @@ omitting `environment`) follow this sequence:
 ## Typed error surface
 
 Provider-neutral errors live in `@/sdk/errors` and map from server `code`
-values: `AuthorizationError` (`unauthorized`), `InsufficientCreditsError`
-(`insufficient_credits`), `UnsupportedCapabilityError`
-(`unsupported_capability`), `NoProviderRouteError` (`no_provider_route`),
+values (the shared vocabulary is `src/lib/api-error-codes.ts`):
+`AuthorizationError` (`unauthorized`, `credential_required`),
+`InsufficientCreditsError` (`insufficient_credits`),
+`UnsupportedCapabilityError` (`unsupported_capability`),
+`NoProviderRouteError` (`no_provider_route`),
 `UsageMeterNotFoundError` (`meter_not_found`), `ValidationError`
-(`invalid_request`, `environment_mismatch`), `InvalidStateError`
-(`invalid_state`), `NetworkError`, and generic `ApiError` otherwise.
+(`invalid_request`, `invalid_environment`, `environment_mismatch`),
+`InvalidStateError` (`invalid_state`), `NetworkError`,
+`MalformedResponseError` (a response failed its expected money shape —
+balances and ledger positions are safe-integer-guarded client-side), and
+generic `ApiError` otherwise (unknown codes keep their raw `code`,
+`statusCode`, and body).
 
 ## Contract guarantees
 

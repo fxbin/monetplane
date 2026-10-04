@@ -101,6 +101,19 @@ export class NetworkError extends MonetPlaneError {
 }
 
 /**
+ * The server response failed its expected shape (SDK-side trust boundary,
+ * roundtable batch 2). The SDK previously blind-cast responses, so a
+ * server-side shape change surfaced as undefined fields in product code;
+ * money fields are guarded and fail fast here instead.
+ */
+export class MalformedResponseError extends MonetPlaneError {
+  constructor(message = "MonetPlane returned a malformed response") {
+    super(message, "malformed_response");
+    this.name = "MalformedResponseError";
+  }
+}
+
+/**
  * Convert a fetch response into the most specific SDK error.
  * @internal
  */
@@ -130,15 +143,18 @@ export async function responseToError(
     case "invalid_state":
       return new InvalidStateError(message);
     case "unauthorized":
+    case "credential_required":
       return new AuthorizationError(message);
     case "no_provider_route":
       return new NoProviderRouteError(message);
     case "meter_not_found":
       return new UsageMeterNotFoundError(message);
     case "invalid_request":
+    case "invalid_environment":
     case "environment_mismatch":
       return new ValidationError(message);
     default:
+      // Unknown (including future) codes keep their raw shape on ApiError.
       return new ApiError(message, code, response.status, body);
   }
 }
