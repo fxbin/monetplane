@@ -2662,4 +2662,75 @@ describe("subscription lifecycle", () => {
     expect(subscription?.status).toBe("expired");
     expect(replay.duplicate).toBe(true);
   });
+
+  it("grants a renewal without period boundaries exactly once (event-keyed grants)", async () => {
+    // Regression (project review 2026-10-04, finding 1.2): a renewal whose
+    // event carries no period boundaries used to fall back to the stored
+    // (stale) period, so its grant idempotency keys collided with the
+    // activation grant's keys — the cycle was paid but delivered nothing.
+    // Such renewals must key grants off the provider event id instead.
+    const fixture = await createFixture("subscription");
+    const baseData = {
+      provider_subscription_id: "sub_provider_noperiod",
+      monetplane_order_id: fixture.checkout.orderId,
+      monetplane_customer_id: fixture.applicationCustomer.customerId,
+      subscription_period_start: "2026-08-18T00:00:00.000Z",
+      subscription_period_end: "2026-09-18T00:00:00.000Z",
+    };
+
+    await processFixtureWebhook(fixture, {
+      id: "evt_np_created",
+      type: "subscription.created",
+      occurred_at: "2026-08-18T13:05:00.000Z",
+      data: { ...baseData, subscription_status: "pending" },
+    });
+    await processFixtureWebhook(fixture, {
+      id: "evt_np_active",
+      type: "subscription.activated",
+      occurred_at: "2026-08-18T13:06:00.000Z",
+      data: { ...baseData, subscription_status: "active" },
+    });
+
+    const grantsForSource = async () => {
+      const [subscription] = await db
+        .select()
+        .from(subscriptions)
+        .where(
+          eq(subscriptions.providerSubscriptionId, "sub_provider_noperiod"),
+        )
+        .limit(1);
+      return db
+        .select()
+        .from(entitlementGrants)
+        .where(
+          and(
+            eq(entitlementGrants.applicationId, fixture.app.id),
+            eq(entitlementGrants.sourceType, "subscription"),
+            eq(entitlementGrants.sourceId, subscription?.id ?? ""),
+          ),
+        );
+    };
+
+    expect(await grantsForSource()).toHaveLength(1);
+
+    // Renewal WITHOUT its own period boundaries.
+    const renewal = {
+      id: "evt_np_renewed",
+      type: "subscription.renewed",
+      occurred_at: "2026-09-18T13:00:00.000Z",
+      data: {
+        provider_subscription_id: "sub_provider_noperiod",
+        monetplane_order_id: fixture.checkout.orderId,
+        monetplane_customer_id: fixture.applicationCustomer.customerId,
+        subscription_status: "active",
+      },
+    };
+    await processFixtureWebhook(fixture, renewal);
+    expect(await grantsForSource()).toHaveLength(2);
+
+    // Redelivery of the same event stays idempotent.
+    const replay = await processFixtureWebhook(fixture, renewal);
+    expect(replay.duplicate).toBe(true);
+    expect(await grantsForSource()).toHaveLength(2);
+  });
 });

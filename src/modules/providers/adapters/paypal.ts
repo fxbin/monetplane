@@ -741,12 +741,28 @@ export function createPayPalProviderAdapter(
         const id = stringValue(resource.id);
         const agreementId = stringValue(resource.billing_agreement_id);
         if (!id || !agreementId) return unknownEvent();
+        // Sale events carry no billing period. Without boundaries the
+        // commerce layer keys this cycle's grants off the subscription's
+        // previous period, colliding with the activation grant's
+        // idempotency key — the cycle is paid but delivers nothing. Fetch
+        // the authoritative period from the subscription API instead.
+        // Failures throw on purpose: PayPal redelivers the webhook, which
+        // is far safer than silently mis-accounting a paid cycle.
+        const subscription = normalizeSubscriptionObject(
+          await paypalCall(
+            connection,
+            `/v1/billing/subscriptions/${encodeURIComponent(agreementId)}`,
+          ),
+        );
         return {
           ...base,
           ...correlation,
           type: "subscription.renewed",
           providerSubscriptionId: agreementId,
           providerPaymentId: id,
+          subscriptionStatus: subscription.status,
+          subscriptionPeriodStart: subscription.currentPeriodStart,
+          subscriptionPeriodEnd: subscription.currentPeriodEnd,
           ...amountFields,
           rawEventReference: providerEventId,
         };

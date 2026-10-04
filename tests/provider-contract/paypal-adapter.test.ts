@@ -119,6 +119,17 @@ async function fakeFetch(input: RequestInfo | URL, init?: RequestInit) {
       ],
     });
   }
+  if (url.endsWith("/v1/billing/subscriptions/I-RENEW-1") && method === "GET") {
+    return jsonResponse({
+      id: "I-RENEW-1",
+      status: "ACTIVE",
+      subscriber: { payer_id: "PAYER_RENEW_1" },
+      billing_info: {
+        last_payment: { time: "2026-09-26T07:59:00.000Z" },
+        next_billing_time: "2026-10-26T10:00:00.000Z",
+      },
+    });
+  }
   if (
     url.endsWith("/v1/notifications/verify-webhook-signature") &&
     method === "POST"
@@ -314,5 +325,70 @@ describe("paypal adapter zero-decimal money (audit A1)", () => {
     const event = await adapter.normalizeWebhook(connection, verified);
     expect(event.amountMinor).toBe(1000);
     expect(event.currency).toBe("JPY");
+  });
+});
+
+/**
+ * Renewal period enrichment (project review 2026-10-04, finding 1.2):
+ * PAYMENT.SALE.COMPLETED carries no billing period. Without enrichment the
+ * commerce layer keyed the cycle's grants off the subscription's stale
+ * period — idempotency keys collided with the activation grant and the
+ * paid cycle delivered nothing. The adapter now fetches the authoritative
+ * period from the subscription API and fails closed on lookup errors.
+ */
+describe("paypal PAYMENT.SALE.COMPLETED renewal period enrichment", () => {
+  const salePayload = JSON.stringify({
+    id: "WH-SALE-1",
+    event_version: "1.0",
+    create_time: "2026-09-26T08:00:00.000Z",
+    event_type: "PAYMENT.SALE.COMPLETED",
+    resource_type: "sale",
+    resource: {
+      id: "SALE_CONTRACT_1",
+      billing_agreement_id: "I-RENEW-1",
+      state: "completed",
+      amount: { currency_code: "USD", value: "29.00" },
+    },
+  });
+
+  it("enriches the renewal with the subscription's authoritative period", async () => {
+    const adapter = createPayPalProviderAdapter({ fetchImpl: fakeFetch });
+    const verified = await adapter.verifyWebhook(connection, {
+      rawBody: salePayload,
+      headers: verifyHeaders(salePayload),
+    });
+    const event = await adapter.normalizeWebhook(connection, verified);
+    expect(event.type).toBe("subscription.renewed");
+    expect(event.providerSubscriptionId).toBe("I-RENEW-1");
+    expect(event.providerPaymentId).toBe("SALE_CONTRACT_1");
+    expect(event.subscriptionStatus).toBe("active");
+    expect(event.subscriptionPeriodStart).toBe("2026-09-26T07:59:00.000Z");
+    expect(event.subscriptionPeriodEnd).toBe("2026-10-26T10:00:00.000Z");
+    expect(event.amountMinor).toBe(2900);
+    expect(event.currency).toBe("USD");
+  });
+
+  it("fails closed when the subscription lookup fails, so PayPal redelivers", async () => {
+    const failingFetch: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.endsWith("/v1/oauth2/token")) {
+        return jsonResponse({
+          access_token: "pp_test_token",
+          expires_in: 32400,
+        });
+      }
+      if (url.endsWith("/v1/notifications/verify-webhook-signature")) {
+        return jsonResponse({ verification_status: "SUCCESS" });
+      }
+      return jsonResponse({ message: "upstream unavailable" }, 503);
+    };
+    const adapter = createPayPalProviderAdapter({ fetchImpl: failingFetch });
+    const verified = await adapter.verifyWebhook(connection, {
+      rawBody: salePayload,
+      headers: verifyHeaders(salePayload),
+    });
+    await expect(
+      adapter.normalizeWebhook(connection, verified),
+    ).rejects.toThrow(/PayPal request failed|upstream unavailable/);
   });
 });
