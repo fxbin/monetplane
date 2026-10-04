@@ -210,6 +210,28 @@ export function providerErrorMessage(
   );
 }
 
+/**
+ * Shared HTTP failure classification (project review 2026-10-04, pattern
+ * finding 1; roundtable batch 1). All adapters must agree on which provider
+ * HTTP statuses are deterministic rejections (safe to retry after the
+ * operator fixes the input/config) versus uncertain outcomes: a 4xx means
+ * the request never executed server-side → "rejected"; 5xx (and anything
+ * else, including 0/unknown) may have executed → "outcome_uncertain", so
+ * the journal never blind-retries it. Before this, PayPal only classified
+ * 400/422, Creem classified NOTHING as rejected (operators could never
+ * retry a deterministic Creem failure), and Waffo treated status 0 as
+ * rejected. New adapters must route their HTTP failures through this.
+ */
+export function classifyHttpFailure(
+  status: number,
+  message: string,
+): ProviderOperationError {
+  return new ProviderOperationError(
+    message,
+    status >= 400 && status < 500 ? "rejected" : "outcome_uncertain",
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /* Webhook JSON scaffold                                               */
 /* ------------------------------------------------------------------ */

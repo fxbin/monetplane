@@ -1,7 +1,10 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createCreemProviderAdapter } from "../../src/modules/providers/adapters/creem";
-import type { ProviderConnectionContext } from "../../src/modules/providers/contract";
+import {
+  type ProviderConnectionContext,
+  ProviderOperationError,
+} from "../../src/modules/providers/contract";
 import { defineProviderAdapterContractTests } from "./adapter-contract";
 
 const webhookSecret = "creem-contract-secret";
@@ -169,5 +172,53 @@ describe("creem amount normalization fails closed on non-integer amounts", () =>
   it("leaves a missing amount undefined for downstream fail-closed validation", async () => {
     const event = await normalizePaidAmount(undefined);
     expect(event.amountMinor).toBeUndefined();
+  });
+});
+
+/**
+ * Failure classification (roundtable batch 1): creemRequest previously
+ * threw a bare Error for every non-2xx, so deterministic 4xx rejections
+ * were classified outcome_uncertain — operators could NEVER retry a failed
+ * Creem operation, because retryBillingOperation only allows "rejected".
+ */
+describe("creem HTTP failure classification", () => {
+  function adapterWithFailureStatus(status: number, body: string) {
+    const fetchImpl: typeof fetch = async (input) => {
+      const url = String(input);
+      if (url.includes("/v1/oauth2/token")) {
+        return new Response(
+          JSON.stringify({ access_token: "x", expires_in: 32400 }),
+        );
+      }
+      return new Response(body, { status });
+    };
+    return createCreemProviderAdapter({
+      fetchImpl,
+      baseUrls: { test: "https://creem.test" },
+    });
+  }
+
+  it("classifies deterministic 4xx as rejected (retryable after a fix)", async () => {
+    const adapter = adapterWithFailureStatus(
+      400,
+      JSON.stringify({ message: "transaction_id is invalid" }),
+    );
+    const error = await adapter
+      .refundPayment(connection, { providerPaymentId: "tran_bad" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProviderOperationError);
+    expect((error as ProviderOperationError).failureKind).toBe("rejected");
+    expect((error as Error).message).toContain("transaction_id is invalid");
+  });
+
+  it("keeps 5xx outcome-uncertain so the journal never blind-retries", async () => {
+    const adapter = adapterWithFailureStatus(503, JSON.stringify({}));
+    const error = await adapter
+      .refundPayment(connection, { providerPaymentId: "tran_flaky" })
+      .catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ProviderOperationError);
+    expect((error as ProviderOperationError).failureKind).toBe(
+      "outcome_uncertain",
+    );
   });
 });

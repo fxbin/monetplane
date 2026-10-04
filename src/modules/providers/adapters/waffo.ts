@@ -36,6 +36,7 @@ import {
 // Shared adapter kit (audit A8): JSON guards, credential access, and
 // webhook JSON scaffolding live in ./shared for all adapters.
 import {
+  classifyHttpFailure,
   headerValue,
   isRecord,
   type JsonRecord,
@@ -169,12 +170,11 @@ function classifySdkError(
   operation: string,
 ): ProviderOperationError {
   if (error instanceof WaffoPancakeError) {
-    const message = `Waffo rejected ${operation} (HTTP ${error.status})`;
-    // 4xx is a deterministic provider rejection; 5xx may have executed
-    // server-side, so it stays uncertain (never blind-retried).
-    return new ProviderOperationError(
-      message,
-      error.status >= 500 ? "outcome_uncertain" : "rejected",
+    // Shared classification (roundtable batch 1) — also fixes status 0
+    // (network/unknown) previously falling into "rejected".
+    return classifyHttpFailure(
+      error.status,
+      `Waffo rejected ${operation} (HTTP ${error.status})`,
     );
   }
   const message =

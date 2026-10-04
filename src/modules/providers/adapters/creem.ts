@@ -23,6 +23,7 @@ import {
 // Shared adapter kit (audit A8): JSON guards, credential access, base URL
 // resolution, and fetch-JSON boilerplate live in ./shared for all adapters.
 import {
+  classifyHttpFailure,
   headerValue,
   isRecord,
   type JsonRecord,
@@ -121,7 +122,11 @@ async function creemRequest(
   );
 
   if (status < 200 || status >= 300) {
-    throw new Error(
+    // Shared classification (roundtable batch 1): Creem previously threw a
+    // bare Error for every failure, so deterministic 4xx rejections were
+    // classified outcome_uncertain and operators could NEVER retry them.
+    throw classifyHttpFailure(
+      status,
       providerErrorMessage(
         payload,
         `Creem request failed (${statusText ? `${status} ${statusText}` : `${status}`})`,

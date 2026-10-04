@@ -26,12 +26,12 @@ import type {
 } from "../contract";
 import {
   InvalidProviderWebhookSignatureError,
-  ProviderOperationError,
   UnsupportedProviderCapabilityError,
 } from "../contract";
 // Shared adapter kit (audit A8): JSON guards, credential access, base URL
 // resolution, and fetch-JSON boilerplate live in ./shared for all adapters.
 import {
+  classifyHttpFailure,
   headerValue,
   type JsonRecord,
   numberValue,
@@ -282,16 +282,12 @@ export function createPayPalProviderAdapter(
         payload,
         `PayPal request failed (${status})`,
       );
-      // Deterministic schema/validation rejections are retryable after
-      // input fixes; everything else stays outcome-uncertain (fail-safe).
-      // Audit A8: this now throws the CLASSIFIED error so
-      // classifyProviderOperationFailure actually sees "rejected" (the
-      // former bare Error with an attached failureKind property was
-      // silently classified as outcome_uncertain).
-      if (status === 400 || status === 422) {
-        throw new ProviderOperationError(message, "rejected");
-      }
-      throw new Error(message);
+      // Shared classification (roundtable batch 1): 4xx never executed
+      // server-side → retryable-after-fix; 5xx may have executed → stays
+      // outcome-uncertain so the journal never blind-retries it.
+      // (Audit A8 history: this must throw the CLASSIFIED error so
+      // classifyProviderOperationFailure sees the failure kind.)
+      throw classifyHttpFailure(status, message);
     }
     return payload;
   }
