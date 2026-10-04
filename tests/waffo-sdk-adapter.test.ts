@@ -8,7 +8,7 @@ import {
 import {
   adapterWith,
   pancakeFake,
-} from "./provider-contract/waffo-adapter.test";
+} from "./provider-contract/waffo-pancake-fake";
 
 const connection: ProviderConnectionContext = {
   id: "pc_waffo_unit",
