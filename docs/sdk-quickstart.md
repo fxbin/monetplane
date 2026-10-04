@@ -185,6 +185,7 @@ import {
   AuthorizationError,
   UnsupportedCapabilityError,
   InvalidStateError,
+  MalformedResponseError,
   NetworkError,
 } from "@monetplane/sdk/server";
 
@@ -195,6 +196,9 @@ try {
     // Handle insufficient balance
   } else if (error instanceof AuthorizationError) {
     // Handle invalid credentials
+  } else if (error instanceof MalformedResponseError) {
+    // The server response failed its expected money shape — fail fast
+    // instead of propagating undefined balances into product code
   } else if (error instanceof NetworkError) {
     // Handle network failures
   }

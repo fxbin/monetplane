@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveCredentialApplicationContext } from "@/modules/applications";
 import { createCommerceCheckout } from "@/modules/commerce/checkout";
+import { sdkRouteError } from "@/server/control-plane/sdk-route-errors";
 
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
@@ -78,96 +79,6 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    const name = error instanceof Error ? error.name : "";
-    if (
-      name === "InvalidApplicationCredentialError" ||
-      name === "ApplicationContextNotFoundError"
-    ) {
-      return NextResponse.json(
-        {
-          error: error instanceof Error ? error.message : "Unauthorized",
-          code: "unauthorized",
-        },
-        { status: 401 },
-      );
-    }
-    if (name === "ApplicationCredentialRequiredError") {
-      return NextResponse.json(
-        {
-          error: "Application credential required",
-          code: "credential_required",
-        },
-        { status: 401 },
-      );
-    }
-    if (name === "CallbackUrlNotAllowedError") {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "Callback URL is not allowed for this application",
-          code: "callback_url_not_allowed",
-        },
-        { status: 400 },
-      );
-    }
-    if (name === "NoProviderRouteError") {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error
-              ? error.message
-              : "No payment provider route",
-          code: "no_provider_route",
-        },
-        { status: 409 },
-      );
-    }
-    if (name === "CommerceEnvironmentMismatchError") {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Environment mismatch",
-          code: "environment_mismatch",
-        },
-        { status: 400 },
-      );
-    }
-    if (name === "CommerceCustomerNotFoundError") {
-      return NextResponse.json(
-        { error: "Customer not found", code: "invalid_state" },
-        { status: 404 },
-      );
-    }
-    if (name === "CommerceCatalogError") {
-      return NextResponse.json(
-        {
-          error: error instanceof Error ? error.message : "Catalog error",
-          code: "invalid_state",
-        },
-        { status: 400 },
-      );
-    }
-    if (name === "CommerceProviderConnectionError") {
-      return NextResponse.json(
-        { error: "Provider connection not found", code: "invalid_state" },
-        { status: 400 },
-      );
-    }
-    if (name === "UnsupportedProviderCapabilityError") {
-      return NextResponse.json(
-        {
-          error:
-            error instanceof Error ? error.message : "Unsupported capability",
-          code: "unsupported_capability",
-        },
-        { status: 400 },
-      );
-    }
-    return NextResponse.json(
-      { error: "Failed to create checkout" },
-      { status: 500 },
-    );
+    return sdkRouteError(error, "Failed to create checkout");
   }
 }

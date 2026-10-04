@@ -4,6 +4,7 @@ import {
   AuthorizationError,
   createMonetPlaneClient,
   InsufficientCreditsError,
+  MalformedResponseError,
   NetworkError,
 } from "../../src/sdk/index";
 
@@ -480,6 +481,74 @@ describe("MonetPlane SDK", () => {
         "revokeCustomerReadToken",
         "upsertCustomer",
       ]);
+    });
+  });
+
+  describe("money-field runtime guards (roundtable batch 2)", () => {
+    it("returns a balance unchanged when the money shape is valid", async () => {
+      const client = createMonetPlaneClient({
+        baseUrl: "https://monetplane.test",
+        appSecret: "mp_app_secret_test_000000000000",
+        fetchImpl: createFakeFetch([
+          {
+            match: (url) => url.endsWith("/api/credits/balance"),
+            status: 200,
+            body: { creditType: "generation", available: 100, reserved: 20 },
+          },
+        ]),
+      });
+      await expect(
+        client.getCreditBalance("user-1", "generation"),
+      ).resolves.toEqual({
+        creditType: "generation",
+        available: 100,
+        reserved: 20,
+      });
+    });
+
+    it("fails fast when a balance field is not a safe integer", async () => {
+      const client = createMonetPlaneClient({
+        baseUrl: "https://monetplane.test",
+        appSecret: "mp_app_secret_test_000000000000",
+        fetchImpl: createFakeFetch([
+          {
+            match: (url) => url.endsWith("/api/credits/balance"),
+            status: 200,
+            body: { creditType: "generation", available: "100", reserved: 20 },
+          },
+        ]),
+      });
+      await expect(
+        client.getCreditBalance("user-1", "generation"),
+      ).rejects.toBeInstanceOf(MalformedResponseError);
+    });
+
+    it("fails fast when a debit result reports a non-integer balance", async () => {
+      const client = createMonetPlaneClient({
+        baseUrl: "https://monetplane.test",
+        appSecret: "mp_app_secret_test_000000000000",
+        fetchImpl: createFakeFetch([
+          {
+            match: (url) => url.endsWith("/api/credits/debit"),
+            status: 200,
+            body: {
+              transactionId: "ct_1",
+              duplicate: false,
+              availableAfter: 12.5,
+            },
+          },
+        ]),
+      });
+      await expect(
+        client.debitCredits({
+          externalCustomerId: "user-1",
+          creditType: "generation",
+          amount: 5,
+          sourceType: "test",
+          sourceId: "sdk-guard",
+          idempotencyKey: "k1",
+        }),
+      ).rejects.toBeInstanceOf(MalformedResponseError);
     });
   });
 });

@@ -450,7 +450,7 @@ export async function createPortalPaymentManagementRedirect(
       throw new PortalServiceError(
         "The connected payment provider does not support payment management",
         409,
-        "capability_unsupported",
+        "unsupported_capability",
       );
     }
     throw error;
