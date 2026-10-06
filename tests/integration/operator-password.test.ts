@@ -1,6 +1,6 @@
-import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as passwordPOST } from "../../src/app/api/admin/session/password/route";
-import { getDb, getSqlClient } from "../../src/db/client";
+import { getDb } from "../../src/db/client";
 import {
   acceptInvitation,
   changeOperatorPassword,
@@ -31,7 +31,7 @@ const mockAuth = vi.mocked(auth);
 const { cookies } = await import("next/headers");
 const mockCookies = vi.mocked(cookies);
 
-const db = getDb();
+const _db = getDb();
 setupIntegrationFile();
 
 afterEach(() => {
@@ -69,7 +69,6 @@ function postPassword(body: Record<string, unknown>): Promise<Response> {
       body: JSON.stringify(body),
       headers: { "content-type": "application/json" },
     }),
-    undefined,
   );
 }
 
