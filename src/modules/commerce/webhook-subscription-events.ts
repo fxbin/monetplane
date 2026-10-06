@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { prices } from "../catalog/schema";
 import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
-import { revokeSubscriptionCredits } from "../credits/revocation";
+import { revokeSubscriptionCreditsInTransaction } from "../credits/revocation";
 import {
   expireEntitlementsBySource,
   grantConfiguredEntitlements,
@@ -216,10 +216,14 @@ export async function applySubscriptionEvent(
           sourceEventId: event.providerEventId,
           periodKey: grantPeriodKey,
           // Period-reset quota semantics (roundtable 2026-10-06, PR-B):
-          // each cycle's grant expires with its cycle. Boundary-less
-          // renewals (event-keyed) fall back to the period end stored on
-          // the subscription row, which carries the same boundary.
-          expiresAt: periodEnd,
+          // each cycle's grant expires with its cycle. A renewal WITHOUT
+          // its own period boundary must NOT fall back to the stored
+          // (stale) period end — the new cycle's credits would be born
+          // already-expired. Boundary-less renewals grant into a
+          // non-expiring bucket instead (external review 2026-10-06,
+          // P1-151-04); a later provider event carrying the true boundary
+          // lands in a fresh bucket with proper expiry.
+          expiresAt: eventPeriodEnd,
         },
         tx,
       );
@@ -236,7 +240,7 @@ export async function applySubscriptionEvent(
     // Contract-termination clawback (roundtable 2026-10-06, PR-C):
     // unused cycle credits are recorded as grant.revoked (NOT expired —
     // different trigger kind, different reconciliation line).
-    await revokeSubscriptionCredits(
+    await revokeSubscriptionCreditsInTransaction(
       {
         applicationId,
         subscriptionId: subscription.id,

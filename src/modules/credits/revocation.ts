@@ -27,36 +27,32 @@ type CreditRevocationStore = Pick<
 >;
 
 /**
- * NOTE: operates on the caller's client — production callers invoke this
- * INSIDE their transaction (the webhook's cancel branch) so the clawback
- * is atomic with the subscription state change. Standalone (test) callers
- * get no wrapping transaction.
+ * Transaction-scoped core. Production callers (webhook cancel branch,
+ * journal cancel reconcile) pass their tx so the clawback is atomic with
+ * the subscription state change. The exported wrapper below adds a
+ * transaction for standalone callers — there is deliberately NO
+ * non-transactional entry point for a ledger-writing function.
  */
-export async function revokeSubscriptionCredits(
+export async function revokeSubscriptionCreditsInTransaction(
   input: {
     applicationId: string;
     subscriptionId: string;
     environment?: "test" | "live";
     reason?: "subscription_cancelled" | "subscription_expired";
   },
-  db: CreditRevocationStore = getDb(),
+  db: CreditRevocationStore,
 ): Promise<Array<{ creditType: string; revokedAmount: number }>> {
   const environment = input.environment ?? "test";
 
-  // Accounts holding buckets sourced from this subscription.
-  const buckets = await db
+  // Phase 1 — unlocked discovery: find candidate bucket ids (and their
+  // accounts). No row locks here; everything is re-validated under the
+  // account lock in phase 2.
+  const discovered = await db
     .select({
       id: creditBuckets.id,
       creditAccountId: creditBuckets.creditAccountId,
-      remaining: creditBuckets.remainingAmount,
-      creditType: creditAccounts.creditType,
-      applicationCustomerId: creditAccounts.applicationCustomerId,
     })
     .from(creditBuckets)
-    .innerJoin(
-      creditAccounts,
-      eq(creditBuckets.creditAccountId, creditAccounts.id),
-    )
     .where(
       and(
         eq(creditBuckets.applicationId, input.applicationId),
@@ -71,13 +67,18 @@ export async function revokeSubscriptionCredits(
       sql`${creditBuckets.expiresAt} ASC NULLS LAST`,
       creditBuckets.createdAt,
       creditBuckets.id,
-    )
-    .for("update");
+    );
 
-  if (buckets.length === 0) return [];
+  if (discovered.length === 0) return [];
 
-  // Canonical lock order: account row first (same as expiry/consumption).
-  const accountIds = [...new Set(buckets.map((b) => b.creditAccountId))];
+  // Phase 2 — canonical lock order (external review 2026-10-06): lock
+  // ACCOUNT rows first in a deterministic (sorted) order, then re-lock the
+  // buckets under the account lock. The previous shape locked buckets
+  // (JOIN ... FOR UPDATE) before accounts, inverting the protocol shared
+  // by debit/expiry/capture and risking deadlocks.
+  const accountIds = [
+    ...new Set(discovered.map((b) => b.creditAccountId)),
+  ].sort();
   const accountRows = await db
     .select()
     .from(creditAccounts)
@@ -87,22 +88,62 @@ export async function revokeSubscriptionCredits(
     accountRows.map((row) => [row.id, row.availableBalance]),
   );
 
+  const locked = await db
+    .select({
+      id: creditBuckets.id,
+      creditAccountId: creditBuckets.creditAccountId,
+      remaining: creditBuckets.remainingAmount,
+      creditType: creditAccounts.creditType,
+      applicationCustomerId: creditAccounts.applicationCustomerId,
+    })
+    .from(creditBuckets)
+    .innerJoin(
+      creditAccounts,
+      eq(creditBuckets.creditAccountId, creditAccounts.id),
+    )
+    .where(
+      and(
+        inArray(
+          creditBuckets.id,
+          discovered.map((b) => b.id),
+        ),
+        eq(creditBuckets.status, "active"),
+        sql`${creditBuckets.remainingAmount} > 0`,
+      ),
+    )
+    .orderBy(
+      sql`${creditBuckets.expiresAt} ASC NULLS LAST`,
+      creditBuckets.createdAt,
+      creditBuckets.id,
+    )
+    .for("update");
+
   const revokedByType = new Map<string, number>();
   const takenByAccount = new Map<string, number>();
 
-  for (const bucket of buckets) {
+  for (const bucket of locked) {
     const alreadyTaken = takenByAccount.get(bucket.creditAccountId) ?? 0;
     const allowance =
       (availableByAccount.get(bucket.creditAccountId) ?? 0) - alreadyTaken;
     if (allowance <= 0) continue;
 
+    // Monotonic state key (external review): the idempotency key embeds
+    // the remaining BEFORE this stage. A reservation-bounded partial
+    // clawback that later extends (after the reservation settles) gets a
+    // distinct key; the same pre-state can never legitimately repeat, so
+    // replays are deduped while extensions append.
     const take = Math.min(bucket.remaining, allowance);
     if (take <= 0) continue;
+    const remainingBefore = bucket.remaining;
 
     await db
       .update(creditBuckets)
       .set({
         remainingAmount: sql`${creditBuckets.remainingAmount} - ${take}`,
+        // Fully drained buckets retire (the schema's reserved `reversed`
+        // status finally earns its keep); partial ones stay active with
+        // the reserved-backed residual.
+        status: take === bucket.remaining ? "reversed" : "active",
         updatedAt: new Date(),
       })
       .where(eq(creditBuckets.id, bucket.id));
@@ -137,7 +178,7 @@ export async function revokeSubscriptionCredits(
       sourceType: "subscription",
       sourceId: input.subscriptionId,
       environment,
-      idempotencyKey: `revoke:${input.subscriptionId}:${bucket.id}`,
+      idempotencyKey: `revoke:${input.subscriptionId}:${bucket.id}:before:${remainingBefore}`,
       metadata: {
         bucketId: bucket.id,
         reason: input.reason ?? "subscription_cancelled",
@@ -155,4 +196,25 @@ export async function revokeSubscriptionCredits(
     creditType,
     revokedAmount,
   }));
+}
+
+/**
+ * Standalone entry point: wraps the transaction-scoped core so casual
+ * (test/diagnostic) callers cannot produce half-applied ledger writes.
+ */
+export async function revokeSubscriptionCredits(
+  input: {
+    applicationId: string;
+    subscriptionId: string;
+    environment?: "test" | "live";
+    reason?: "subscription_cancelled" | "subscription_expired";
+  },
+  db: ReturnType<typeof getDb> = getDb(),
+): Promise<Array<{ creditType: string; revokedAmount: number }>> {
+  return db.transaction((tx) =>
+    revokeSubscriptionCreditsInTransaction(
+      input,
+      tx as unknown as CreditRevocationStore,
+    ),
+  );
 }

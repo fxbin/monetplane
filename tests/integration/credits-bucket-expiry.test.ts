@@ -9,6 +9,7 @@ import {
 } from "../../src/modules/credits/schema";
 import {
   captureReservation,
+  debitCredits,
   grantCredits,
   releaseReservation,
   reserveCredits,
@@ -80,8 +81,8 @@ async function invariantHolds(appId: string, creditType: string) {
   );
 }
 
-describe("bucket expiry defers while reservations are open (PR-A)", () => {
-  it("does not expire a bucket backing an open reservation, then expires after release without reviving credits", async () => {
+describe("partial expiry with open reservations (external review P0 fix)", () => {
+  it("expires the available portion immediately; expired credits are NOT spendable; residual settles after release", async () => {
     const { app, customer } = await seed("exp-reserve");
     const past = new Date(Date.now() - 1000);
     await grantCredits(
@@ -99,7 +100,7 @@ describe("bucket expiry defers while reservations are open (PR-A)", () => {
       db,
     );
 
-    // Reserve 30: available=70, reserved=30; the bucket still backs both.
+    // Reserve 30: available=70, reserved=30; the bucket backs both.
     const { reservation } = await reserveCredits(
       {
         applicationId: app.id,
@@ -113,38 +114,59 @@ describe("bucket expiry defers while reservations are open (PR-A)", () => {
       db,
     );
 
-    // Expiry sweep must SKIP this account (reserved > 0).
-    await expireDueCreditBuckets(db, new Date());
+    // Sweep: the AVAILABLE 70 expires now (partial expiry), the
+    // reserved-backed 30 stays as an active residual.
+    const result = await expireDueCreditBuckets(db, new Date());
+    expect(result).toHaveLength(1);
+    expect(result[0]?.reversedAmount).toBe(70);
+
     let account = await accountOf(app.id, "tokens");
-    expect(account?.availableBalance).toBe(70);
+    expect(account?.availableBalance).toBe(0);
     expect(account?.reservedBalance).toBe(30);
     expect(await invariantHolds(app.id, "tokens")).toBe(true);
 
-    // Release the reservation: available back to 100, still backed by the
-    // (overdue) active bucket.
-    await releaseReservation(
+    // P0 discriminator: the expired 70 must NOT be spendable — even a
+    // 1-credit debit fails now (this was the hole the whole-account skip
+    // left open).
+    await expect(
+      debitCredits(
+        {
+          applicationId: app.id,
+          externalCustomerId: "user-1",
+          creditType: "tokens",
+          amount: 1,
+          sourceType: "test",
+          sourceId: "post-expiry",
+          idempotencyKey: "d-post",
+        },
+        db,
+      ),
+    ).rejects.toThrow();
+
+    // The reservation still settles normally against the residual...
+    await captureReservation(
       {
         applicationId: app.id,
         reservationId: reservation.id,
-        idempotencyKey: "rel1",
+        amount: 30,
+        idempotencyKey: "c1",
       },
       db,
     );
     account = await accountOf(app.id, "tokens");
-    expect(account?.availableBalance).toBe(100);
+    expect(account?.availableBalance).toBe(0);
+    expect(account?.reservedBalance).toBe(0);
+    expect(await invariantHolds(app.id, "tokens")).toBe(true);
 
-    // Next sweep expires the bucket cleanly — and the earlier release did
-    // NOT revive anything: the reversal is the full grant amount.
-    const result = await expireDueCreditBuckets(db, new Date());
-    expect(result).toHaveLength(1);
-    expect(result[0]?.reversedAmount).toBe(100);
+    // ...and a final sweep retires whatever remains.
+    await expireDueCreditBuckets(db, new Date());
     account = await accountOf(app.id, "tokens");
     expect(account?.availableBalance).toBe(0);
     expect(await invariantHolds(app.id, "tokens")).toBe(true);
   });
 
-  it("expires normally once a reservation is captured before the sweep", async () => {
-    const { app, customer } = await seed("exp-capture");
+  it("released-back credits on an expired bucket are refused by consumption and retired by the next sweep", async () => {
+    const { app, customer } = await seed("exp-release");
     const past = new Date(Date.now() - 1000);
     await grantCredits(
       {
@@ -172,20 +194,42 @@ describe("bucket expiry defers while reservations are open (PR-A)", () => {
       },
       db,
     );
-    await captureReservation(
+
+    // Partial expiry takes the available 30.
+    await expireDueCreditBuckets(db, new Date());
+
+    // Release the reservation: the 20 lands on an already-expired bucket.
+    await releaseReservation(
       {
         applicationId: app.id,
         reservationId: reservation.id,
-        amount: 20,
-        idempotencyKey: "c2",
+        idempotencyKey: "rel2",
       },
       db,
     );
+    // The release itself restored available (account mechanics), but the
+    // money sits on an expired bucket: consumption must refuse it...
+    await expect(
+      debitCredits(
+        {
+          applicationId: app.id,
+          externalCustomerId: "user-1",
+          creditType: "tokens",
+          amount: 1,
+          sourceType: "test",
+          sourceId: "post-release",
+          idempotencyKey: "d-rel",
+        },
+        db,
+      ),
+    ).rejects.toThrow();
 
-    // reserved==0 now; the sweep expires the remaining 30.
-    const result = await expireDueCreditBuckets(db, new Date());
-    expect(result).toHaveLength(1);
-    expect(result[0]?.reversedAmount).toBe(30);
+    // ...and the next sweep retires the released-back residual with its
+    // own monotonic stage entry (no idempotency collision with stage 1).
+    const second = await expireDueCreditBuckets(db, new Date());
+    expect(second).toHaveLength(1);
+    expect(second[0]?.reversedAmount).toBe(20);
+
     const account = await accountOf(app.id, "tokens");
     expect(account?.availableBalance).toBe(0);
     expect(account?.reservedBalance).toBe(0);

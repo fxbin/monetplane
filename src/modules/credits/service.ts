@@ -843,7 +843,12 @@ export async function captureReservation(
       .returning();
     if (!updatedReservation) throw new Error("Failed to capture reservation");
 
-    await consumeBuckets(reservation.creditAccountId, input.amount, tx);
+    // Captures settle a reservation that predates any bucket expiry:
+    // expired buckets remain consumable for exactly the reserved claim
+    // (grandfather; the external-review P0 model).
+    await consumeBuckets(reservation.creditAccountId, input.amount, tx, {
+      allowExpired: true,
+    });
 
     const transaction = await appendTransaction(
       {

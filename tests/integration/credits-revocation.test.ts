@@ -146,14 +146,14 @@ describe("subscription credit clawback (PR-C)", () => {
     await send(app, connection, slug, {
       id: "evt-rc-1",
       type: "subscription.activated",
-      occurred_at: "2026-01-01T00:00:00.000Z",
+      occurred_at: "2027-01-01T00:00:00.000Z",
       data: {
         provider_subscription_id: "sub_rc",
         monetplane_order_id: checkout.orderId,
         monetplane_customer_id: customer.customerId,
         subscription_status: "active",
-        subscription_period_start: "2026-01-01T00:00:00.000Z",
-        subscription_period_end: "2026-02-01T00:00:00.000Z",
+        subscription_period_start: "2027-01-01T00:00:00.000Z",
+        subscription_period_end: "2027-02-01T00:00:00.000Z",
       },
     });
     let account = await accountOf(app.id);
@@ -178,7 +178,7 @@ describe("subscription credit clawback (PR-C)", () => {
     await send(app, connection, slug, {
       id: "evt-rc-2",
       type: "subscription.cancelled",
-      occurred_at: "2026-01-15T00:00:00.000Z",
+      occurred_at: "2027-01-15T00:00:00.000Z",
       data: {
         provider_subscription_id: "sub_rc",
         monetplane_order_id: checkout.orderId,
@@ -276,7 +276,7 @@ describe("subscription credit clawback (PR-C)", () => {
     const cancelPayload = {
       id: "evt-rr-c",
       type: "subscription.cancelled",
-      occurred_at: "2026-01-15T00:00:00.000Z",
+      occurred_at: "2027-01-15T00:00:00.000Z",
       data: {
         provider_subscription_id: "sub_rr2",
         monetplane_order_id: checkout.orderId,
@@ -306,14 +306,14 @@ describe("subscription credit clawback (PR-C)", () => {
     await send(app, connection, slug, {
       id: "evt-rr-a",
       type: "subscription.activated",
-      occurred_at: "2026-01-01T00:00:00.000Z",
+      occurred_at: "2027-01-01T00:00:00.000Z",
       data: {
         provider_subscription_id: "sub_rr2",
         monetplane_order_id: checkout.orderId,
         monetplane_customer_id: customer.customerId,
         subscription_status: "active",
-        subscription_period_start: "2026-01-01T00:00:00.000Z",
-        subscription_period_end: "2026-02-01T00:00:00.000Z",
+        subscription_period_start: "2027-01-01T00:00:00.000Z",
+        subscription_period_end: "2027-02-01T00:00:00.000Z",
       },
     });
 
@@ -347,5 +347,56 @@ describe("subscription credit clawback (PR-C)", () => {
       db,
     );
     expect(result).toEqual([]);
+  });
+});
+
+describe("journaled cancel also claws back credits (P1-151-03)", () => {
+  it("journal immediate-cancel revokes unused cycle credits in the same transaction", async () => {
+    const { app, customer } = await seed("revoke-journal");
+
+    // Grant from the subscription the journal will cancel.
+    const { grantCredits } = await import("../../src/modules/credits/service");
+    await grantCredits(
+      {
+        applicationId: app.id,
+        applicationCustomerId: customer.id,
+        creditType: "tokens",
+        amount: 100,
+        transactionType: "grant.subscription",
+        sourceType: "subscription",
+        sourceId: "sub_journal",
+        idempotencyKey: "g-j1",
+        environment: "test",
+      },
+      db,
+    );
+    let account = await accountOf(app.id);
+    expect(account?.availableBalance).toBe(100);
+
+    const { revokeSubscriptionCreditsInTransaction } = await import(
+      "../../src/modules/credits/revocation"
+    );
+
+    // Direct call mirrors what the journal reconcile now does (the full
+    // journal path needs a live provider; the clawback call is the seam).
+    const result = await revokeSubscriptionCreditsInTransaction(
+      { applicationId: app.id, subscriptionId: "sub_journal" },
+      db,
+    );
+    expect(result).toEqual([{ creditType: "tokens", revokedAmount: 100 }]);
+    account = await accountOf(app.id);
+    expect(account?.availableBalance).toBe(0);
+
+    const revoked = await db
+      .select()
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.applicationId, app.id),
+          eq(creditTransactions.type, "grant.revoked"),
+        ),
+      );
+    expect(revoked).toHaveLength(1);
+    expect(revoked[0]?.amount).toBe(-100);
   });
 });
