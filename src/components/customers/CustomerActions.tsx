@@ -138,12 +138,17 @@ export function GrantCreditsAction({
         if (!Number.isSafeInteger(parsedAmount) || parsedAmount <= 0) {
           throw new Error(labels.grantAmountInvalid);
         }
-        const expiresAt =
-          expiresInDays.trim() && Number.isSafeInteger(Number(expiresInDays))
-            ? new Date(
-                Date.now() + Number(expiresInDays) * 24 * 3600 * 1000,
-              ).toISOString()
-            : undefined;
+        // The server is the single truth for expiry semantics (external
+        // review P1-150-04): the dialog sends the raw whole-day number
+        // and blocks submission for anything that is not a positive
+        // integer — it never synthesizes an ISO timestamp client-side.
+        const parsedDays = Number(expiresInDays.trim());
+        if (
+          expiresInDays.trim() &&
+          (!Number.isSafeInteger(parsedDays) || parsedDays <= 0)
+        ) {
+          throw new Error(labels.expiryInvalid);
+        }
         await requestAction(
           `/api/admin/customers/${encodeURIComponent(customerId)}/credits`,
           labels.failed,
@@ -154,7 +159,7 @@ export function GrantCreditsAction({
               creditType,
               amount: parsedAmount,
               note,
-              ...(expiresAt ? { expiresAt } : {}),
+              ...(expiresInDays.trim() ? { expiresInDays: parsedDays } : {}),
             }),
           },
         );

@@ -72,6 +72,18 @@ async function loadActor(): Promise<AdminActor | null> {
   const membership = await findMembershipByOperatorId(operatorId);
   if (!membership) return null;
   if (membership.operatorStatus !== "active") return null;
+  // Credential-version gate (external review 2026-10-06, P1-150-03):
+  // the JWT captured credentialVersion at sign-in; a password rotation
+  // bumps the operator's version, so any pre-existing session is rejected
+  // here on its next request instead of riding out the 12h maxAge.
+  const sessionVersion = (session.user as { credentialVersion?: number })
+    .credentialVersion;
+  if (
+    sessionVersion !== undefined &&
+    sessionVersion !== membership.operatorCredentialVersion
+  ) {
+    return null;
+  }
 
   return {
     operatorId: membership.operatorId,

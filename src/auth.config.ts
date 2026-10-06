@@ -34,6 +34,14 @@ export const authConfig = {
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role ?? "viewer";
+        // Captured at sign-in (external review 2026-10-06, P1-150-03):
+        // the admin guard compares this against the operator's CURRENT
+        // credentialVersion on every request, so rotating a password
+        // invalidates all pre-existing JWTs immediately (the 12h maxAge
+        // alone left a post-rotation window).
+        token.credentialVersion = (
+          user as { credentialVersion?: number }
+        ).credentialVersion;
       }
       return token;
     },
@@ -43,6 +51,8 @@ export const authConfig = {
       }
       (session.user as { role?: string }).role =
         (token.role as string | undefined) ?? "viewer";
+      (session.user as { credentialVersion?: number }).credentialVersion =
+        token.credentialVersion as number | undefined;
       return session;
     },
   },

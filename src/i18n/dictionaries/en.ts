@@ -717,6 +717,7 @@ export const en = {
     operatorNote: "Operator note",
     expiresInDays: "Expires in (days, optional)",
     expiresInDaysPlaceholder: "e.g. 30",
+    expiryInvalid: "Expiry must be a positive whole number of days",
     expiresInDaysHelp:
       "Empty = no expiry. Granted credits land in a bucket that the expiry cron sweeps.",
     operatorNotePlaceholder: "Why is this adjustment being made?",

@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
-import { requirePermission } from "@/modules/admin/guard";
-import { changeOperatorPassword } from "@/modules/team/service";
-import { recordAuditEntry } from "@/server/control-plane/audit";
+import { getSessionActor } from "@/modules/admin/guard";
+import {
+  changeOperatorPasswordWithAudit,
+  TeamServiceError,
+} from "@/modules/team/service";
 
 /**
  * Self-service password rotation for the signed-in operator (roundtable
@@ -11,10 +13,15 @@ import { recordAuditEntry } from "@/server/control-plane/audit";
  * audit entry records the actor and never the credential material.
  */
 export async function POST(request: Request) {
-  // Workspace-level (not project-scoped): guard directly instead of
-  // adminAction, which requires a selected application.
-  const guard = await requirePermission("team:manage");
-  if (guard instanceof NextResponse) return guard;
+  // Workspace-level (not project-scoped) and — per the self-service
+  // semantics (external review 2026-10-06, P1-150-01) — available to
+  // EVERY authenticated operator: team:manage governs managing OTHER
+  // accounts; rotating your own password must not require it, or a
+  // leaked low-privilege credential could never be rotated by its owner.
+  const actor = await getSessionActor();
+  if (!actor) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: Record<string, unknown>;
   try {
@@ -36,27 +43,34 @@ export async function POST(request: Request) {
   }
 
   try {
-    await changeOperatorPassword({
-      operatorId: guard.operatorId,
+    // Password + audit land in the SAME transaction (external review
+    // P2-150-01): a crash between the two can no longer leave a rotated
+    // password without its audit trail.
+    await changeOperatorPasswordWithAudit({
+      operatorId: actor.operatorId,
       currentPassword,
       newPassword,
+      audit: {
+        request,
+        actor: { id: actor.operatorId, label: actor.email },
+      },
     });
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to change password";
-    const status = message.includes("incorrect") ? 401 : 400;
-    return NextResponse.json({ error: message }, { status });
+    // Honor the service's own error classification (external review
+    // P2-150-02) instead of string-matching the message; unknown
+    // errors log server-side and answer a generic 500.
+    if (error instanceof TeamServiceError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+    console.error("[admin/session/password] Error:", error);
+    return NextResponse.json(
+      { error: "Failed to change password" },
+      { status: 500 },
+    );
   }
-
-  await recordAuditEntry({
-    applicationId: null,
-    action: "operator.password_changed",
-    resourceType: "operator",
-    resourceId: guard.operatorId,
-    metadata: { selfService: true },
-    request,
-    actor: { id: guard.operatorId, label: guard.name || guard.email },
-  });
 
   return NextResponse.json({ changed: true });
 }

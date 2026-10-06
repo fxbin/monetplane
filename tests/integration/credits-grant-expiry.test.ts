@@ -137,3 +137,31 @@ describe("grant expiry input validation (verifier finding)", () => {
     expect(result.expiresAt).toBeNull();
   });
 });
+
+describe("expiry input strictness (external review P1-150-04)", () => {
+  it("rejects a non-string expiresAt (number) with 400", () => {
+    expect(parseGrantExpiry({ expiresAt: 123 }).error?.status).toBe(400);
+  });
+
+  it("rejects an empty-string expiresAt with 400", () => {
+    expect(parseGrantExpiry({ expiresAt: "  " }).error?.status).toBe(400);
+  });
+
+  it("rejects expiresInDays <= 0 with 400", () => {
+    expect(parseGrantExpiry({ expiresInDays: 0 }).error?.status).toBe(400);
+    expect(parseGrantExpiry({ expiresInDays: -5 }).error?.status).toBe(400);
+  });
+
+  it("rejects both fields together with 400", () => {
+    expect(
+      parseGrantExpiry({ expiresAt: "2027-01-01T00:00:00Z", expiresInDays: 30 })
+        .error?.status,
+    ).toBe(400);
+  });
+
+  it("treats field-absence (not null/undefined value) as no expiry", () => {
+    const absent = parseGrantExpiry({});
+    expect(absent.error).toBeNull();
+    expect(absent.expiresAt).toBeNull();
+  });
+});

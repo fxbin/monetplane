@@ -670,6 +670,7 @@ export const zh: Dictionary = {
     operatorNote: "操作备注",
     expiresInDays: "有效期(天,可选)",
     expiresInDaysPlaceholder: "如 30",
+    expiryInvalid: "有效期必须是不小于 1 的整数天",
     expiresInDaysHelp:
       "留空 = 不过期。发放的积分进入积分桶,由过期 cron 定期清扫。",
     operatorNotePlaceholder: "这笔调整的原因是什么?",

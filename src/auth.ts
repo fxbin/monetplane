@@ -58,6 +58,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             name: operator.name,
             email: operator.email,
             role: operator.role,
+            credentialVersion: operator.credentialVersion,
           };
         } catch (error) {
           console.error("[auth] sign-in failed:", error);

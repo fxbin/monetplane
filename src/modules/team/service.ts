@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { and, asc, eq, gt, inArray, ne } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, ne, sql } from "drizzle-orm";
 import { type Database, getDb } from "@/db/client";
 import { applications } from "@/modules/applications/schema";
 import {
@@ -52,6 +52,7 @@ export type MembershipRecord = {
   operatorEmail: string;
   operatorName: string;
   operatorStatus: "active" | "disabled";
+  operatorCredentialVersion: number;
   memberId: string;
   role: WorkspaceRole;
   applicationScope: MemberApplicationScope;
@@ -90,6 +91,7 @@ async function findMembership(
       operatorEmail: operators.email,
       operatorName: operators.name,
       operatorStatus: operators.status,
+      operatorCredentialVersion: operators.credentialVersion,
       lastLoginAt: operators.lastLoginAt,
       memberId: workspaceMembers.id,
       role: workspaceMembers.role,
@@ -117,6 +119,7 @@ async function findMembership(
     operatorEmail: row.operatorEmail,
     operatorName: row.operatorName,
     operatorStatus: row.operatorStatus as MembershipRecord["operatorStatus"],
+    operatorCredentialVersion: row.operatorCredentialVersion ?? 0,
     memberId: row.memberId,
     role: row.role as WorkspaceRole,
     applicationScope: row.applicationScope as MemberApplicationScope,
@@ -146,6 +149,7 @@ export async function authenticateWithBootstrap(input: {
   email: string;
   name: string;
   role: WorkspaceRole;
+  credentialVersion: number;
 } | null> {
   const email = normalizeEmail(input.email);
   const password = input.password;
@@ -167,6 +171,7 @@ export async function authenticateWithBootstrap(input: {
       email: membership.operatorEmail,
       name: membership.operatorName,
       role: membership.role,
+      credentialVersion: membership.operatorCredentialVersion,
     };
   }
 
@@ -204,7 +209,13 @@ export async function authenticateWithBootstrap(input: {
     actor: { id: operatorId, label: name },
   });
 
-  return { operatorId, email, name, role: "owner" };
+  return {
+    operatorId,
+    email,
+    name,
+    role: "owner" as WorkspaceRole,
+    credentialVersion: 0,
+  };
 }
 
 async function getPasswordHash(operatorId: string): Promise<string> {
@@ -242,6 +253,7 @@ export async function listTeamOverview(): Promise<{
       operatorEmail: operators.email,
       operatorName: operators.name,
       operatorStatus: operators.status,
+      operatorCredentialVersion: operators.credentialVersion,
       lastLoginAt: operators.lastLoginAt,
       memberId: workspaceMembers.id,
       role: workspaceMembers.role,
@@ -269,6 +281,7 @@ export async function listTeamOverview(): Promise<{
     operatorId: row.operatorId,
     operatorEmail: row.operatorEmail,
     operatorName: row.operatorName,
+    operatorCredentialVersion: row.operatorCredentialVersion ?? 0,
     operatorStatus: row.operatorStatus as MembershipRecord["operatorStatus"],
     memberId: row.memberId,
     role: row.role as WorkspaceRole,
@@ -750,6 +763,47 @@ export async function removeMember(input: {
  * audit entry is written by the caller (admin route) with the acting
  * operator identity — the hash itself is never logged.
  */
+export async function changeOperatorPasswordWithAudit(
+  input: {
+    operatorId: string;
+    currentPassword: string;
+    newPassword: string;
+    audit?: {
+      request?: Request;
+      actor: { id: string; label?: string | null };
+    };
+  },
+  db: Database = getDb(),
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await changeOperatorPassword(
+      {
+        operatorId: input.operatorId,
+        currentPassword: input.currentPassword,
+        newPassword: input.newPassword,
+      },
+      tx as unknown as Database,
+    );
+    if (input.audit) {
+      const { recordAuditEntry } = await import(
+        "../../server/control-plane/audit"
+      );
+      await recordAuditEntry(
+        {
+          applicationId: null,
+          action: "operator.password_changed",
+          resourceType: "operator",
+          resourceId: input.operatorId,
+          metadata: { selfService: true },
+          request: input.audit.request,
+          actor: input.audit.actor,
+        },
+        tx,
+      );
+    }
+  });
+}
+
 export async function changeOperatorPassword(
   input: {
     operatorId: string;
@@ -767,7 +821,9 @@ export async function changeOperatorPassword(
     );
   }
   const [operator] = await db
-    .select({ passwordHash: operators.passwordHash })
+    .select({
+      passwordHash: operators.passwordHash,
+    })
     .from(operators)
     .where(eq(operators.id, operatorId))
     .limit(1);
@@ -782,11 +838,32 @@ export async function changeOperatorPassword(
       "invalid_credentials",
     );
   }
-  await db
+  // CAS update (external review 2026-10-06, P1-150-02): the WHERE clause
+  // matches the hash we verified against, so two concurrent rotations
+  // cannot both report success — the loser sees 0 rows and gets a 409
+  // instead of silently last-writer-winning. credentialVersion bumps in
+  // the same statement (P1-150-03): JWTs carry the version at sign-in
+  // and the guard rejects stale versions, killing pre-existing sessions.
+  const newHash = await hashPassword(newPassword);
+  const rotated = await db
     .update(operators)
     .set({
-      passwordHash: await hashPassword(newPassword),
+      passwordHash: newHash,
+      credentialVersion: sql`${operators.credentialVersion} + 1`,
       updatedAt: new Date(),
     })
-    .where(eq(operators.id, operatorId));
+    .where(
+      and(
+        eq(operators.id, operatorId),
+        eq(operators.passwordHash, operator.passwordHash),
+      ),
+    )
+    .returning({ id: operators.id });
+  if (rotated.length === 0) {
+    throw new TeamServiceError(
+      "Password was changed concurrently; sign in again",
+      409,
+      "invalid_state",
+    );
+  }
 }
