@@ -1,0 +1,2 @@
+ALTER TABLE "credit_transactions" DROP CONSTRAINT "credit_transactions_type_check";
+ALTER TABLE "credit_transactions" ADD CONSTRAINT "credit_transactions_type_check" CHECK ("credit_transactions".type IN ('grant.purchase', 'grant.subscription', 'grant.promotion', 'debit.usage', 'reserve.usage', 'capture.usage', 'release.usage', 'refund.usage', 'adjustment.admin', 'grant.expired', 'grant.revoked'));

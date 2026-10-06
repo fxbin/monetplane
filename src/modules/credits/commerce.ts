@@ -19,6 +19,13 @@ export async function grantConfiguredCreditsInTransaction(
     periodKey: string;
     sourceEventId?: string | null;
     environment?: "test" | "live";
+    /**
+     * Optional bucket expiry (roundtable 2026-10-06, PR-B): subscription
+     * renewals pass the period end so each cycle's grant expires with its
+     * cycle — the "period reset" quota semantic. One-time purchases leave
+     * this unset (credits persist).
+     */
+    expiresAt?: Date | null;
   },
   db: CommerceCreditDb,
 ) {
@@ -86,9 +93,15 @@ export async function grantConfiguredCreditsInTransaction(
           sourceId: input.sourceId,
           environment: input.environment,
           idempotencyKey: `grant:${input.sourceType}:${input.sourceId}:${input.periodKey}:${creditType}`,
-          metadata: input.sourceEventId
-            ? { sourceEventId: input.sourceEventId }
-            : {},
+          expiresAt: input.expiresAt ?? null,
+          metadata: {
+            ...(input.expiresAt
+              ? { expiresAt: input.expiresAt.toISOString() }
+              : {}),
+            ...(input.sourceEventId
+              ? { sourceEventId: input.sourceEventId }
+              : {}),
+          },
         },
         db,
       ),

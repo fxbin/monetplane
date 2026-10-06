@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { prices } from "../catalog/schema";
 import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
+import { revokeSubscriptionCredits } from "../credits/revocation";
 import {
   expireEntitlementsBySource,
   grantConfiguredEntitlements,
@@ -214,6 +215,11 @@ export async function applySubscriptionEvent(
           environment,
           sourceEventId: event.providerEventId,
           periodKey: grantPeriodKey,
+          // Period-reset quota semantics (roundtable 2026-10-06, PR-B):
+          // each cycle's grant expires with its cycle. Boundary-less
+          // renewals (event-keyed) fall back to the period end stored on
+          // the subscription row, which carries the same boundary.
+          expiresAt: periodEnd,
         },
         tx,
       );
@@ -225,6 +231,18 @@ export async function applySubscriptionEvent(
       applicationId,
       "subscription",
       subscription.id,
+      tx,
+    );
+    // Contract-termination clawback (roundtable 2026-10-06, PR-C):
+    // unused cycle credits are recorded as grant.revoked (NOT expired —
+    // different trigger kind, different reconciliation line).
+    await revokeSubscriptionCredits(
+      {
+        applicationId,
+        subscriptionId: subscription.id,
+        environment,
+        reason: "subscription_cancelled",
+      },
       tx,
     );
   }

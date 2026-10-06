@@ -23,7 +23,8 @@ export type CreditTransactionType =
   | "capture.usage"
   | "release.usage"
   | "refund.usage"
-  | "adjustment.admin";
+  | "adjustment.admin"
+  | "grant.revoked";
 
 type CreditStore = Pick<Database, "select" | "insert" | "update" | "execute">;
 type CreditAccountRow = typeof creditAccounts.$inferSelect;

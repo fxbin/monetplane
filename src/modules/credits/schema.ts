@@ -107,7 +107,7 @@ export const creditTransactions = pgTable(
     ),
     check(
       "credit_transactions_type_check",
-      sql`${table.type} IN ('grant.purchase', 'grant.subscription', 'grant.promotion', 'debit.usage', 'reserve.usage', 'capture.usage', 'release.usage', 'refund.usage', 'adjustment.admin', 'grant.expired')`,
+      sql`${table.type} IN ('grant.purchase', 'grant.subscription', 'grant.promotion', 'debit.usage', 'reserve.usage', 'capture.usage', 'release.usage', 'refund.usage', 'adjustment.admin', 'grant.expired', 'grant.revoked')`,
     ),
     check(
       "credit_transactions_amount_nonzero_check",
