@@ -1,5 +1,6 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount } from "@/lib/format";
 import {
   getRevenueAnalytics,
@@ -21,20 +22,21 @@ function formatMonth(month: string): string {
 }
 
 export default async function RevenuePage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.revenue;
   const application = context.selectedApplication;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   if (!application) {
     return (
-      <PageContainer
-        title="Revenue"
-        description="Create a project to see revenue analytics."
-      >
-        <p className="cell-muted">
-          Revenue analytics appear after you create a project.
-        </p>
+      <PageContainer title={t.title} description={t.noProjectDescription}>
+        <p className="cell-muted">{t.noProjectBody}</p>
       </PageContainer>
     );
   }
@@ -64,12 +66,15 @@ export default async function RevenuePage() {
 
   return (
     <PageContainer
-      title="Revenue"
-      description={`${application.name} · ${environmentLabel} succeeded payments by month.`}
+      title={t.title}
+      description={formatMessage(t.description, {
+        application: application.name,
+        environment: environmentLabel,
+      })}
     >
       <div className="stat-cards">
         <div className="stat-card">
-          <span className="stat-label">Total revenue (12 months)</span>
+          <span className="stat-label">{t.kpiTotal}</span>
           <span className="stat-value">
             <CurrencyBreakdown
               amounts={analytics.totals.byCurrency.map((entry) => ({
@@ -80,11 +85,11 @@ export default async function RevenuePage() {
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Payments</span>
+          <span className="stat-label">{t.kpiPayments}</span>
           <span className="stat-value">{analytics.totals.payments}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Average payment</span>
+          <span className="stat-label">{t.kpiAverage}</span>
           <span className="stat-value">
             <CurrencyBreakdown
               amounts={analytics.totals.byCurrency.map((entry) => ({
@@ -95,7 +100,7 @@ export default async function RevenuePage() {
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Success rate (30d)</span>
+          <span className="stat-label">{t.kpiSuccessRate}</span>
           <span className="stat-value">
             {operational.paymentOutcomes.successRate === null
               ? "—"
@@ -103,24 +108,22 @@ export default async function RevenuePage() {
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Active subscriptions</span>
+          <span className="stat-label">{t.kpiActiveSubscriptions}</span>
           <span className="stat-value">{subscriptions.active}</span>
         </div>
       </div>
 
       <div className="card">
-        <h2 className="card-title">Volume by currency (30 days)</h2>
+        <h2 className="card-title">{t.volumeTitle}</h2>
         {operational.volumeByCurrency.length === 0 ? (
-          <p className="cell-muted">
-            No succeeded payments in this environment yet.
-          </p>
+          <p className="cell-muted">{t.volumeEmpty}</p>
         ) : (
           <table className="data-table">
             <thead>
               <tr>
-                <th>Currency</th>
-                <th>Volume</th>
-                <th>Payments</th>
+                <th>{t.thCurrency}</th>
+                <th>{t.thVolume}</th>
+                <th>{t.thPayments}</th>
               </tr>
             </thead>
             <tbody>
@@ -137,13 +140,13 @@ export default async function RevenuePage() {
         {subscriptions.mrrByCurrency.length > 0 && (
           <>
             <h2 className="card-title" style={{ marginTop: 16 }}>
-              MRR by currency (monthly-normalized)
+              {t.mrrTitle}
             </h2>
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Currency</th>
-                  <th>MRR</th>
+                  <th>{t.thCurrency}</th>
+                  <th>{t.thMrr}</th>
                 </tr>
               </thead>
               <tbody>
@@ -161,15 +164,16 @@ export default async function RevenuePage() {
 
       <div className="card">
         <h2 className="card-title">
-          Monthly revenue
+          {t.monthlyTitle}
           {dominantCurrency ? ` · ${dominantCurrency.currency}` : ""}
         </h2>
         {dominantCurrency ? (
           <>
             {otherCurrencies.length > 0 && (
               <p className="cell-muted">
-                Also in {otherCurrencies.join(", ")} — see the per-currency
-                totals above.
+                {formatMessage(t.alsoIn, {
+                  currencies: otherCurrencies.join(", "),
+                })}
               </p>
             )}
             <div className="chart-bars">
@@ -194,23 +198,23 @@ export default async function RevenuePage() {
           </>
         ) : (
           <p className="cell-muted">
-            No succeeded payments in {environmentLabel} yet.
+            {formatMessage(t.monthlyEmpty, { environment: environmentLabel })}
           </p>
         )}
       </div>
 
       <div className="card">
-        <h2 className="card-title">Revenue by product</h2>
+        <h2 className="card-title">{t.byProductTitle}</h2>
         {analytics.byProduct.length > 0 ? (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Product</th>
-                  <th>Currency</th>
-                  <th>Orders</th>
-                  <th>Units</th>
-                  <th>Revenue</th>
+                  <th>{t.thProduct}</th>
+                  <th>{t.thCurrency}</th>
+                  <th>{t.thOrders}</th>
+                  <th>{t.thUnits}</th>
+                  <th>{t.thRevenue}</th>
                 </tr>
               </thead>
               <tbody>
@@ -229,7 +233,7 @@ export default async function RevenuePage() {
             </table>
           </div>
         ) : (
-          <p className="cell-muted">No paid orders yet.</p>
+          <p className="cell-muted">{t.noPaidOrders}</p>
         )}
       </div>
     </PageContainer>
