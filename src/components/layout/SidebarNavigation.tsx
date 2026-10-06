@@ -55,7 +55,7 @@ const navSections: Array<{
     labelKey: "products",
     items: [
       { labelKey: "products", href: "/products", icon: "box" },
-      { labelKey: "credits", icon: "credits", comingSoon: true },
+      { labelKey: "credits", href: "/credits", icon: "credits" },
       { labelKey: "features", icon: "features", comingSoon: true },
     ],
   },
