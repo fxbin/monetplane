@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
   type CustomerListFilter,
@@ -20,10 +21,12 @@ function normalizeFilter(value: string | undefined): CustomerListFilter {
 export default async function CustomersPage({
   searchParams,
 }: CustomersPageProps) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.customers;
   const projectName = context.selectedApplication?.name;
   const search = params.q?.trim() ?? "";
   const filter = normalizeFilter(params.filter);
@@ -40,37 +43,41 @@ export default async function CustomersPage({
 
   return (
     <PageContainer
-      title="Customers"
+      title={t.title}
       description={
         projectName
-          ? `Understand and operate ${projectName} customer billing state from one workspace.`
-          : "Create a project before customer billing data can appear."
+          ? formatMessage(t.descriptionWithProject, {
+              application: projectName,
+            })
+          : t.descriptionNoProject
       }
     >
       {context.selectedApplication && (
         <form className="customer-toolbar card" method="get">
           <label className="customer-search-field">
-            <span className="sr-only">Search customers</span>
+            <span className="sr-only">{t.searchAria}</span>
             <input
+              className="form-input"
               defaultValue={search}
               name="q"
-              placeholder="Search external ID or email"
+              placeholder={t.searchPlaceholder}
+              autoComplete="off"
             />
           </label>
           <label className="customer-filter-field">
-            <span className="sr-only">Filter customers</span>
-            <select defaultValue={filter} name="filter">
-              <option value="all">All customers</option>
-              <option value="subscribed">Active subscriptions</option>
-              <option value="credits">Available credits</option>
+            <span className="sr-only">{t.filterAria}</span>
+            <select className="form-input" defaultValue={filter} name="filter">
+              <option value="all">{t.allCustomers}</option>
+              <option value="subscribed">{t.activeSubscriptions}</option>
+              <option value="credits">{t.availableCredits}</option>
             </select>
           </label>
           <button className="btn btn-secondary" type="submit">
-            Apply
+            {t.apply}
           </button>
           {(search || filter !== "all") && (
             <Link className="customer-clear-link" href="/customers">
-              Clear
+              {t.clear}
             </Link>
           )}
         </form>
@@ -82,11 +89,11 @@ export default async function CustomersPage({
             <table className="data-table customer-table">
               <thead>
                 <tr>
-                  <th>Customer</th>
-                  <th>Subscription</th>
-                  <th>Credits</th>
-                  <th>Created</th>
-                  <th aria-label="Open customer" />
+                  <th>{t.thCustomer}</th>
+                  <th>{t.thSubscription}</th>
+                  <th>{t.thCredits}</th>
+                  <th>{t.thCreated}</th>
+                  <th aria-label={t.ariaOpen} />
                 </tr>
               </thead>
               <tbody>
@@ -95,19 +102,21 @@ export default async function CustomersPage({
                     <td>
                       <div className="customer-identity-cell">
                         <strong>{customer.externalCustomerId}</strong>
-                        <span>{customer.email ?? "No email"}</span>
+                        <span>{customer.email ?? t.noEmail}</span>
                       </div>
                     </td>
                     <td>
                       {customer.subscriptions.active > 0 ? (
                         <StatusBadge
                           status="active"
-                          label={`${customer.subscriptions.active} active`}
+                          label={formatMessage(t.activeCount, {
+                            count: String(customer.subscriptions.active),
+                          })}
                         />
                       ) : customer.subscriptions.attention > 0 ? (
                         <StatusBadge status="past_due" />
                       ) : (
-                        <span className="cell-muted">None</span>
+                        <span className="cell-muted">{t.none}</span>
                       )}
                     </td>
                     <td>
@@ -117,8 +126,9 @@ export default async function CustomersPage({
                         </strong>
                         {customer.credits.reserved > 0 && (
                           <span>
-                            {customer.credits.reserved.toLocaleString()}{" "}
-                            reserved
+                            {formatMessage(t.creditsSummary, {
+                              count: customer.credits.reserved.toLocaleString(),
+                            })}
                           </span>
                         )}
                       </div>
@@ -131,7 +141,7 @@ export default async function CustomersPage({
                         className="table-row-link"
                         href={`/customers/${customer.id}`}
                       >
-                        Open
+                        {t.open}
                       </Link>
                     </td>
                   </tr>
@@ -144,22 +154,22 @@ export default async function CustomersPage({
         <div className="empty-state">
           <h2 className="empty-state-title">
             {!context.selectedApplication
-              ? "No project selected"
+              ? dictionary.common.noProjectTitle
               : search || filter !== "all"
-                ? "No customers match this view"
-                : "No customers yet"}
+                ? t.emptyTitle
+                : t.noProjectEmptyTitle}
           </h2>
           <p className="empty-state-desc">
             {!context.selectedApplication
-              ? "Create a project to establish an isolated customer namespace."
+              ? t.noProjectEmptyDescription
               : search || filter !== "all"
-                ? "Adjust the search or filter to see more customer billing records."
-                : "Customers appear here once they complete a checkout or are created through the server SDK."}
+                ? t.emptyFilteredDescription
+                : t.emptySdkDescription}
           </p>
           {!context.selectedApplication && (
             <div className="empty-state-actions">
               <a className="btn btn-primary" href="/applications/new">
-                Create project
+                {t.createProject}
               </a>
             </div>
           )}

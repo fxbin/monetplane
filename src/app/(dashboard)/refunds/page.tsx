@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
+import { getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
@@ -34,10 +35,12 @@ function readFilter(
 }
 
 export default async function RefundsPage({ searchParams }: RefundsPageProps) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.refunds;
   const filter = readFilter(params);
   const applicationId = context.selectedApplication?.id;
   const [rows, providers] = applicationId
@@ -51,20 +54,18 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
     : [[], []];
 
   return (
-    <PageContainer
-      title="Refunds"
-      description="Track normalized refund state and trace each refund back to its payment, customer, product, and provider."
-    >
+    <PageContainer title={t.title} description={t.description}>
       {applicationId && (
         <BillingOperationsFilters
           action="/refunds"
           filter={filter}
           providers={providers}
           statuses={[
-            { value: "pending", label: "Pending" },
-            { value: "succeeded", label: "Succeeded" },
-            { value: "failed", label: "Failed" },
+            { value: "pending", label: t.statusPending },
+            { value: "succeeded", label: t.statusSucceeded },
+            { value: "failed", label: t.statusFailed },
           ]}
+          labels={dictionary.billingFilters}
         />
       )}
 
@@ -74,14 +75,14 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
             <table className="data-table billing-operations-table">
               <thead>
                 <tr>
-                  <th>Refund</th>
-                  <th>Customer</th>
-                  <th>Product</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Provider</th>
-                  <th>Created</th>
-                  <th aria-label="Open refund" />
+                  <th>{t.thRefund}</th>
+                  <th>{t.thCustomer}</th>
+                  <th>{t.thProduct}</th>
+                  <th>{t.thAmount}</th>
+                  <th>{t.thStatus}</th>
+                  <th>{t.thProvider}</th>
+                  <th>{t.thCreated}</th>
+                  <th aria-label={t.ariaOpen} />
                 </tr>
               </thead>
               <tbody>
@@ -98,7 +99,7 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                         <Link
                           href={`/customers/${refund.applicationCustomerId}`}
                         >
-                          {refund.externalCustomerId ?? "Customer"}
+                          {refund.externalCustomerId ?? t.customerFallback}
                         </Link>
                       ) : (
                         <span className="cell-muted">Unknown</span>
@@ -139,7 +140,7 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                         className="table-row-link"
                         href={`/refunds/${refund.id}`}
                       >
-                        Open
+                        {t.open}
                       </Link>
                     </td>
                   </tr>
@@ -151,12 +152,10 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
       ) : (
         <EmptyState
           title={
-            applicationId ? "No refunds match this view" : "No project selected"
+            applicationId ? t.emptyTitle : dictionary.common.noProjectTitle
           }
           description={
-            applicationId
-              ? "Adjust the filters or wait for refund activity."
-              : "Select or create a project before inspecting refunds."
+            applicationId ? t.emptyDescription : t.noProjectDescription
           }
         />
       )}

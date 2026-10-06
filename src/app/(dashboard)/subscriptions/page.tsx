@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
+import { getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
@@ -36,10 +37,12 @@ function readFilter(
 export default async function SubscriptionsPage({
   searchParams,
 }: SubscriptionsPageProps) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.subscriptions;
   const filter = readFilter(params);
   const applicationId = context.selectedApplication?.id;
   const [rows, providers] = applicationId
@@ -63,12 +66,13 @@ export default async function SubscriptionsPage({
           filter={filter}
           providers={providers}
           statuses={[
-            { value: "pending", label: "Pending" },
-            { value: "active", label: "Active" },
-            { value: "past_due", label: "Past due" },
-            { value: "cancelled", label: "Cancelled" },
-            { value: "expired", label: "Expired" },
+            { value: "pending", label: t.statusPending },
+            { value: "active", label: t.statusActive },
+            { value: "past_due", label: t.statusPastDue },
+            { value: "cancelled", label: t.statusCancelled },
+            { value: "expired", label: t.statusExpired },
           ]}
+          labels={dictionary.billingFilters}
         />
       )}
 
@@ -78,14 +82,14 @@ export default async function SubscriptionsPage({
             <table className="data-table billing-operations-table">
               <thead>
                 <tr>
-                  <th>Subscription</th>
-                  <th>Customer</th>
-                  <th>Plan</th>
-                  <th>Status</th>
-                  <th>Period end</th>
-                  <th>Provider</th>
-                  <th>Updated</th>
-                  <th aria-label="Open subscription" />
+                  <th>{t.thSubscription}</th>
+                  <th>{t.thCustomer}</th>
+                  <th>{t.thPlan}</th>
+                  <th>{t.thStatus}</th>
+                  <th>{t.thPeriodEnd}</th>
+                  <th>{t.thProvider}</th>
+                  <th>{t.thUpdated}</th>
+                  <th aria-label={t.ariaOpen} />
                 </tr>
               </thead>
               <tbody>
@@ -101,7 +105,7 @@ export default async function SubscriptionsPage({
                             "needs_reconciliation" && (
                             <StatusBadge
                               status="warning"
-                              label="Needs reconciliation"
+                              label={t.needsReconciliation}
                             />
                           )}
                         </div>
@@ -110,7 +114,8 @@ export default async function SubscriptionsPage({
                         <Link
                           href={`/customers/${subscription.applicationCustomerId}`}
                         >
-                          {subscription.externalCustomerId ?? "Customer"}
+                          {subscription.externalCustomerId ??
+                            t.customerFallback}
                         </Link>
                         {subscription.customerEmail && (
                           <div className="cell-muted">
@@ -174,7 +179,7 @@ export default async function SubscriptionsPage({
                           className="table-row-link"
                           href={`/subscriptions/${subscription.id}`}
                         >
-                          Open
+                          {t.open}
                         </Link>
                       </td>
                     </tr>
@@ -187,14 +192,10 @@ export default async function SubscriptionsPage({
       ) : (
         <EmptyState
           title={
-            applicationId
-              ? "No subscriptions match this view"
-              : "No project selected"
+            applicationId ? t.emptyTitle : dictionary.common.noProjectTitle
           }
           description={
-            applicationId
-              ? "Adjust the filters or wait for recurring checkout activity."
-              : "Select or create a project before inspecting subscriptions."
+            applicationId ? t.emptyDescription : t.noProjectDescription
           }
         />
       )}
