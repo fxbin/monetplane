@@ -39,7 +39,10 @@ export default async function ApiKeysPage() {
           </div>
         </div>
       ) : (
-        <ApiKeyManager keys={await listDeveloperApiKeys(application.id)} />
+        <ApiKeyManager
+          keys={await listDeveloperApiKeys(application.id)}
+          labels={dictionary.apiKeyManager}
+        />
       )}
     </PageContainer>
   );

@@ -57,6 +57,7 @@ export default async function WebhooksPage() {
             environmentLabel={environmentLabel}
             endpoints={webhookData?.endpoints ?? []}
             deliveries={webhookData?.deliveries ?? []}
+            labels={dictionary.webhookManager}
           />
         </>
       )}
