@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 // Single money authority (audit A1): currency-aware display-amount parsing —
 // zero-decimal currencies (e.g. JPY) store whole units, not units × 100.
 // Pure functions, so the client component can import them directly.
@@ -32,48 +34,42 @@ type ProductBuilderWizardProps = {
   project: { id: string; name: string; slug: string };
   environment: "test" | "live";
   providers: ProviderOption[];
+  /** Locale-resolved labels (client components receive dictionary slices). */
+  labels: Dictionary["wizard"];
 };
 
-const PRODUCT_TYPES: Array<{
-  value: ProductType;
-  title: string;
-  eyebrow: string;
-  description: string;
-  billing: string;
-}> = [
-  {
-    value: "one_time",
-    title: "One-time purchase",
-    eyebrow: "Pay once",
-    description:
-      "Sell a downloadable product, lifetime unlock, or single purchase.",
-    billing: "One-time price",
-  },
-  {
-    value: "subscription",
-    title: "Subscription",
-    eyebrow: "Recurring",
-    description: "Charge monthly or annually and grant ongoing product access.",
-    billing: "Monthly or annual",
-  },
-  {
-    value: "credit_pack",
-    title: "Credit pack",
-    eyebrow: "Prepaid usage",
-    description: "Sell a fixed bundle of credits that customers consume later.",
-    billing: "One-time price + credits",
-  },
-  {
-    value: "usage_based",
-    title: "Usage-oriented plan",
-    eyebrow: "Recurring allowance",
-    description:
-      "Charge recurring and replenish a credit allowance for metered usage.",
-    billing: "Monthly or annual + credits",
-  },
-];
-
-const STEPS = ["Product", "Pricing", "Benefits", "Provider", "Review"] as const;
+function productTypesOf(t: Dictionary["wizard"]) {
+  return [
+    {
+      value: "one_time" as ProductType,
+      title: t.types.oneTimeTitle,
+      eyebrow: t.types.oneTimeEyebrow,
+      description: t.types.oneTimeDesc,
+      billing: t.types.oneTimeBilling,
+    },
+    {
+      value: "subscription" as ProductType,
+      title: t.types.subscriptionTitle,
+      eyebrow: t.types.subscriptionEyebrow,
+      description: t.types.subscriptionDesc,
+      billing: t.types.subscriptionBilling,
+    },
+    {
+      value: "credit_pack" as ProductType,
+      title: t.types.creditPackTitle,
+      eyebrow: t.types.creditPackEyebrow,
+      description: t.types.creditPackDesc,
+      billing: t.types.creditPackBilling,
+    },
+    {
+      value: "usage_based" as ProductType,
+      title: t.types.usageTitle,
+      eyebrow: t.types.usageEyebrow,
+      description: t.types.usageDesc,
+      billing: t.types.usageBilling,
+    },
+  ];
+}
 
 function slugify(value: string) {
   return value
@@ -100,8 +96,19 @@ export function ProductBuilderWizard({
   project,
   environment,
   providers,
+  labels,
 }: ProductBuilderWizardProps) {
   const router = useRouter();
+  const PRODUCT_TYPES = useMemo(() => productTypesOf(labels), [labels]);
+  const STEPS = [
+    labels.steps.product,
+    labels.steps.pricing,
+    labels.steps.benefits,
+    labels.steps.provider,
+    labels.steps.review,
+  ];
+  const environmentLabel =
+    environment === "test" ? labels.sandbox : labels.production;
   const [step, setStep] = useState(0);
   const [productType, setProductType] = useState<ProductType>("subscription");
   const [name, setName] = useState("");
@@ -160,47 +167,47 @@ export function ProductBuilderWizard({
     setError(null);
 
     if (step === 0) {
-      if (!name.trim()) return "Product name is required.";
-      if (!key.trim()) return "Product key is required.";
+      if (!name.trim()) return labels.vNameRequired;
+      if (!key.trim()) return labels.vKeyRequired;
       if (!/^[a-z0-9][a-z0-9._-]*$/.test(key.trim())) {
-        return "Product key can use lowercase letters, numbers, dots, underscores, and hyphens.";
+        return labels.vKeyFormat;
       }
     }
 
     if (step === 1) {
       if (amountMinor === undefined) {
         return currencyDecimals(currency) === 0
-          ? `Enter a valid whole-number price for ${currency} (no decimals).`
-          : "Enter a valid non-negative price with at most two decimal places.";
+          ? formatMessage(labels.vPriceWhole, { currency })
+          : labels.vPriceTwo;
       }
       if (isRecurring && !recurringInterval) {
-        return "Choose a recurring billing interval.";
+        return labels.vInterval;
       }
     }
 
     if (step === 2) {
       if (requiresCredits && credits.length === 0) {
         return productType === "credit_pack"
-          ? "A credit pack must include at least one credit grant."
-          : "A usage-oriented plan needs a credit allowance to meter usage.";
+          ? labels.vCreditPackNeeds
+          : labels.vUsageNeeds;
       }
 
       for (const credit of credits) {
         const quantity = Number(credit.quantity);
-        if (!credit.referenceKey.trim())
-          return "Every credit grant needs a key.";
+        if (!credit.referenceKey.trim()) return labels.vCreditKey;
         if (!Number.isSafeInteger(quantity) || quantity <= 0) {
-          return "Credit quantities must be positive whole numbers.";
+          return labels.vCreditQuantity;
         }
       }
       for (const feature of features) {
-        if (!feature.referenceKey.trim())
-          return "Every feature needs an entitlement key.";
+        if (!feature.referenceKey.trim()) return labels.vFeatureKey;
       }
     }
 
     if (step === 3 && !providerConnectionId) {
-      return `Connect or choose a ${environment === "test" ? "Sandbox" : "Production"} provider before creating the product.`;
+      return formatMessage(labels.vChooseProvider, {
+        environment: environmentLabel,
+      });
     }
 
     return null;
@@ -234,7 +241,7 @@ export function ProductBuilderWizard({
       return;
     }
     if (amountMinor === undefined) {
-      setError("Enter a valid price before creating the product.");
+      setError(labels.vPriceBefore);
       return;
     }
 
@@ -268,15 +275,13 @@ export function ProductBuilderWizard({
         error?: string;
       };
       if (!response.ok || !result.product) {
-        throw new Error(result.error ?? "Failed to create product");
+        throw new Error(result.error ?? labels.failedCreate);
       }
 
       router.push(`/products/${result.product.id}`);
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Failed to create product",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedCreate);
     } finally {
       setPending(false);
     }
@@ -284,11 +289,11 @@ export function ProductBuilderWizard({
 
   return (
     <form className="product-builder" onSubmit={submit}>
-      <aside className="builder-steps" aria-label="Product creation steps">
+      <aside className="builder-steps" aria-label={labels.ariaSteps}>
         <div className="builder-context">
-          <span>Project</span>
+          <span>{labels.project}</span>
           <strong>{project.name}</strong>
-          <small>{environment === "test" ? "Sandbox" : "Production"}</small>
+          <small>{environmentLabel}</small>
         </div>
         <ol>
           {STEPS.map((label, index) => (
@@ -322,18 +327,18 @@ export function ProductBuilderWizard({
 
       <div className="builder-main">
         <div className="builder-progress-copy">
-          Step {step + 1} of {STEPS.length}
+          {formatMessage(labels.stepOf, {
+            current: String(step + 1),
+            total: String(STEPS.length),
+          })}
         </div>
 
         {step === 0 && (
           <section className="builder-panel">
             <div className="builder-panel-heading">
-              <span className="builder-kicker">Product model</span>
-              <h2>What are you selling?</h2>
-              <p>
-                Pick the business model first. MonetPlane will only ask for the
-                pricing and benefit fields that apply to that model.
-              </p>
+              <span className="builder-kicker">{labels.modelKicker}</span>
+              <h2>{labels.modelTitle}</h2>
+              <p>{labels.modelDesc}</p>
             </div>
 
             <div className="product-type-grid">
@@ -361,7 +366,7 @@ export function ProductBuilderWizard({
 
             <div className="builder-fields two-columns">
               <label className="field-group">
-                <span>Product name</span>
+                <span>{labels.fieldName}</span>
                 <input
                   value={name}
                   onChange={(event) => {
@@ -369,12 +374,12 @@ export function ProductBuilderWizard({
                     setName(value);
                     if (!keyTouched) setKey(slugify(value));
                   }}
-                  placeholder="Pro plan"
+                  placeholder={labels.fieldNamePlaceholder}
                 />
-                <small>Customer-facing name shown in your catalog.</small>
+                <small>{labels.fieldNameHint}</small>
               </label>
               <label className="field-group">
-                <span>Product key</span>
+                <span>{labels.fieldKey}</span>
                 <input
                   className="cell-mono"
                   value={key}
@@ -384,10 +389,10 @@ export function ProductBuilderWizard({
                   }}
                   placeholder="pro-plan"
                 />
-                <small>Stable developer identifier. Keep it URL-safe.</small>
+                <small>{labels.fieldKeyHint}</small>
               </label>
               <label className="field-group span-two">
-                <span>Description</span>
+                <span>{labels.fieldDescription}</span>
                 <textarea
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
@@ -402,19 +407,19 @@ export function ProductBuilderWizard({
         {step === 1 && (
           <section className="builder-panel">
             <div className="builder-panel-heading">
-              <span className="builder-kicker">Pricing</span>
-              <h2>Set the primary price</h2>
+              <span className="builder-kicker">{labels.pricingKicker}</span>
+              <h2>{labels.pricingTitle}</h2>
               <p>
                 {isRecurring
-                  ? "This product renews automatically. Weekly, monthly, and annual intervals are supported where the provider allows."
-                  : "This product is charged once and does not renew."}
+                  ? labels.pricingRecurringDesc
+                  : labels.pricingOneTimeDesc}
               </p>
             </div>
 
             <div className="builder-price-card">
               <div className="builder-price-inputs">
                 <label className="field-group currency-field">
-                  <span>Currency</span>
+                  <span>{labels.currency}</span>
                   <select
                     value={currency}
                     onChange={(event) => setCurrency(event.target.value)}
@@ -426,7 +431,7 @@ export function ProductBuilderWizard({
                   </select>
                 </label>
                 <label className="field-group amount-field">
-                  <span>Price</span>
+                  <span>{labels.price}</span>
                   <input
                     inputMode="decimal"
                     value={amount}
@@ -438,13 +443,13 @@ export function ProductBuilderWizard({
 
               {isRecurring && (
                 <fieldset className="interval-choice">
-                  <legend>Billing interval</legend>
+                  <legend>{labels.billingInterval}</legend>
                   <label
                     className={`interval-option${recurringInterval === "week" ? " is-selected" : ""}${weeklySupported ? "" : " interval-option-disabled"}`}
                     title={
                       weeklySupported
                         ? undefined
-                        : "The selected provider does not support weekly billing"
+                        : labels.weeklyUnsupportedTitle
                     }
                   >
                     <input
@@ -454,11 +459,11 @@ export function ProductBuilderWizard({
                       disabled={!weeklySupported}
                       onChange={() => setRecurringInterval("week")}
                     />
-                    <strong>Weekly</strong>
+                    <strong>{labels.weekly}</strong>
                     <span>
                       {weeklySupported
-                        ? "Renews every week"
-                        : "Not supported by this provider"}
+                        ? labels.weeklyRenews
+                        : labels.weeklyUnsupported}
                     </span>
                   </label>
                   <label
@@ -472,8 +477,8 @@ export function ProductBuilderWizard({
                       checked={recurringInterval === "month"}
                       onChange={() => setRecurringInterval("month")}
                     />
-                    <strong>Monthly</strong>
-                    <span>Renews every month</span>
+                    <strong>{labels.monthly}</strong>
+                    <span>{labels.monthlyRenews}</span>
                   </label>
                   <label
                     className={
@@ -486,19 +491,23 @@ export function ProductBuilderWizard({
                       checked={recurringInterval === "year"}
                       onChange={() => setRecurringInterval("year")}
                     />
-                    <strong>Annual</strong>
-                    <span>Renews every year</span>
+                    <strong>{labels.annual}</strong>
+                    <span>{labels.annualRenews}</span>
                   </label>
                 </fieldset>
               )}
 
               <div className="price-preview">
-                <span>Customer pays</span>
+                <span>{labels.customerPays}</span>
                 <strong>{formatPreviewAmount(amount || "0", currency)}</strong>
                 <small>
                   {isRecurring
-                    ? `per ${recurringInterval === "week" ? "week" : recurringInterval === "month" ? "month" : "year"}`
-                    : "one time"}
+                    ? recurringInterval === "week"
+                      ? labels.perWeek
+                      : recurringInterval === "month"
+                        ? labels.perMonth
+                        : labels.perYear
+                    : labels.oneTime}
                 </small>
               </div>
             </div>
@@ -508,23 +517,19 @@ export function ProductBuilderWizard({
         {step === 2 && (
           <section className="builder-panel">
             <div className="builder-panel-heading">
-              <span className="builder-kicker">Benefits</span>
-              <h2>What does the customer receive?</h2>
-              <p>
-                Credits map to MonetPlane credit grant configs. Features map to
-                entitlement grant configs—there is no parallel UI-only benefit
-                model.
-              </p>
+              <span className="builder-kicker">{labels.benefitsKicker}</span>
+              <h2>{labels.benefitsTitle}</h2>
+              <p>{labels.benefitsDesc}</p>
             </div>
 
             <div className="benefit-section">
               <div className="benefit-heading">
                 <div>
-                  <h3>Credits</h3>
+                  <h3>{labels.credits}</h3>
                   <p>
                     {requiresCredits
-                      ? "Required for this product model."
-                      : "Optional prepaid or recurring usage allowance."}
+                      ? labels.creditsRequired
+                      : labels.creditsOptional}
                   </p>
                 </div>
                 <button
@@ -533,22 +538,22 @@ export function ProductBuilderWizard({
                   onClick={addCredit}
                 >
                   {requiresCredits && credits.length === 0
-                    ? "Add required credit grant"
-                    : "Add credit grant"}
+                    ? labels.addRequiredCredit
+                    : labels.addCredit}
                 </button>
               </div>
               {credits.length === 0 ? (
                 <div className="benefit-empty">
                   {requiresCredits
-                    ? "A credit grant is required for this product model. Add one to continue."
-                    : "No credits included."}
+                    ? labels.creditsEmptyRequired
+                    : labels.creditsEmpty}
                 </div>
               ) : (
                 <div className="benefit-rows">
                   {credits.map((credit) => (
                     <div key={credit.id} className="benefit-row">
                       <label className="field-group">
-                        <span>Credit type key</span>
+                        <span>{labels.creditTypeKey}</span>
                         <input
                           className="cell-mono"
                           value={credit.referenceKey}
@@ -569,7 +574,7 @@ export function ProductBuilderWizard({
                         />
                       </label>
                       <label className="field-group quantity-field">
-                        <span>Quantity</span>
+                        <span>{labels.quantity}</span>
                         <input
                           inputMode="numeric"
                           value={credit.quantity}
@@ -587,14 +592,16 @@ export function ProductBuilderWizard({
                       <button
                         type="button"
                         className="benefit-remove"
-                        aria-label={`Remove ${credit.referenceKey || "credit"} grant`}
+                        aria-label={formatMessage(labels.removeCreditAria, {
+                          key: credit.referenceKey || labels.creditFallback,
+                        })}
                         onClick={() =>
                           setCredits((current) =>
                             current.filter((item) => item.id !== credit.id),
                           )
                         }
                       >
-                        Remove
+                        {labels.remove}
                       </button>
                     </div>
                   ))}
@@ -605,27 +612,25 @@ export function ProductBuilderWizard({
             <div className="benefit-section">
               <div className="benefit-heading">
                 <div>
-                  <h3>Features</h3>
-                  <p>Entitlement keys unlocked after successful purchase.</p>
+                  <h3>{labels.features}</h3>
+                  <p>{labels.featuresDesc}</p>
                 </div>
                 <button
                   type="button"
                   className="btn btn-secondary"
                   onClick={addFeature}
                 >
-                  Add feature
+                  {labels.addFeature}
                 </button>
               </div>
               {features.length === 0 ? (
-                <div className="benefit-empty">
-                  No feature entitlements included.
-                </div>
+                <div className="benefit-empty">{labels.featuresEmpty}</div>
               ) : (
                 <div className="benefit-rows">
                   {features.map((feature) => (
                     <div key={feature.id} className="benefit-row feature-row">
                       <label className="field-group">
-                        <span>Entitlement key</span>
+                        <span>{labels.entitlementKey}</span>
                         <input
                           className="cell-mono"
                           value={feature.referenceKey}
@@ -648,14 +653,16 @@ export function ProductBuilderWizard({
                       <button
                         type="button"
                         className="benefit-remove"
-                        aria-label={`Remove ${feature.referenceKey || "feature"}`}
+                        aria-label={formatMessage(labels.removeFeatureAria, {
+                          key: feature.referenceKey || labels.featureFallback,
+                        })}
                         onClick={() =>
                           setFeatures((current) =>
                             current.filter((item) => item.id !== feature.id),
                           )
                         }
                       >
-                        Remove
+                        {labels.remove}
                       </button>
                     </div>
                   ))}
@@ -668,29 +675,23 @@ export function ProductBuilderWizard({
         {step === 3 && (
           <section className="builder-panel">
             <div className="builder-panel-heading">
-              <span className="builder-kicker">Payment route</span>
-              <h2>Choose the provider for this environment</h2>
-              <p>
-                This becomes the catalog routing preference for the current
-                {environment === "test" ? " Sandbox" : " Production"} context.
-                Checkout still keeps provider selection explicit in the P0 API.
-              </p>
+              <span className="builder-kicker">{labels.routeKicker}</span>
+              <h2>{labels.routeTitle}</h2>
+              <p>{formatMessage(labels.routeDesc, { environment: "" })}</p>
             </div>
 
             {providers.length === 0 ? (
               <div className="provider-empty-state">
                 <div>
                   <strong>
-                    No {environment === "test" ? "Sandbox" : "Production"}{" "}
-                    provider connected
+                    {formatMessage(labels.noProviderTitle, {
+                      environment: environmentLabel,
+                    })}
                   </strong>
-                  <p>
-                    Connect a provider first, then return here to finish the
-                    sellable product.
-                  </p>
+                  <p>{labels.noProviderDesc}</p>
                 </div>
                 <Link className="btn btn-primary" href="/providers/new">
-                  Connect provider
+                  {labels.connectProvider}
                 </Link>
               </div>
             ) : (
@@ -714,65 +715,67 @@ export function ProductBuilderWizard({
                       <span>{provider.provider}</span>
                     </div>
                     <small>
-                      {provider.mode === "test" ? "Sandbox" : "Production"}
+                      {provider.mode === "test"
+                        ? labels.sandbox
+                        : labels.production}
                     </small>
                   </label>
                 ))}
               </div>
             )}
 
-            <div className="builder-note">
-              Provider routing is stored per environment in product metadata.
-              Product definitions are shared across environments; billing
-              runtime data (orders, payments, credits, entitlements) is isolated
-              per environment.
-            </div>
+            <div className="builder-note">{labels.routeNote}</div>
           </section>
         )}
 
         {step === 4 && (
           <section className="builder-panel">
             <div className="builder-panel-heading">
-              <span className="builder-kicker">Review</span>
-              <h2>Ready to create</h2>
-              <p>
-                Review the catalog object MonetPlane will create. Product,
-                primary price, and grants are committed atomically.
-              </p>
+              <span className="builder-kicker">{labels.reviewKicker}</span>
+              <h2>{labels.reviewTitle}</h2>
+              <p>{labels.reviewDesc}</p>
             </div>
 
             <div className="review-grid">
               <section className="review-card">
-                <span>Product</span>
-                <strong>{name || "Untitled product"}</strong>
+                <span>{labels.reviewProduct}</span>
+                <strong>{name || labels.reviewUntitled}</strong>
                 <code>{key || "product-key"}</code>
                 <p>{typeDefinition?.title}</p>
               </section>
               <section className="review-card">
-                <span>Price</span>
+                <span>{labels.reviewPrice}</span>
                 <strong>{formatPreviewAmount(amount || "0", currency)}</strong>
                 <p>
                   {isRecurring
-                    ? `${recurringInterval === "month" ? "Monthly" : "Annual"} recurring`
-                    : "One-time"}
+                    ? recurringInterval === "month"
+                      ? labels.reviewMonthlyRecurring
+                      : labels.reviewAnnualRecurring
+                    : labels.reviewOneTime}
                 </p>
               </section>
               <section className="review-card">
-                <span>Benefits</span>
+                <span>{labels.reviewBenefits}</span>
                 <strong>
-                  {credits.length} credit grant{credits.length === 1 ? "" : "s"}
+                  {formatMessage(labels.reviewCreditGrants, {
+                    count: String(credits.length),
+                  })}
                 </strong>
                 <p>
-                  {features.length} feature{features.length === 1 ? "" : "s"}
+                  {formatMessage(labels.reviewFeatures, {
+                    count: String(features.length),
+                  })}
                 </p>
               </section>
               <section className="review-card">
-                <span>Provider</span>
-                <strong>{selectedProvider?.name ?? "Not selected"}</strong>
+                <span>{labels.reviewProvider}</span>
+                <strong>
+                  {selectedProvider?.name ?? labels.reviewNotSelected}
+                </strong>
                 <p>
                   {selectedProvider
-                    ? `${selectedProvider.provider} · ${environment === "test" ? "Sandbox" : "Production"}`
-                    : "Choose a provider before creating"}
+                    ? `${selectedProvider.provider} · ${environmentLabel}`
+                    : labels.reviewChooseProvider}
                 </p>
               </section>
             </div>
@@ -781,12 +784,13 @@ export function ProductBuilderWizard({
               <div className="review-benefits">
                 {credits.map((credit) => (
                   <span key={`credit-${credit.id}`}>
-                    +{credit.quantity || "0"} {credit.referenceKey || "credits"}
+                    +{credit.quantity || "0"}{" "}
+                    {credit.referenceKey || labels.reviewCreditsChip}
                   </span>
                 ))}
                 {features.map((feature) => (
                   <span key={`feature-${feature.id}`}>
-                    {feature.referenceKey || "feature"}
+                    {feature.referenceKey || labels.featureFallback}
                   </span>
                 ))}
               </div>
@@ -809,17 +813,17 @@ export function ProductBuilderWizard({
                 onClick={back}
                 disabled={pending}
               >
-                Back
+                {labels.back}
               </button>
             )}
           </div>
           <div className="builder-actions-right">
             <Link className="btn btn-ghost" href="/products">
-              Cancel
+              {labels.cancel}
             </Link>
             {step < STEPS.length - 1 ? (
               <button type="button" className="btn btn-primary" onClick={next}>
-                Continue
+                {labels.continue}
               </button>
             ) : (
               <button
@@ -827,7 +831,7 @@ export function ProductBuilderWizard({
                 className="btn btn-primary"
                 disabled={pending || providers.length === 0}
               >
-                {pending ? "Creating…" : "Create product"}
+                {pending ? labels.creating : labels.createProduct}
               </button>
             )}
           </div>

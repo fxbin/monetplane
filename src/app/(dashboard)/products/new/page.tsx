@@ -56,6 +56,7 @@ export default async function NewProductPage() {
           mode: provider.mode,
           capabilities: provider.capabilities,
         }))}
+        labels={dictionary.wizard}
       />
     </PageContainer>
   );
