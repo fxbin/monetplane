@@ -140,9 +140,8 @@ export function ProductBuilderWizard({
     selectedProvider?.capabilities.weeklyInterval ?? false;
   const amountMinor = parseDisplayAmountToMinor(amount, currency);
 
-  const typeDefinition = useMemo(
-    () => PRODUCT_TYPES.find((type) => type.value === productType),
-    [productType],
+  const typeDefinition = PRODUCT_TYPES.find(
+    (type) => type.value === productType,
   );
 
   function addCredit() {
