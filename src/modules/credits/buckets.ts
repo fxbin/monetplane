@@ -198,11 +198,26 @@ export async function expireDueCreditBuckets(
       // a concurrent debit and expiry could deadlock (bucket→account vs
       // account→bucket). After acquiring the account lock, any competing
       // debit has committed and the bucket re-read below sees its effect.
-      await tx
-        .select({ id: creditAccounts.id })
+      const [lockedAccount] = await tx
+        .select({
+          id: creditAccounts.id,
+          reservedBalance: creditAccounts.reservedBalance,
+        })
         .from(creditAccounts)
         .where(eq(creditAccounts.id, bucket.creditAccountId))
         .for("update");
+      // Deferred-expiry guard (roundtable 2026-10-06, PR-A): a bucket's
+      // remaining backs BOTH available and reserved portions of the
+      // account (reservations do not pin specific buckets). Expiring it
+      // while reservedBalance > 0 — the old code decremented only
+      // availableBalance with a greatest(...,0) clamp — silently broke
+      // sum(active bucket remaining) == available + reserved, and a later
+      // release of the reservation "revived" the expired credits. Skip
+      // accounts with active reservations; the next sweep after those
+      // reservations settle expires the bucket against intact balances.
+      if (!lockedAccount || lockedAccount.reservedBalance > 0) {
+        return;
+      }
       const [fresh] = await tx
         .select()
         .from(creditBuckets)
