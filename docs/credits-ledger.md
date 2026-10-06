@@ -239,6 +239,11 @@ unique per cycle, so a paid cycle can never collide with the previous cycle's gr
 
 P0 grants accumulate. Credit expiration, rollover limits, and bucket-consumption policy are intentionally deferred until after the basic ledger is proven.
 
+**Bucket expiry has a console entry**: the admin grant route (`POST /api/admin/customers/{id}/credits`)
+accepts `expiresAt` (ISO 8601) or `expiresInDays` (whole days), and the grant dialog exposes the
+days form; the expiry cron sweeps buckets whose `expiresAt` has passed. The reservation sweeper
+remains a separate open item — reservations do not expire automatically in this release.
+
 ## API semantics
 
 P0 exposes server-side operations equivalent to:

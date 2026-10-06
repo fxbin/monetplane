@@ -18,6 +18,7 @@ import { applicationCustomers } from "@/modules/customers/schema";
 export type CreditTypeSummary = {
   creditType: string;
   customers: number;
+  /** bigint sums arrive as strings from node-postgres; parsed to Number. */
   available: number;
   reserved: number;
 };
@@ -64,8 +65,8 @@ export async function getCreditsOverview(
         .select({
           creditType: creditAccounts.creditType,
           customers: sql<number>`count(*)::int`,
-          available: sql<number>`coalesce(sum(${creditAccounts.availableBalance}), 0)::int`,
-          reserved: sql<number>`coalesce(sum(${creditAccounts.reservedBalance}), 0)::int`,
+          available: sql<string>`coalesce(sum(${creditAccounts.availableBalance}), 0)::bigint`,
+          reserved: sql<string>`coalesce(sum(${creditAccounts.reservedBalance}), 0)::bigint`,
         })
         .from(creditAccounts)
         .where(
@@ -168,7 +169,13 @@ export async function getCreditsOverview(
     ]);
 
   return {
-    typeSummaries,
+    // bigint sums come back as strings; credits are safe integers by
+    // construction, so Number() is lossless here.
+    typeSummaries: typeSummaries.map((row) => ({
+      ...row,
+      available: Number(row.available),
+      reserved: Number(row.reserved),
+    })),
     recentLedger,
     expiringBuckets,
     activeReservations,

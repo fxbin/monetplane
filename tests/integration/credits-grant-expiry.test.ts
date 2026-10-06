@@ -7,6 +7,7 @@ import {
   creditBuckets,
 } from "../../src/modules/credits/schema";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
+import { parseGrantExpiry } from "../../src/server/control-plane/credit-grant-expiry";
 import { grantCustomerCredits } from "../../src/server/control-plane/customer-workspace";
 import { setupIntegrationFile } from "./test-setup";
 
@@ -101,5 +102,38 @@ describe("grant expiry + normalize guardrail", () => {
     );
     const bucket = await bucketFor(app.id, "plain");
     expect(bucket?.expiresAt).toBeNull();
+  });
+});
+
+describe("grant expiry input validation (verifier finding)", () => {
+  it("rejects an unparseable expiresAt with 400", () => {
+    const result = parseGrantExpiry({ expiresAt: "garbage" });
+    expect(result.error).not.toBeNull();
+    expect(result.error?.status).toBe(400);
+  });
+
+  it("rejects a fractional expiresInDays with 400", () => {
+    const result = parseGrantExpiry({ expiresInDays: 3.5 });
+    expect(result.error?.status).toBe(400);
+  });
+
+  it("rejects a non-positive expiresInDays with 400", () => {
+    const result = parseGrantExpiry({ expiresInDays: 0 });
+    expect(result.error?.status).toBe(400);
+  });
+
+  it("accepts an ISO timestamp and whole days", () => {
+    const iso = parseGrantExpiry({ expiresAt: "2026-12-01T00:00:00Z" });
+    expect(iso.error).toBeNull();
+    expect(iso.expiresAt?.toISOString()).toBe("2026-12-01T00:00:00.000Z");
+    const days = parseGrantExpiry({ expiresInDays: 30 });
+    expect(days.error).toBeNull();
+    expect(days.expiresAt).toBeInstanceOf(Date);
+  });
+
+  it("returns null expiry when neither field is present", () => {
+    const result = parseGrantExpiry({});
+    expect(result.error).toBeNull();
+    expect(result.expiresAt).toBeNull();
   });
 });
