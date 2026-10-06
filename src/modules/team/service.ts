@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, ne } from "drizzle-orm";
-import { getDb } from "@/db/client";
+import { type Database, getDb } from "@/db/client";
 import { applications } from "@/modules/applications/schema";
 import {
   hashPassword,
@@ -742,4 +742,51 @@ export async function removeMember(input: {
     metadata: { email: target.operatorEmail, role: target.role },
     actor: { id: input.removedBy.operatorId, label: input.removedBy.label },
   });
+}
+
+/**
+ * Self-service password change for the signed-in operator (#roundtable
+ * 2026-10-06, PR1). Verifies the current password before rotating; the
+ * audit entry is written by the caller (admin route) with the acting
+ * operator identity — the hash itself is never logged.
+ */
+export async function changeOperatorPassword(
+  input: {
+    operatorId: string;
+    currentPassword: string;
+    newPassword: string;
+  },
+  db: Database = getDb(),
+): Promise<void> {
+  const { operatorId, currentPassword, newPassword } = input;
+  if (newPassword.length < 8) {
+    throw new TeamServiceError(
+      "New password must be at least 8 characters",
+      400,
+      "invalid_request",
+    );
+  }
+  const [operator] = await db
+    .select({ passwordHash: operators.passwordHash })
+    .from(operators)
+    .where(eq(operators.id, operatorId))
+    .limit(1);
+  if (!operator) {
+    throw new TeamServiceError("Operator not found", 404, "not_found");
+  }
+  const ok = await verifyPassword(currentPassword, operator.passwordHash);
+  if (!ok) {
+    throw new TeamServiceError(
+      "Current password is incorrect",
+      401,
+      "invalid_credentials",
+    );
+  }
+  await db
+    .update(operators)
+    .set({
+      passwordHash: await hashPassword(newPassword),
+      updatedAt: new Date(),
+    })
+    .where(eq(operators.id, operatorId));
 }
