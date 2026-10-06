@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
   getDeveloperHealth,
@@ -17,26 +18,26 @@ function CodeBlock({ children }: { children: string }) {
 }
 
 export default async function DeveloperQuickstartPage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.developer;
   const application = context.selectedApplication;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   if (!application) {
     return (
-      <PageContainer
-        title="Developer Quickstart"
-        description="Create a project before integrating the server SDK."
-      >
+      <PageContainer title={t.title} description={t.noProjectDescription}>
         <div className="empty-state">
-          <h2 className="empty-state-title">Start with a project</h2>
-          <p className="empty-state-desc">
-            A project owns your catalog, customers, API credentials, and
-            provider connections.
-          </p>
+          <h2 className="empty-state-title">{t.emptyTitle}</h2>
+          <p className="empty-state-desc">{t.emptyDesc}</p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">
-              Create project
+              {t.createProject}
             </Link>
           </div>
         </div>
@@ -51,40 +52,40 @@ export default async function DeveloperQuickstartPage() {
   const priceId = quickstart.catalog?.priceId ?? "price_your_price";
   const checks = [
     {
-      label: "Server API key issued",
+      label: t.checkApiKey,
       done: health.apiKeyCreated,
       href: "/api-keys",
-      action: "Create key",
+      action: t.checkApiKeyAction,
     },
     {
-      label: "Authenticated API request received",
+      label: t.checkApiRequest,
       done: health.apiRequestReceived,
       href: "/developer",
-      action: "Run SDK call",
+      action: t.checkApiRequestAction,
     },
     {
-      label: `${environmentLabel} webhook endpoint configured`,
+      label: formatMessage(t.checkWebhook, { environment: environmentLabel }),
       done: health.webhookConfigured,
       href: "/webhooks",
-      action: "Add endpoint",
+      action: t.checkWebhookAction,
     },
     {
-      label: "Webhook delivery succeeded",
+      label: t.checkDelivery,
       done: health.webhookDelivered,
       href: "/webhooks",
-      action: "Send test",
+      action: t.checkDeliveryAction,
     },
     {
-      label: "Provider event received",
+      label: t.checkProviderEvent,
       done: health.firstProviderEventReceived,
       href: "/events",
-      action: "View events",
+      action: t.checkProviderEventAction,
     },
     {
-      label: "First payment received",
+      label: t.checkFirstPayment,
       done: health.firstPaymentReceived,
       href: "/payments",
-      action: "View payments",
+      action: t.checkFirstPaymentAction,
     },
   ];
 
@@ -125,24 +126,18 @@ const credits = await monetplane.getCreditBalance(
 
   return (
     <PageContainer
-      title="Developer Quickstart"
-      description={`Connect ${application.name} to MonetPlane in about 10 minutes.`}
+      title={t.title}
+      description={formatMessage(t.description, {
+        application: application.name,
+      })}
     >
       <div className="context-notice">
-        <span className="context-notice-label">
-          Current provider environment
-        </span>
+        <span className="context-notice-label">{t.noticeLabel}</span>
         <strong>{environmentLabel}</strong>
-        <span>
-          Provider connection IDs and webhook endpoints follow this environment.
-          Server API keys are project-wide today.
-        </span>
+        <span>{t.noticeBody}</span>
       </div>
 
-      <section
-        className="developer-health-grid"
-        aria-label="Integration health"
-      >
+      <section className="developer-health-grid" aria-label={t.healthAria}>
         {checks.map((check) => (
           <article
             className={`developer-health-card ${check.done ? "is-done" : ""}`}
@@ -153,12 +148,10 @@ const credits = await monetplane.getCreditBalance(
             </span>
             <div>
               <strong>{check.label}</strong>
-              <p>
-                {check.done ? "Observed by MonetPlane" : "Not observed yet"}
-              </p>
+              <p>{check.done ? t.observed : t.notObserved}</p>
             </div>
             <Link href={check.href}>
-              {check.done ? "Inspect" : check.action}
+              {check.done ? t.inspect : check.action}
             </Link>
           </article>
         ))}
@@ -169,34 +162,24 @@ const credits = await monetplane.getCreditBalance(
           <div className="developer-panel-heading">
             <div>
               <span className="developer-step">01</span>
-              <h2>Keep the secret on your server</h2>
-              <p>
-                Create an API key, put it in your server secret manager, and
-                never expose it through browser bundles, public environment
-                variables, or client-side code.
-              </p>
+              <h2>{t.step1Title}</h2>
+              <p>{t.step1Desc}</p>
             </div>
             <Link className="btn btn-secondary" href="/api-keys">
-              Manage API keys
+              {t.manageApiKeys}
             </Link>
           </div>
           <CodeBlock>{`MONETPLANE_BASE_URL=https://billing.example.com\nMONETPLANE_APP_SECRET=mp_app_••••••••`}</CodeBlock>
 
           <div className="developer-sdk-distribution-note">
-            <strong>SDK distribution status</strong>
-            <span>
-              This repository currently keeps the SDK under <code>src/sdk</code>{" "}
-              and the root package is private. A public package publish step is
-              not configured yet. The code below uses the exact current server
-              SDK contract rather than pretending a package is already
-              published.
-            </span>
+            <strong>{t.sdkNoteTitle}</strong>
+            <span>{t.sdkNoteBody}</span>
           </div>
 
           <div className="developer-panel-heading developer-step-heading">
             <div>
               <span className="developer-step">02</span>
-              <h2>Initialize the server SDK</h2>
+              <h2>{t.step2Title}</h2>
             </div>
           </div>
           <CodeBlock>{initSnippet}</CodeBlock>
@@ -204,7 +187,7 @@ const credits = await monetplane.getCreditBalance(
           <div className="developer-panel-heading developer-step-heading">
             <div>
               <span className="developer-step">03</span>
-              <h2>Identify your customer</h2>
+              <h2>{t.step3Title}</h2>
             </div>
           </div>
           <CodeBlock>{customerSnippet}</CodeBlock>
@@ -212,10 +195,9 @@ const credits = await monetplane.getCreditBalance(
           <div className="developer-panel-heading developer-step-heading">
             <div>
               <span className="developer-step">04</span>
-              <h2>Create checkout</h2>
+              <h2>{t.step4Title}</h2>
               <p>
-                The example uses the first active {environmentLabel} provider
-                and first active project price when available.
+                {formatMessage(t.step4Desc, { environment: environmentLabel })}
               </p>
             </div>
           </div>
@@ -224,44 +206,46 @@ const credits = await monetplane.getCreditBalance(
           <div className="developer-panel-heading developer-step-heading">
             <div>
               <span className="developer-step">05</span>
-              <h2>Gate features and consume credits</h2>
+              <h2>{t.step5Title}</h2>
             </div>
           </div>
           <CodeBlock>{accessSnippet}</CodeBlock>
         </section>
 
         <aside className="developer-panel developer-reference-card">
-          <h2>Current references</h2>
+          <h2>{t.referencesTitle}</h2>
           <dl>
             <div>
-              <dt>Project</dt>
+              <dt>{t.refProject}</dt>
               <dd className="cell-mono">{application.id}</dd>
             </div>
             <div>
-              <dt>Environment</dt>
+              <dt>{t.refEnvironment}</dt>
               <dd>{environmentLabel}</dd>
             </div>
             <div>
-              <dt>Provider</dt>
+              <dt>{t.refProvider}</dt>
               <dd className="cell-mono">
-                {quickstart.provider?.id ?? "Not connected"}
+                {quickstart.provider?.id ?? t.notConnected}
               </dd>
             </div>
             <div>
-              <dt>Price</dt>
+              <dt>{t.refPrice}</dt>
               <dd className="cell-mono">
-                {quickstart.catalog?.priceId ?? "No active price"}
+                {quickstart.catalog?.priceId ?? t.noActivePrice}
               </dd>
             </div>
           </dl>
           {!quickstart.provider && (
             <Link className="btn btn-primary" href="/providers/new">
-              Connect {environmentLabel} provider
+              {formatMessage(t.connectProviderAction, {
+                environment: environmentLabel,
+              })}
             </Link>
           )}
           {!quickstart.catalog && (
             <Link className="btn btn-secondary" href="/products/new">
-              Create product
+              {t.createProduct}
             </Link>
           )}
         </aside>
