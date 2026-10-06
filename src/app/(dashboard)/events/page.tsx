@@ -95,7 +95,7 @@ export default async function EventsPage({
           label={t.customer}
           name="customer"
           defaultValue={filters.customer}
-          placeholder="external or internal id"
+          placeholder={t.customerPlaceholder}
         />
         <FilterTextField
           label={t.order}

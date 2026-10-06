@@ -84,6 +84,7 @@ export const en = {
     scopeWorkspace: "Workspace",
     action: "Action",
     actor: "Actor",
+    actorPlaceholder: "admin id or email",
     resourceType: "Resource type",
     from: "From",
     to: "To",
@@ -109,6 +110,7 @@ export const en = {
     privacyStrong: "Normalized events only",
     privacyBody:
       "Raw provider webhook bodies are retained for processing but are not exposed in this developer console.",
+    customerPlaceholder: "external or internal id",
     provider: "Provider",
     customer: "Customer",
     order: "Order",

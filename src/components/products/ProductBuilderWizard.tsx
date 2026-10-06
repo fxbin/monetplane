@@ -676,7 +676,11 @@ export function ProductBuilderWizard({
             <div className="builder-panel-heading">
               <span className="builder-kicker">{labels.routeKicker}</span>
               <h2>{labels.routeTitle}</h2>
-              <p>{formatMessage(labels.routeDesc, { environment: "" })}</p>
+              <p>
+                {formatMessage(labels.routeDesc, {
+                  environment: environmentLabel,
+                })}
+              </p>
             </div>
 
             {providers.length === 0 ? (

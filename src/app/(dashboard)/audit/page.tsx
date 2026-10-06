@@ -97,7 +97,7 @@ export default async function AuditPage({
           label={t.actor}
           name="actor"
           defaultValue={value(params, "actor") ?? ""}
-          placeholder="admin id or email"
+          placeholder={t.actorPlaceholder}
         />
         <FilterTextField
           label={t.resourceType}
