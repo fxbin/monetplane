@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
+import { getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
@@ -36,10 +37,12 @@ function readFilter(
 export default async function PaymentsPage({
   searchParams,
 }: PaymentsPageProps) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.payments;
   const filter = readFilter(params);
   const applicationId = context.selectedApplication?.id;
   const [rows, providers] = applicationId
@@ -53,21 +56,19 @@ export default async function PaymentsPage({
     : [[], []];
 
   return (
-    <PageContainer
-      title="Payments"
-      description="Find payments quickly, understand provider-neutral state, and surface refund or reconciliation work."
-    >
+    <PageContainer title={t.title} description={t.description}>
       {applicationId && (
         <BillingOperationsFilters
           action="/payments"
           filter={filter}
           providers={providers}
           statuses={[
-            { value: "pending", label: "Pending" },
-            { value: "succeeded", label: "Succeeded" },
-            { value: "failed", label: "Failed" },
-            { value: "refunded", label: "Refunded" },
+            { value: "pending", label: t.statusPending },
+            { value: "succeeded", label: t.statusSucceeded },
+            { value: "failed", label: t.statusFailed },
+            { value: "refunded", label: t.statusRefunded },
           ]}
+          labels={dictionary.billingFilters}
         />
       )}
 
@@ -77,14 +78,14 @@ export default async function PaymentsPage({
             <table className="data-table billing-operations-table">
               <thead>
                 <tr>
-                  <th>Payment</th>
-                  <th>Customer</th>
-                  <th>Product</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Provider</th>
-                  <th>Created</th>
-                  <th aria-label="Open payment" />
+                  <th>{t.thPayment}</th>
+                  <th>{t.thCustomer}</th>
+                  <th>{t.thProduct}</th>
+                  <th>{t.thAmount}</th>
+                  <th>{t.thStatus}</th>
+                  <th>{t.thProvider}</th>
+                  <th>{t.thCreated}</th>
+                  <th aria-label={t.ariaOpen} />
                 </tr>
               </thead>
               <tbody>
@@ -100,7 +101,7 @@ export default async function PaymentsPage({
                             "needs_reconciliation" && (
                             <StatusBadge
                               status="warning"
-                              label="Needs reconciliation"
+                              label={t.needsReconciliation}
                             />
                           )}
                         </div>
@@ -110,10 +111,10 @@ export default async function PaymentsPage({
                           <Link
                             href={`/customers/${payment.applicationCustomerId}`}
                           >
-                            {payment.externalCustomerId ?? "Customer"}
+                            {payment.externalCustomerId ?? t.customerFallback}
                           </Link>
                         ) : (
-                          <span className="cell-muted">Unknown</span>
+                          <span className="cell-muted">{t.unknown}</span>
                         )}
                         {payment.customerEmail && (
                           <div className="cell-muted">
@@ -148,7 +149,7 @@ export default async function PaymentsPage({
                           className="table-row-link"
                           href={`/payments/${payment.id}`}
                         >
-                          Open
+                          {t.open}
                         </Link>
                       </td>
                     </tr>
@@ -161,14 +162,10 @@ export default async function PaymentsPage({
       ) : (
         <EmptyState
           title={
-            applicationId
-              ? "No payments match this view"
-              : "No project selected"
+            applicationId ? t.emptyTitle : dictionary.common.noProjectTitle
           }
           description={
-            applicationId
-              ? "Adjust the filters or wait for checkout activity to arrive."
-              : "Select or create a project before inspecting payment operations."
+            applicationId ? t.emptyDescription : t.noProjectDescription
           }
         />
       )}

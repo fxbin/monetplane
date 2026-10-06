@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { StatusBadge } from "@/components/ui/console";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 
 type WorkspaceRole = "owner" | "admin" | "developer" | "support" | "viewer";
 
@@ -33,6 +35,8 @@ type TeamManagerProps = {
   invitations: Invitation[];
   applications: ApplicationOption[];
   matrix: Record<WorkspaceRole, Record<string, boolean>>;
+  /** Locale-resolved labels (client components receive dictionary slices). */
+  labels: Dictionary["team"];
 };
 
 const ROLES: WorkspaceRole[] = [
@@ -43,20 +47,13 @@ const ROLES: WorkspaceRole[] = [
   "viewer",
 ];
 
-const ROLE_DESCRIPTIONS: Record<WorkspaceRole, string> = {
-  owner: "Full access, including managing owner members",
-  admin: "Full console access, cannot manage owner members",
-  developer: "Projects, catalog, API keys, webhooks",
-  support: "Read access and customer credit grants",
-  viewer: "Read-only console access",
-};
-
 export function TeamManager({
   viewer,
   members,
   invitations,
   applications,
   matrix,
+  labels,
 }: TeamManagerProps) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
@@ -78,7 +75,7 @@ export function TeamManager({
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
       throw new Error(
-        typeof body.error === "string" ? body.error : "Request failed",
+        typeof body.error === "string" ? body.error : labels.requestFailed,
       );
     }
     return body;
@@ -91,12 +88,15 @@ export function TeamManager({
         method: "PATCH",
         body: JSON.stringify({ role }),
       });
-      setNotice(`${member.operatorEmail} is now ${role}`);
+      setNotice(
+        formatMessage(labels.roleChangedNotice, {
+          email: member.operatorEmail,
+          role,
+        }),
+      );
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Failed to change role",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedRole);
     } finally {
       setBusy(null);
     }
@@ -113,12 +113,14 @@ export function TeamManager({
         method: "PATCH",
         body: JSON.stringify({ applicationScope: scope, applicationIds }),
       });
-      setNotice(`Access scope updated for ${member.operatorEmail}`);
+      setNotice(
+        formatMessage(labels.scopeUpdatedNotice, {
+          email: member.operatorEmail,
+        }),
+      );
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Failed to update scope",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedScope);
     } finally {
       setBusy(null);
     }
@@ -127,7 +129,7 @@ export function TeamManager({
   async function removeMember(member: Member) {
     if (
       !window.confirm(
-        `Remove ${member.operatorEmail} from the workspace? Their console access is revoked immediately.`,
+        formatMessage(labels.removeConfirm, { email: member.operatorEmail }),
       )
     ) {
       return;
@@ -137,12 +139,12 @@ export function TeamManager({
       await request(`/api/admin/team/members/${member.memberId}`, {
         method: "DELETE",
       });
-      setNotice(`${member.operatorEmail} removed`);
+      setNotice(
+        formatMessage(labels.removedNotice, { email: member.operatorEmail }),
+      );
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Failed to remove member",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedRemove);
     } finally {
       setBusy(null);
     }
@@ -154,17 +156,17 @@ export function TeamManager({
       {notice && <p className="team-notice">{notice}</p>}
 
       <section className="card">
-        <h2 className="card-title">Members</h2>
+        <h2 className="card-title">{labels.members}</h2>
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Operator</th>
-                <th>Role</th>
-                <th>Project access</th>
-                <th>Last sign-in</th>
-                <th>Status</th>
-                <th aria-label="Actions" />
+                <th>{labels.thOperator}</th>
+                <th>{labels.thRole}</th>
+                <th>{labels.thProjectAccess}</th>
+                <th>{labels.thLastSignIn}</th>
+                <th>{labels.thStatus}</th>
+                <th aria-label={labels.thActions} />
               </tr>
             </thead>
             <tbody>
@@ -180,7 +182,7 @@ export function TeamManager({
                         <span className="cell-muted">
                           {member.operatorEmail}
                           {member.operatorId === viewer.operatorId
-                            ? " · you"
+                            ? labels.you
                             : ""}
                         </span>
                       </div>
@@ -188,7 +190,10 @@ export function TeamManager({
                     <td>
                       {manageable ? (
                         <select
-                          aria-label={`Role for ${member.operatorEmail}`}
+                          className="form-input"
+                          aria-label={formatMessage(labels.roleFor, {
+                            email: member.operatorEmail,
+                          })}
                           value={member.role}
                           disabled={busy === `role:${member.memberId}`}
                           onChange={(event) =>
@@ -217,6 +222,7 @@ export function TeamManager({
                           applications={applications}
                           busy={busy === `scope:${member.memberId}`}
                           onChange={changeScope}
+                          labels={labels}
                         />
                       ) : (
                         <span className="cell-muted">
@@ -242,7 +248,7 @@ export function TeamManager({
                           disabled={busy === `remove:${member.memberId}`}
                           onClick={() => removeMember(member)}
                         >
-                          Remove
+                          {labels.remove}
                         </button>
                       ) : null}
                     </td>
@@ -255,18 +261,18 @@ export function TeamManager({
       </section>
 
       <section className="card">
-        <h2 className="card-title">Pending invitations</h2>
+        <h2 className="card-title">{labels.pendingInvitations}</h2>
         {invitations.length === 0 ? (
-          <p className="cell-muted">No pending invitations.</p>
+          <p className="cell-muted">{labels.noInvitations}</p>
         ) : (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Scope</th>
-                  <th aria-label="Actions" />
+                  <th>{labels.thEmail}</th>
+                  <th>{labels.thRole}</th>
+                  <th>{labels.thScope}</th>
+                  <th aria-label={labels.thActions} />
                 </tr>
               </thead>
               <tbody>
@@ -294,14 +300,14 @@ export function TeamManager({
                             setError(
                               cause instanceof Error
                                 ? cause.message
-                                : "Failed to revoke",
+                                : labels.failedRevoke,
                             );
                           } finally {
                             setBusy(null);
                           }
                         }}
                       >
-                        Revoke
+                        {labels.revoke}
                       </button>
                     </td>
                   </tr>
@@ -312,18 +318,20 @@ export function TeamManager({
         )}
       </section>
 
-      <InviteForm applications={applications} isOwner={isOwner} />
+      <InviteForm
+        applications={applications}
+        isOwner={isOwner}
+        labels={labels}
+      />
 
       <section className="card">
-        <h2 className="card-title">Permission matrix</h2>
-        <p className="cell-muted">
-          Backend-enforced on every admin API call; the console only mirrors it.
-        </p>
+        <h2 className="card-title">{labels.permissionMatrix}</h2>
+        <p className="cell-muted">{labels.matrixNote}</p>
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
               <tr>
-                <th>Permission</th>
+                <th>{labels.thPermission}</th>
                 {ROLES.map((role) => (
                   <th key={role}>{role}</th>
                 ))}
@@ -351,10 +359,12 @@ function ScopeEditor({
   applications,
   busy,
   onChange,
+  labels,
 }: {
   member: Member;
   applications: ApplicationOption[];
   busy: boolean;
+  labels: Dictionary["team"];
   onChange: (
     member: Member,
     scope: "all" | "restricted",
@@ -372,8 +382,10 @@ function ScopeEditor({
         onClick={() => setEditing(true)}
       >
         {member.applicationScope === "all"
-          ? "All projects"
-          : `${member.applicationIds.length} project(s)`}
+          ? labels.allProjects
+          : formatMessage(labels.projectsCount, {
+              count: String(member.applicationIds.length),
+            })}
       </button>
     );
   }
@@ -387,12 +399,12 @@ function ScopeEditor({
           defaultChecked={member.applicationScope === "all"}
           onChange={() => onChange(member, "all", [])}
         />
-        All projects
+        {labels.allProjects}
       </label>
       <div className="team-scope-option">
-        <span>Restricted to:</span>
+        <span>{labels.restrictedTo}</span>
         {applications.length === 0 ? (
-          <span className="cell-muted">No projects yet</span>
+          <span className="cell-muted">{labels.noProjectsYet}</span>
         ) : (
           <div className="team-scope-list">
             {applications.map((application) => (
@@ -426,7 +438,7 @@ function ScopeEditor({
           setEditing(false);
         }}
       >
-        Save scope
+        {labels.saveScope}
       </button>
     </div>
   );
@@ -435,9 +447,11 @@ function ScopeEditor({
 function InviteForm({
   applications,
   isOwner,
+  labels,
 }: {
   applications: ApplicationOption[];
   isOwner: boolean;
+  labels: Dictionary["team"];
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -467,14 +481,14 @@ function InviteForm({
       const body = (await response.json()) as Record<string, unknown>;
       if (!response.ok) {
         throw new Error(
-          typeof body.error === "string" ? body.error : "Invite failed",
+          typeof body.error === "string" ? body.error : labels.inviteFailed,
         );
       }
       setInviteUrl(String(body.inviteUrl));
       setEmail("");
       router.refresh();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Invite failed");
+      setError(cause instanceof Error ? cause.message : labels.inviteFailed);
     } finally {
       setBusy(false);
     }
@@ -482,11 +496,12 @@ function InviteForm({
 
   return (
     <section className="card">
-      <h2 className="card-title">Invite an operator</h2>
+      <h2 className="card-title">{labels.inviteTitle}</h2>
       <form className="team-invite-form" onSubmit={submit}>
-        <label>
-          <span>Email</span>
+        <label className="filter-field">
+          <span className="filter-field-label">{labels.email}</span>
           <input
+            className="form-input"
             type="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -494,11 +509,12 @@ function InviteForm({
             required
           />
         </label>
-        <label>
-          <span>Role</span>
+        <label className="filter-field">
+          <span className="filter-field-label">{labels.role}</span>
           <select
+            className="form-input"
             value={role}
-            title={ROLE_DESCRIPTIONS[role]}
+            title={labels.roleDescriptions[role]}
             onChange={(event) => setRole(event.target.value as WorkspaceRole)}
           >
             {ROLES.filter((candidate) => isOwner || candidate !== "owner").map(
@@ -510,16 +526,17 @@ function InviteForm({
             )}
           </select>
         </label>
-        <label>
-          <span>Project access</span>
+        <label className="filter-field">
+          <span className="filter-field-label">{labels.projectAccess}</span>
           <select
+            className="form-input"
             value={scope}
             onChange={(event) =>
               setScope(event.target.value as "all" | "restricted")
             }
           >
-            <option value="all">All projects</option>
-            <option value="restricted">Restricted selection</option>
+            <option value="all">{labels.allProjects}</option>
+            <option value="restricted">{labels.restrictedSelection}</option>
           </select>
         </label>
         {scope === "restricted" && (
@@ -543,22 +560,20 @@ function InviteForm({
           </div>
         )}
         <button className="btn btn-primary" type="submit" disabled={busy}>
-          {busy ? "Inviting…" : "Create invitation"}
+          {busy ? labels.inviting : labels.createInvitation}
         </button>
       </form>
       {error && <p className="form-error">{error}</p>}
       {inviteUrl && (
         <div className="team-invite-result">
-          <p>
-            Share this single-use sign-up link (shown once, valid for 7 days):
-          </p>
+          <p>{labels.inviteResultIntro}</p>
           <code className="cell-mono">{inviteUrl}</code>
           <button
             type="button"
             className="btn btn-secondary"
             onClick={() => navigator.clipboard.writeText(inviteUrl)}
           >
-            Copy link
+            {labels.copyLink}
           </button>
         </div>
       )}

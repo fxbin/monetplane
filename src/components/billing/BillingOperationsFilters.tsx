@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 import type { BillingOperationsFilter } from "@/server/control-plane/billing-operations";
 
 type ProviderOption = {
@@ -13,6 +14,8 @@ type BillingOperationsFiltersProps = {
   filter: BillingOperationsFilter;
   statuses: Array<{ value: string; label: string }>;
   providers: ProviderOption[];
+  /** Locale-resolved labels. */
+  labels: Dictionary["billingFilters"];
 };
 
 export function BillingOperationsFilters({
@@ -20,6 +23,7 @@ export function BillingOperationsFilters({
   filter,
   statuses,
   providers,
+  labels,
 }: BillingOperationsFiltersProps) {
   const hasFilter = Boolean(
     filter.status ||
@@ -32,26 +36,34 @@ export function BillingOperationsFilters({
 
   return (
     <form className="billing-filter-bar card" method="get" action={action}>
-      <label>
-        <span>Customer</span>
+      <label className="filter-field">
+        <span className="filter-field-label">{labels.customer}</span>
         <input
+          className="form-input"
           defaultValue={filter.customer ?? ""}
           name="customer"
-          placeholder="External ID or email"
+          placeholder={labels.customerPlaceholder}
+          autoComplete="off"
         />
       </label>
-      <label>
-        <span>Product</span>
+      <label className="filter-field">
+        <span className="filter-field-label">{labels.product}</span>
         <input
+          className="form-input"
           defaultValue={filter.product ?? ""}
           name="product"
-          placeholder="Name or key"
+          placeholder={labels.productPlaceholder}
+          autoComplete="off"
         />
       </label>
-      <label>
-        <span>Status</span>
-        <select defaultValue={filter.status ?? ""} name="status">
-          <option value="">All statuses</option>
+      <label className="filter-field">
+        <span className="filter-field-label">{labels.status}</span>
+        <select
+          className="form-input"
+          defaultValue={filter.status ?? ""}
+          name="status"
+        >
+          <option value="">{labels.allStatuses}</option>
           {statuses.map((status) => (
             <option key={status.value} value={status.value}>
               {status.label}
@@ -59,13 +71,14 @@ export function BillingOperationsFilters({
           ))}
         </select>
       </label>
-      <label>
-        <span>Provider</span>
+      <label className="filter-field">
+        <span className="filter-field-label">{labels.provider}</span>
         <select
+          className="form-input"
           defaultValue={filter.providerConnectionId ?? ""}
           name="providerConnectionId"
         >
-          <option value="">All providers</option>
+          <option value="">{labels.allProviders}</option>
           {providers.map((provider) => (
             <option key={provider.id} value={provider.id}>
               {provider.name} · {provider.mode}
@@ -73,21 +86,31 @@ export function BillingOperationsFilters({
           ))}
         </select>
       </label>
-      <label>
-        <span>From</span>
-        <input defaultValue={filter.from ?? ""} name="from" type="date" />
+      <label className="filter-field">
+        <span className="filter-field-label">{labels.from}</span>
+        <input
+          className="form-input"
+          defaultValue={filter.from ?? ""}
+          name="from"
+          type="date"
+        />
       </label>
-      <label>
-        <span>To</span>
-        <input defaultValue={filter.to ?? ""} name="to" type="date" />
+      <label className="filter-field">
+        <span className="filter-field-label">{labels.to}</span>
+        <input
+          className="form-input"
+          defaultValue={filter.to ?? ""}
+          name="to"
+          type="date"
+        />
       </label>
       <div className="billing-filter-actions">
         <button className="btn btn-secondary" type="submit">
-          Apply
+          {labels.apply}
         </button>
         {hasFilter && (
           <Link className="billing-clear-filter" href={action}>
-            Clear
+            {labels.clear}
           </Link>
         )}
       </div>

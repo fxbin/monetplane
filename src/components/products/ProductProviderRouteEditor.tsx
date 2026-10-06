@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 
 type ProviderOption = {
   id: string;
@@ -16,6 +18,8 @@ type ProductProviderRouteEditorProps = {
   environment: "test" | "live";
   currentProviderConnectionId: string | null;
   providers: ProviderOption[];
+  /** Locale-resolved labels. */
+  labels: Dictionary["routeEditor"];
 };
 
 export function ProductProviderRouteEditor({
@@ -23,6 +27,7 @@ export function ProductProviderRouteEditor({
   environment,
   currentProviderConnectionId,
   providers,
+  labels,
 }: ProductProviderRouteEditorProps) {
   const router = useRouter();
   const currentRouteIsActive = providers.some(
@@ -35,12 +40,17 @@ export function ProductProviderRouteEditor({
   );
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const environmentLabel = environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    environment === "test" ? labels.sandboxFallback : labels.productionFallback;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!providerConnectionId) {
-      setMessage(`Choose a ${environmentLabel} provider first.`);
+      setMessage(
+        formatMessage(labels.chooseProviderFirst, {
+          environment: environmentLabel,
+        }),
+      );
       return;
     }
 
@@ -57,16 +67,12 @@ export function ProductProviderRouteEditor({
       );
       const result = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(result.error ?? "Failed to update provider route");
+        throw new Error(result.error ?? labels.failed);
       }
       setMessage(`${environmentLabel} provider updated.`);
       router.refresh();
     } catch (cause) {
-      setMessage(
-        cause instanceof Error
-          ? cause.message
-          : "Failed to update provider route",
-      );
+      setMessage(cause instanceof Error ? cause.message : labels.failed);
     } finally {
       setPending(false);
     }
@@ -76,10 +82,10 @@ export function ProductProviderRouteEditor({
     return (
       <div className="route-editor-empty">
         <p>
-          No active {environmentLabel} provider is connected to this project.
+          {formatMessage(labels.noProvider, { environment: environmentLabel })}
         </p>
         <Link href="/providers/new" className="btn btn-secondary">
-          Connect provider
+          {labels.connectProvider}
         </Link>
       </div>
     );
@@ -88,7 +94,11 @@ export function ProductProviderRouteEditor({
   return (
     <form className="product-route-editor" onSubmit={submit}>
       <label className="field-group">
-        <span>{environmentLabel} provider</span>
+        <span>
+          {formatMessage(labels.providerLabel, {
+            environment: environmentLabel,
+          })}
+        </span>
         <select
           value={providerConnectionId}
           onChange={(event) => {
@@ -112,7 +122,7 @@ export function ProductProviderRouteEditor({
             providerConnectionId === currentProviderConnectionId)
         }
       >
-        {pending ? "Saving…" : "Save route"}
+        {pending ? labels.saving : labels.saveRoute}
       </button>
       {message && <span className="route-editor-message">{message}</span>}
     </form>

@@ -1,29 +1,28 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProductBuilderWizard } from "@/components/products/ProductBuilderWizard";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getBuilderProviderOptions } from "@/server/control-plane/products";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewProductPage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.productsNew;
 
   if (!context.selectedApplication) {
     return (
-      <PageContainer
-        title="Create product"
-        description="Products must belong to a project."
-      >
+      <PageContainer title={t.title} description={t.noProjectDescription}>
         <div className="empty-state">
-          <h2 className="empty-state-title">Create a project first</h2>
-          <p className="empty-state-desc">
-            A MonetPlane project is the isolation boundary for catalog,
-            customers, providers, entitlements, and credits.
-          </p>
+          <h2 className="empty-state-title">{t.emptyTitle}</h2>
+          <p className="empty-state-desc">{t.emptyDesc}</p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">
-              Create project
+              {t.createProject}
             </Link>
           </div>
         </div>
@@ -38,8 +37,10 @@ export default async function NewProductPage() {
 
   return (
     <PageContainer
-      title="Create product"
-      description={`Build a sellable catalog product for ${context.selectedApplication.name}.`}
+      title={t.title}
+      description={formatMessage(t.description, {
+        application: context.selectedApplication.name,
+      })}
     >
       <ProductBuilderWizard
         project={{
@@ -55,6 +56,7 @@ export default async function NewProductPage() {
           mode: provider.mode,
           capabilities: provider.capabilities,
         }))}
+        labels={dictionary.wizard}
       />
     </PageContainer>
   );

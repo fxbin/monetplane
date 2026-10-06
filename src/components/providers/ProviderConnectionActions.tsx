@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 
 type CredentialField = {
   key: string;
@@ -18,17 +20,22 @@ type ProviderConnectionActionsProps = {
   providerLabel: string;
   status: "active" | "revoked";
   credentialFields: CredentialField[];
+  /** Locale-resolved labels. */
+  labels: Dictionary["providerActions"];
 };
 
 type ActionResponse = {
   error?: string;
 };
 
-async function requestAction(url: string, init: RequestInit) {
+async function requestAction(
+  url: string,
+  fallbackError: string,
+  init: RequestInit,
+) {
   const response = await fetch(url, init);
   const result = (await response.json()) as ActionResponse;
-  if (!response.ok)
-    throw new Error(result.error ?? "Provider operation failed");
+  if (!response.ok) throw new Error(result.error ?? fallbackError);
   return result;
 }
 
@@ -38,6 +45,7 @@ export function ProviderConnectionActions({
   providerLabel,
   status,
   credentialFields,
+  labels,
 }: ProviderConnectionActionsProps) {
   const router = useRouter();
   const reconfigureTitleId = useId();
@@ -52,10 +60,7 @@ export function ProviderConnectionActions({
 
   if (status === "revoked") {
     return (
-      <div className="provider-management-disabled">
-        This connection is revoked. Its historical metadata remains available,
-        but credentials and runtime operations are disabled.
-      </div>
+      <div className="provider-management-disabled">{labels.revokedNotice}</div>
     );
   }
 
@@ -66,6 +71,7 @@ export function ProviderConnectionActions({
     try {
       await requestAction(
         `/api/admin/providers/${encodeURIComponent(connectionId)}`,
+        labels.failedUpdate,
         {
           method: "PATCH",
           headers: { "content-type": "application/json" },
@@ -80,11 +86,7 @@ export function ProviderConnectionActions({
       setCredentials({});
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Failed to update provider connection",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedUpdate);
     } finally {
       setPending(false);
     }
@@ -96,16 +98,13 @@ export function ProviderConnectionActions({
     try {
       await requestAction(
         `/api/admin/providers/${encodeURIComponent(connectionId)}`,
+        labels.failedRevoke,
         { method: "DELETE" },
       );
       setRevokeOpen(false);
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Failed to revoke provider connection",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedRevoke);
     } finally {
       setPending(false);
     }
@@ -123,7 +122,7 @@ export function ProviderConnectionActions({
             setReconfigureOpen(true);
           }}
         >
-          Reconfigure
+          {labels.reconfigure}
         </button>
         <button
           className="btn btn-secondary provider-danger-button"
@@ -133,7 +132,7 @@ export function ProviderConnectionActions({
             setRevokeOpen(true);
           }}
         >
-          Revoke connection
+          {labels.revokeConnection}
         </button>
       </div>
 
@@ -147,16 +146,19 @@ export function ProviderConnectionActions({
             onSubmit={submitReconfigure}
           >
             <div>
-              <span className="provider-action-kicker">Provider settings</span>
-              <h2 id={reconfigureTitleId}>Reconfigure {providerLabel}</h2>
-              <p>
-                Rename this connection or replace its complete encrypted
-                connection configuration. Existing values are never revealed.
-              </p>
+              <span className="provider-action-kicker">
+                {labels.settingsKicker}
+              </span>
+              <h2 id={reconfigureTitleId}>
+                {formatMessage(labels.reconfigureTitle, {
+                  provider: providerLabel,
+                })}
+              </h2>
+              <p>{labels.reconfigureDesc}</p>
             </div>
 
             <label className="form-field">
-              <span className="form-label">Connection name</span>
+              <span className="form-label">{labels.connectionName}</span>
               <input
                 className="form-input"
                 value={name}
@@ -177,11 +179,8 @@ export function ProviderConnectionActions({
                   }}
                 />
                 <span>
-                  <strong>Replace connection config</strong>
-                  <small>
-                    Supply every required field. Leaving this off keeps the
-                    encrypted connection envelope unchanged.
-                  </small>
+                  <strong>{labels.replaceToggleTitle}</strong>
+                  <small>{labels.replaceToggleDesc}</small>
                 </span>
               </label>
             )}
@@ -224,14 +223,14 @@ export function ProviderConnectionActions({
                 disabled={pending}
                 onClick={() => setReconfigureOpen(false)}
               >
-                Cancel
+                {labels.cancel}
               </button>
               <button
                 className="btn btn-primary"
                 type="submit"
                 disabled={pending}
               >
-                {pending ? "Saving…" : "Save changes"}
+                {pending ? labels.saving : labels.saveChanges}
               </button>
             </div>
           </form>
@@ -248,14 +247,12 @@ export function ProviderConnectionActions({
           >
             <div>
               <span className="provider-action-kicker">
-                Destructive operation
+                {labels.destructiveKicker}
               </span>
-              <h2 id={revokeTitleId}>Revoke {providerLabel} connection?</h2>
-              <p>
-                New runtime operations will stop using this connection.
-                Historical payments, subscriptions, and audit records remain
-                intact.
-              </p>
+              <h2 id={revokeTitleId}>
+                {formatMessage(labels.revokeTitle, { provider: providerLabel })}
+              </h2>
+              <p>{labels.revokeDesc}</p>
             </div>
 
             {error && (
@@ -271,7 +268,7 @@ export function ProviderConnectionActions({
                 disabled={pending}
                 onClick={() => setRevokeOpen(false)}
               >
-                Keep connection
+                {labels.keepConnection}
               </button>
               <button
                 className="btn btn-secondary provider-danger-button"
@@ -279,7 +276,7 @@ export function ProviderConnectionActions({
                 disabled={pending}
                 onClick={() => void revoke()}
               >
-                {pending ? "Revoking…" : "Confirm revoke"}
+                {pending ? labels.revoking : labels.confirmRevoke}
               </button>
             </div>
           </section>

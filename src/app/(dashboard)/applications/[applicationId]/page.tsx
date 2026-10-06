@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getConsoleApplicationDetail } from "@/server/control-plane/applications";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -14,37 +15,39 @@ export default async function ApplicationDetailPage({
   params,
 }: ApplicationDetailPageProps) {
   const { applicationId } = await params;
-  const [detail, context] = await Promise.all([
+  const [detail, context, dictionary] = await Promise.all([
     getConsoleApplicationDetail(applicationId),
     getConsoleContext(),
+    getDictionary(),
   ]);
+  const t = dictionary.applicationsDetail;
 
   if (!detail) notFound();
 
   const isCurrent = context.selectedApplication?.id === detail.application.id;
   const onboarding = [
     {
-      label: "Project created",
+      label: t.onboarding.created,
       complete: true,
       href: `/applications/${detail.application.id}`,
     },
     {
-      label: "Server key created",
+      label: t.onboarding.keyCreated,
       complete: detail.credentials.some((credential) => !credential.revokedAt),
       href: `/applications/${detail.application.id}`,
     },
     {
-      label: "Connect payment provider",
+      label: t.onboarding.connectProvider,
       complete: detail.counts.providers > 0,
       href: "/providers",
     },
     {
-      label: "Create first product",
+      label: t.onboarding.createProduct,
       complete: detail.counts.products > 0,
       href: "/products",
     },
     {
-      label: "Receive first customer",
+      label: t.onboarding.firstCustomer,
       complete: detail.counts.customers > 0,
       href: "/customers",
     },
@@ -54,14 +57,14 @@ export default async function ApplicationDetailPage({
   return (
     <PageContainer
       title={detail.application.name}
-      description="Project identity, security boundaries, credentials, and onboarding progress."
-      primaryAction={{ label: "Back to projects", href: "/applications" }}
+      description={t.description}
+      primaryAction={{ label: t.back, href: "/applications" }}
     >
       <div className="project-detail-grid">
         <section className="card project-detail-summary">
           <div className="project-detail-title-row">
             <div>
-              <span className="project-detail-kicker">Project</span>
+              <span className="project-detail-kicker">{t.kicker}</span>
               <h2>{detail.application.name}</h2>
             </div>
             <div className="project-detail-badges">
@@ -71,15 +74,15 @@ export default async function ApplicationDetailPage({
           </div>
           <dl className="project-summary-list">
             <div>
-              <dt>Project ID</dt>
+              <dt>{t.projectId}</dt>
               <dd className="cell-mono">{detail.application.id}</dd>
             </div>
             <div>
-              <dt>Slug</dt>
+              <dt>{t.slug}</dt>
               <dd className="cell-mono">{detail.application.slug}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>{t.created}</dt>
               <dd>{new Date(detail.application.createdAt).toLocaleString()}</dd>
             </div>
           </dl>
@@ -88,9 +91,12 @@ export default async function ApplicationDetailPage({
         <section className="card onboarding-progress-card">
           <div className="onboarding-progress-heading">
             <div>
-              <span className="project-detail-kicker">Setup progress</span>
+              <span className="project-detail-kicker">{t.setupKicker}</span>
               <h2>
-                {completed} of {onboarding.length} complete
+                {formatMessage(t.setupCount, {
+                  completed: String(completed),
+                  total: String(onboarding.length),
+                })}
               </h2>
             </div>
             <span className="onboarding-progress-value">
@@ -127,8 +133,8 @@ export default async function ApplicationDetailPage({
         <section className="card">
           <div className="card-heading-row">
             <div>
-              <span className="project-detail-kicker">Domains</span>
-              <h2 className="card-title">Application hostnames</h2>
+              <span className="project-detail-kicker">{t.domainsKicker}</span>
+              <h2 className="card-title">{t.domainsTitle}</h2>
             </div>
           </div>
           {detail.domains.length > 0 ? (
@@ -140,7 +146,7 @@ export default async function ApplicationDetailPage({
                     <span>{domain.kind}</span>
                   </div>
                   {domain.isPrimary && (
-                    <StatusBadge status="current" label="Primary" />
+                    <StatusBadge status="current" label={t.primary} />
                   )}
                 </div>
               ))}
@@ -165,7 +171,7 @@ export default async function ApplicationDetailPage({
                 ))}
               </div>
             ) : (
-              <p className="card-empty-copy">No callback origin registered.</p>
+              <p className="card-empty-copy">{t.noCallbacks}</p>
             )}
           </div>
         </section>
@@ -173,8 +179,8 @@ export default async function ApplicationDetailPage({
         <section className="card">
           <div className="card-heading-row">
             <div>
-              <span className="project-detail-kicker">Security</span>
-              <h2 className="card-title">Server credentials</h2>
+              <span className="project-detail-kicker">{t.securityKicker}</span>
+              <h2 className="card-title">{t.credentialsTitle}</h2>
             </div>
           </div>
           {detail.credentials.length > 0 ? (
@@ -189,28 +195,26 @@ export default async function ApplicationDetailPage({
                     <code>{credential.secretPrefix}••••••••</code>
                     <span>
                       {credential.lastUsedAt
-                        ? `Last used ${new Date(credential.lastUsedAt).toLocaleString()}`
-                        : "Never used"}
+                        ? formatMessage(t.lastUsed, {
+                            date: new Date(
+                              credential.lastUsedAt,
+                            ).toLocaleString(),
+                          })
+                        : t.neverUsed}
                     </span>
                   </div>
                   <span
                     className={`badge ${credential.revokedAt ? "badge-revoked" : "badge-active"}`}
                   >
-                    {credential.revokedAt ? "Revoked" : "Active"}
+                    {credential.revokedAt ? t.revoked : t.active}
                   </span>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="card-empty-copy">
-              No server credential exists. Generate one before integrating the
-              SDK.
-            </p>
+            <p className="card-empty-copy">{t.noCredentials}</p>
           )}
-          <div className="secret-warning">
-            Existing secrets are intentionally never displayed. Rotate or create
-            a new key rather than attempting to recover an old secret.
-          </div>
+          <div className="secret-warning">{t.secretWarning}</div>
         </section>
       </div>
     </PageContainer>

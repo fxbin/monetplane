@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 
 /**
  * Customer-initiated immediate cancellation (#71). The button is only
@@ -10,9 +11,11 @@ import { useState } from "react";
 export function CancelSubscriptionButton({
   token,
   subscriptionId,
+  labels,
 }: {
   token: string;
   subscriptionId: string;
+  labels: Dictionary["portal"];
 }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,7 +23,7 @@ export function CancelSubscriptionButton({
   const [done, setDone] = useState(false);
 
   if (done) {
-    return <span className="portal-badge">Cancellation requested</span>;
+    return <span className="portal-badge">{labels.cancelRequested}</span>;
   }
 
   if (!confirming) {
@@ -30,16 +33,14 @@ export function CancelSubscriptionButton({
         className="portal-button portal-button-quiet"
         onClick={() => setConfirming(true)}
       >
-        Cancel subscription
+        {labels.cancelSubscription}
       </button>
     );
   }
 
   return (
     <div className="portal-confirm">
-      <span className="portal-confirm-text">
-        Cancel now? Access ends immediately.
-      </span>
+      <span className="portal-confirm-text">{labels.cancelConfirmText}</span>
       <button
         type="button"
         className="portal-button portal-button-danger"
@@ -58,18 +59,20 @@ export function CancelSubscriptionButton({
               throw new Error(
                 typeof body.error === "string"
                   ? body.error
-                  : "Failed to cancel subscription",
+                  : labels.cancelFailed,
               );
             }
             setDone(true);
             window.location.reload();
           } catch (cause) {
-            setError(cause instanceof Error ? cause.message : "Failed");
+            setError(
+              cause instanceof Error ? cause.message : labels.cancelError,
+            );
             setBusy(false);
           }
         }}
       >
-        {busy ? "Cancelling…" : "Confirm cancellation"}
+        {busy ? labels.cancelling : labels.cancelConfirm}
       </button>
       <button
         type="button"
@@ -77,7 +80,7 @@ export function CancelSubscriptionButton({
         disabled={busy}
         onClick={() => setConfirming(false)}
       >
-        Keep it
+        {labels.keepIt}
       </button>
       {error && <span className="portal-error">{error}</span>}
     </div>

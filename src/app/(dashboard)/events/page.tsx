@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import {
+  FilterActions,
+  FilterSelectField,
+  FilterTextField,
+} from "@/components/ui/forms";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getDeveloperEvents } from "@/server/control-plane/developer";
 
@@ -21,29 +27,29 @@ export default async function EventsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.events;
   const application = context.selectedApplication;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   if (!application) {
     return (
-      <PageContainer
-        title="Events"
-        description="Provider events will appear after you create a project."
-      >
+      <PageContainer title={t.title} description={t.noProjectDescription}>
         <div className="empty-state">
-          <h2 className="empty-state-title">No project selected</h2>
-          <p className="empty-state-desc">
-            Create a project to inspect normalized payment and subscription
-            events.
-          </p>
+          <h2 className="empty-state-title">
+            {dictionary.common.noProjectTitle}
+          </h2>
+          <p className="empty-state-desc">{t.emptyDesc}</p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">
-              Create project
+              {t.createProject}
             </Link>
           </div>
         </div>
@@ -66,69 +72,63 @@ export default async function EventsPage({
 
   return (
     <PageContainer
-      title="Events"
-      description={`Normalized ${environmentLabel} provider events for ${application.name}.`}
+      title={t.title}
+      description={formatMessage(t.description, {
+        environment: environmentLabel,
+        application: application.name,
+      })}
     >
       <div className="context-notice">
-        <span className="context-notice-label">Privacy boundary</span>
-        <strong>Normalized events only</strong>
-        <span>
-          Raw provider webhook bodies are retained for processing but are not
-          exposed in this developer console.
-        </span>
+        <span className="context-notice-label">{t.privacyLabel}</span>
+        <strong>{t.privacyStrong}</strong>
+        <span>{t.privacyBody}</span>
       </div>
 
       <form className="developer-filter-bar" method="get">
-        <label>
-          <span>Provider</span>
-          <input
-            name="provider"
-            defaultValue={filters.provider}
-            placeholder="waffo or pc_…"
-          />
-        </label>
-        <label>
-          <span>Customer</span>
-          <input
-            name="customer"
-            defaultValue={filters.customer}
-            placeholder="external or internal id"
-          />
-        </label>
-        <label>
-          <span>Order</span>
-          <input
-            name="order"
-            defaultValue={filters.order}
-            placeholder="ord_…"
-          />
-        </label>
-        <label>
-          <span>Status</span>
-          <select name="status" defaultValue={filters.status ?? ""}>
-            <option value="">All</option>
-            <option value="processed">Processed</option>
-            <option value="failed">Failed</option>
-            <option value="ignored">Ignored</option>
-            <option value="received">Received</option>
-          </select>
-        </label>
-        <label>
-          <span>Type</span>
-          <input
-            name="type"
-            defaultValue={filters.type}
-            placeholder="payment.succeeded"
-          />
-        </label>
-        <div className="developer-filter-actions">
+        <FilterTextField
+          label={t.provider}
+          name="provider"
+          defaultValue={filters.provider}
+          placeholder="waffo or pc_…"
+        />
+        <FilterTextField
+          label={t.customer}
+          name="customer"
+          defaultValue={filters.customer}
+          placeholder={t.customerPlaceholder}
+        />
+        <FilterTextField
+          label={t.order}
+          name="order"
+          defaultValue={filters.order}
+          placeholder="ord_…"
+        />
+        <FilterSelectField
+          label={t.status}
+          name="status"
+          defaultValue={filters.status ?? ""}
+          options={[
+            { value: "", label: t.all },
+            { value: "processed", label: "processed" },
+            { value: "failed", label: "failed" },
+            { value: "ignored", label: "ignored" },
+            { value: "received", label: "received" },
+          ]}
+        />
+        <FilterTextField
+          label={t.type}
+          name="type"
+          defaultValue={filters.type}
+          placeholder="payment.succeeded"
+        />
+        <FilterActions>
           <button className="btn btn-primary" type="submit">
-            Filter
+            {dictionary.common.filter}
           </button>
           <Link className="btn btn-secondary" href="/events">
-            Reset
+            {dictionary.common.reset}
           </Link>
-        </div>
+        </FilterActions>
       </form>
 
       {events.length ? (
@@ -137,11 +137,11 @@ export default async function EventsPage({
             <table className="data-table developer-event-table">
               <thead>
                 <tr>
-                  <th>Event</th>
-                  <th>Provider</th>
-                  <th>Order / Customer</th>
-                  <th>Status</th>
-                  <th>Occurred</th>
+                  <th>{t.thEvent}</th>
+                  <th>{t.thProvider}</th>
+                  <th>{t.thOrderCustomer}</th>
+                  <th>{t.thStatus}</th>
+                  <th>{t.thOccurred}</th>
                 </tr>
               </thead>
               <tbody>
@@ -187,8 +187,7 @@ export default async function EventsPage({
         </div>
       ) : (
         <div className="developer-empty developer-empty-large">
-          No events match this {environmentLabel} view yet. Provider-signed
-          webhook events will appear here after normalization.
+          {formatMessage(t.empty, { environment: environmentLabel })}
         </div>
       )}
     </PageContainer>

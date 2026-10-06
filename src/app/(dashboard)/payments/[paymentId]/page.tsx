@@ -7,6 +7,7 @@ import {
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getPaymentDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -18,10 +19,12 @@ type PaymentPageProps = {
 };
 
 export default async function PaymentPage({ params }: PaymentPageProps) {
-  const [{ paymentId }, context] = await Promise.all([
+  const [{ paymentId }, context, dictionary] = await Promise.all([
     params,
     getConsoleContext(),
+    getDictionary(),
   ]);
+  const t = dictionary.paymentDetail;
   if (!context.selectedApplication) notFound();
 
   let payment: Awaited<ReturnType<typeof getPaymentDetail>>;
@@ -40,13 +43,13 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
 
   return (
     <PageContainer
-      title="Payment detail"
-      description="Provider-neutral payment state, customer context, refund eligibility, and recoverable operation history."
-      primaryAction={{ label: "Back to payments", href: "/payments" }}
+      title={t.title}
+      description={t.description}
+      primaryAction={{ label: t.back, href: "/payments" }}
     >
       <section className="billing-detail-hero card">
         <div>
-          <span className="builder-kicker">Payment</span>
+          <span className="builder-kicker">{t.kicker}</span>
           <h2>{formatAmount(payment.amountMinor, payment.currency)}</h2>
           <div className="billing-detail-meta">
             <code>{payment.id}</code>
@@ -59,35 +62,35 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
 
       <div className="billing-summary-grid">
         <section className="card billing-summary-card">
-          <span>Customer</span>
+          <span>{t.customer}</span>
           {payment.applicationCustomerId ? (
             <Link href={`/customers/${payment.applicationCustomerId}`}>
-              <strong>{payment.externalCustomerId ?? "Customer"}</strong>
+              <strong>
+                {payment.externalCustomerId ?? t.customerFallback}
+              </strong>
             </Link>
           ) : (
-            <strong>Unknown</strong>
+            <strong>{t.unknown}</strong>
           )}
-          <small>{payment.customerEmail ?? "No email"}</small>
+          <small>{payment.customerEmail ?? t.noEmail}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Provider</span>
+          <span>{t.provider}</span>
           <strong>
-            {payment.providerName ?? payment.provider ?? "Unknown"}
+            {payment.providerName ?? payment.provider ?? t.unknown}
           </strong>
           <small>{payment.providerConnectionId}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Order</span>
-          <strong>{payment.orderId ?? "Not linked"}</strong>
-          <small>{payment.billingMode ?? "Unknown billing mode"}</small>
+          <span>{t.order}</span>
+          <strong>{payment.orderId ?? t.notLinked}</strong>
+          <small>{payment.billingMode ?? t.unknownBillingMode}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Refunds</span>
+          <span>{t.refunds}</span>
           <strong>{payment.refunds.length}</strong>
           <small>
-            {payment.refundEligibility.eligible
-              ? "Eligible now"
-              : "Not eligible"}
+            {payment.refundEligibility.eligible ? t.eligibleNow : t.notEligible}
           </small>
         </section>
       </div>
@@ -95,25 +98,25 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Operation</span>
-            <h2 className="card-title">Refund eligibility</h2>
+            <span className="builder-kicker">{t.operationKicker}</span>
+            <h2 className="card-title">{t.eligibilityTitle}</h2>
           </div>
         </div>
         {payment.refundEligibility.eligible ? (
           <div className="billing-operation-callout is-eligible">
             <div>
-              <strong>Full refund is available</strong>
-              <p>
-                The provider declares refund capability and MonetPlane found no
-                unsafe credit-clawback condition.
-              </p>
+              <strong>{t.eligibleTitle}</strong>
+              <p>{t.eligibleDesc}</p>
             </div>
-            <RefundPaymentAction paymentId={payment.id} />
+            <RefundPaymentAction
+              paymentId={payment.id}
+              labels={dictionary.operationActions}
+            />
           </div>
         ) : (
           <div className="billing-operation-callout">
             <div>
-              <strong>Refund unavailable</strong>
+              <strong>{t.unavailableTitle}</strong>
               <p>{payment.refundEligibility.reason}</p>
             </div>
           </div>
@@ -123,14 +126,12 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Purchased items</span>
-            <h2 className="card-title">Product context</h2>
+            <span className="builder-kicker">{t.itemsKicker}</span>
+            <h2 className="card-title">{t.itemsTitle}</h2>
           </div>
         </div>
         {payment.items.length === 0 ? (
-          <p className="card-empty-copy">
-            No order items are linked to this payment.
-          </p>
+          <p className="card-empty-copy">{t.noItems}</p>
         ) : (
           <div className="billing-item-list">
             {payment.items.map((item) => (
@@ -145,8 +146,13 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                   <code>{item.productId}</code>
                 </div>
                 <span>
-                  {item.quantity} ×{" "}
-                  {formatAmount(item.unitAmountMinor, payment.currency)}
+                  {formatMessage(t.quantityTimes, {
+                    count: String(item.quantity),
+                    amount: formatAmount(
+                      item.unitAmountMinor,
+                      payment.currency,
+                    ),
+                  })}
                 </span>
               </div>
             ))}
@@ -158,14 +164,12 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
         <section className="card billing-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Operations</span>
-              <h2 className="card-title">Recovery journal</h2>
+              <span className="builder-kicker">{t.operationsKicker}</span>
+              <h2 className="card-title">{t.journalTitle}</h2>
             </div>
           </div>
           {payment.operations.length === 0 ? (
-            <p className="card-empty-copy">
-              No operator mutations have been recorded.
-            </p>
+            <p className="card-empty-copy">{t.noOperations}</p>
           ) : (
             <div className="billing-operation-list">
               {payment.operations.map((operation) => (
@@ -174,15 +178,18 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     <strong>{operation.type.replace("_", " ")}</strong>
                     <code>{operation.id}</code>
                     <span>
-                      Attempt {operation.attemptNumber}
-                      {operation.retryOfOperationId ? " · retry" : ""}
+                      {formatMessage(t.attempt, {
+                        number: String(operation.attemptNumber),
+                      })}
+                      {operation.retryOfOperationId ? t.retrySuffix : ""}
                       {" · "}
                       {formatDateTime(operation.createdAt)}
                     </span>
                     {operation.failureKind && (
                       <small>
-                        Provider outcome:{" "}
-                        {operation.failureKind.replaceAll("_", " ")}
+                        {formatMessage(t.providerOutcome, {
+                          outcome: operation.failureKind.replaceAll("_", " "),
+                        })}
                       </small>
                     )}
                     {operation.errorMessage && (
@@ -199,12 +206,14 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                     ) && (
                       <ReconcileBillingOperationAction
                         operationId={operation.id}
+                        labels={dictionary.operationActions}
                       />
                     )}
                     {operation.status === "failed" &&
                       operation.failureKind === "rejected" && (
                         <RetryBillingOperationAction
                           operationId={operation.id}
+                          labels={dictionary.operationActions}
                         />
                       )}
                   </div>
@@ -217,12 +226,12 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
         <section className="card billing-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Refund history</span>
-              <h2 className="card-title">Refunds</h2>
+              <span className="builder-kicker">{t.refundHistoryKicker}</span>
+              <h2 className="card-title">{t.refundsTitle}</h2>
             </div>
           </div>
           {payment.refunds.length === 0 ? (
-            <p className="card-empty-copy">No refund records yet.</p>
+            <p className="card-empty-copy">{t.noRefunds}</p>
           ) : (
             <div className="billing-operation-list">
               {payment.refunds.map((refund) => (
@@ -251,15 +260,13 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Timeline</span>
-            <h2 className="card-title">Provider events</h2>
+            <span className="builder-kicker">{t.timelineKicker}</span>
+            <h2 className="card-title">{t.eventsTitle}</h2>
           </div>
-          <span className="customer-section-note">Normalized events only</span>
+          <span className="customer-section-note">{t.eventsNote}</span>
         </div>
         {payment.events.length === 0 ? (
-          <p className="card-empty-copy">
-            No related provider events were found.
-          </p>
+          <p className="card-empty-copy">{t.noEvents}</p>
         ) : (
           <div className="billing-timeline">
             {payment.events.map((event) => (

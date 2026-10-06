@@ -7,6 +7,7 @@ import {
 } from "@/components/customers/CustomerActions";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getCustomerWorkspace } from "@/server/control-plane/customer-workspace";
@@ -21,16 +22,19 @@ function subscriptionLabel(
   subscription: Awaited<
     ReturnType<typeof getCustomerWorkspace>
   >["subscriptions"][number],
+  fallback: string,
 ) {
   const product = subscription.items[0]?.productName;
-  return product || `Subscription ${subscription.id}`;
+  return product || formatMessage(fallback, { id: subscription.id });
 }
 
 export default async function CustomerPage({ params }: CustomerPageProps) {
-  const [{ customerId }, context] = await Promise.all([
+  const [{ customerId }, context, dictionary] = await Promise.all([
     params,
     getConsoleContext(),
+    getDictionary(),
   ]);
+  const t = dictionary.customerDetail;
   if (!context.selectedApplication) notFound();
 
   let workspace: Awaited<ReturnType<typeof getCustomerWorkspace>>;
@@ -68,31 +72,42 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
       title={workspace.customer.externalCustomerId}
       description={
         workspace.customer.email ??
-        `Billing workspace for ${context.selectedApplication.name}`
+        formatMessage(t.workspaceFallback, {
+          application: context.selectedApplication.name,
+        })
       }
-      primaryAction={{ label: "Back to customers", href: "/customers" }}
+      primaryAction={{ label: t.back, href: "/customers" }}
     >
       <section className="customer-workspace-hero card">
         <div className="customer-workspace-identity">
-          <span className="builder-kicker">Customer billing workspace</span>
+          <span className="builder-kicker">{t.kicker}</span>
           <h2>{workspace.customer.externalCustomerId}</h2>
           <div className="customer-identity-meta">
-            <span>{workspace.customer.email ?? "No email recorded"}</span>
+            <span>{workspace.customer.email ?? t.noEmail}</span>
             <code>{workspace.customer.id}</code>
-            <span>Created {formatDateTime(workspace.customer.createdAt)}</span>
+            <span>
+              {formatMessage(t.created, {
+                date: formatDateTime(workspace.customer.createdAt),
+              })}
+            </span>
           </div>
         </div>
         <div className="customer-hero-actions">
-          <GrantCreditsAction customerId={workspace.customer.id} />
+          <GrantCreditsAction
+            customerId={workspace.customer.id}
+            labels={dictionary.customerActions}
+          />
         </div>
       </section>
 
       <div className="customer-summary-grid">
         <section className="card customer-summary-card">
-          <span>Current plan</span>
+          <span>{t.currentPlan}</span>
           {currentSubscription ? (
             <>
-              <strong>{subscriptionLabel(currentSubscription)}</strong>
+              <strong>
+                {subscriptionLabel(currentSubscription, t.subscriptionFallback)}
+              </strong>
               <div>
                 <StatusBadge
                   status={currentSubscription.status}
@@ -100,35 +115,44 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                 />
                 {currentSubscription.cancelAtPeriodEnd && (
                   <span className="customer-inline-note">
-                    Cancels at period end
+                    {t.cancelsAtPeriodEnd}
                   </span>
                 )}
               </div>
             </>
           ) : (
-            <strong>No subscription</strong>
+            <strong>{t.noSubscription}</strong>
           )}
         </section>
         <section className="card customer-summary-card">
-          <span>Available credits</span>
+          <span>{t.availableCredits}</span>
           <strong>{totalAvailableCredits.toLocaleString()}</strong>
-          <small>{totalReservedCredits.toLocaleString()} reserved</small>
+          <small>
+            {formatMessage(t.reserved, {
+              count: totalReservedCredits.toLocaleString(),
+            })}
+          </small>
         </section>
         <section className="card customer-summary-card">
-          <span>Active features</span>
+          <span>{t.activeFeatures}</span>
           <strong>{activeEntitlements.length}</strong>
-          <small>{workspace.entitlements.length} total grants</small>
+          <small>
+            {formatMessage(t.totalGrants, {
+              count: String(workspace.entitlements.length),
+            })}
+          </small>
         </section>
         <section className="card customer-summary-card">
-          <span>Payments</span>
+          <span>{t.payments}</span>
           <strong>{workspace.payments.length}</strong>
           <small>
-            {
-              workspace.payments.filter(
-                (payment) => payment.status === "succeeded",
-              ).length
-            }{" "}
-            successful
+            {formatMessage(t.successfulCount, {
+              count: String(
+                workspace.payments.filter(
+                  (payment) => payment.status === "succeeded",
+                ).length,
+              ),
+            })}
           </small>
         </section>
       </div>
@@ -136,14 +160,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
       <section className="card customer-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Subscription</span>
-            <h2 className="card-title">Current plan & history</h2>
+            <span className="builder-kicker">{t.subscriptionKicker}</span>
+            <h2 className="card-title">{t.planHistoryTitle}</h2>
           </div>
         </div>
         {workspace.subscriptions.length === 0 ? (
-          <p className="card-empty-copy">
-            This customer has no subscription history.
-          </p>
+          <p className="card-empty-copy">{t.noSubscriptions}</p>
         ) : (
           <div className="customer-subscription-list">
             {workspace.subscriptions.map((subscription) => (
@@ -153,7 +175,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
               >
                 <div className="customer-subscription-main">
                   <div>
-                    <strong>{subscriptionLabel(subscription)}</strong>
+                    <strong>
+                      {subscriptionLabel(subscription, t.subscriptionFallback)}
+                    </strong>
                     <code>{subscription.id}</code>
                   </div>
                   <StatusBadge
@@ -165,15 +189,17 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                   <span>
                     {subscription.providerName ??
                       subscription.provider ??
-                      "Provider"}
+                      t.providerFallback}
                   </span>
                   <span>
                     {subscription.currentPeriodEnd
-                      ? `Period ends ${formatDateTime(subscription.currentPeriodEnd)}`
-                      : "No period end recorded"}
+                      ? formatMessage(t.periodEnds, {
+                          date: formatDateTime(subscription.currentPeriodEnd),
+                        })
+                      : t.noPeriodEnd}
                   </span>
                   {subscription.cancelAtPeriodEnd && (
-                    <span>Cancellation scheduled</span>
+                    <span>{t.cancellationScheduled}</span>
                   )}
                 </div>
                 <div className="customer-subscription-products">
@@ -193,7 +219,11 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                     <CancelSubscriptionAction
                       customerId={workspace.customer.id}
                       subscriptionId={subscription.id}
-                      label={subscriptionLabel(subscription)}
+                      label={subscriptionLabel(
+                        subscription,
+                        t.subscriptionFallback,
+                      )}
+                      labels={dictionary.customerActions}
                     />
                   </div>
                 )}
@@ -207,12 +237,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
         <section className="card customer-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Credits</span>
-              <h2 className="card-title">Balances</h2>
+              <span className="builder-kicker">{t.creditsKicker}</span>
+              <h2 className="card-title">{t.balancesTitle}</h2>
             </div>
           </div>
           {workspace.creditAccounts.length === 0 ? (
-            <p className="card-empty-copy">No credit accounts yet.</p>
+            <p className="card-empty-copy">{t.noCreditAccounts}</p>
           ) : (
             <div className="credit-account-grid">
               {workspace.creditAccounts.map((account) => (
@@ -220,7 +250,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                   <code>{account.creditType}</code>
                   <strong>{account.availableBalance.toLocaleString()}</strong>
                   <span>
-                    {account.reservedBalance.toLocaleString()} reserved
+                    {formatMessage(t.reserved, {
+                      count: account.reservedBalance.toLocaleString(),
+                    })}
                   </span>
                 </div>
               ))}
@@ -231,12 +263,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
         <section className="card customer-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Access</span>
-              <h2 className="card-title">Entitlements</h2>
+              <span className="builder-kicker">{t.accessKicker}</span>
+              <h2 className="card-title">{t.entitlementsTitle}</h2>
             </div>
           </div>
           {workspace.entitlements.length === 0 ? (
-            <p className="card-empty-copy">No entitlement grants yet.</p>
+            <p className="card-empty-copy">{t.noEntitlements}</p>
           ) : (
             <div className="entitlement-list">
               {workspace.entitlements.map((entitlement) => (
@@ -258,26 +290,24 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
       <section className="card customer-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Payments</span>
-            <h2 className="card-title">Payment history</h2>
+            <span className="builder-kicker">{t.paymentsKicker}</span>
+            <h2 className="card-title">{t.paymentsTitle}</h2>
           </div>
-          <span className="customer-section-note">Provider-neutral state</span>
+          <span className="customer-section-note">{t.paymentsNote}</span>
         </div>
         {workspace.payments.length === 0 ? (
-          <p className="card-empty-copy">
-            No payments recorded for this customer.
-          </p>
+          <p className="card-empty-copy">{t.noPayments}</p>
         ) : (
           <div className="table-wrapper">
             <table className="data-table customer-payment-table">
               <thead>
                 <tr>
-                  <th>Payment</th>
-                  <th>Amount</th>
-                  <th>Status</th>
-                  <th>Provider</th>
-                  <th>Created</th>
-                  <th>Action</th>
+                  <th>{t.thPayment}</th>
+                  <th>{t.thAmount}</th>
+                  <th>{t.thStatus}</th>
+                  <th>{t.thProvider}</th>
+                  <th>{t.thCreated}</th>
+                  <th>{t.thAction}</th>
                 </tr>
               </thead>
               <tbody>
@@ -320,15 +350,15 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                             customerId={workspace.customer.id}
                             paymentId={payment.id}
                             amountLabel={amountLabel}
+                            labels={dictionary.customerActions}
                           />
                         ) : payment.status === "failed" ? (
                           <span className="customer-action-unavailable">
-                            Retry is not available in the shared provider
-                            contract
+                            {t.retryUnavailable}
                           </span>
                         ) : (
                           <span className="customer-action-unavailable">
-                            No supported action
+                            {t.noAction}
                           </span>
                         )}
                       </td>
@@ -345,12 +375,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
         <section className="card customer-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Credit ledger</span>
-              <h2 className="card-title">Recent movements</h2>
+              <span className="builder-kicker">{t.ledgerKicker}</span>
+              <h2 className="card-title">{t.ledgerTitle}</h2>
             </div>
           </div>
           {workspace.creditLedger.length === 0 ? (
-            <p className="card-empty-copy">No credit movements yet.</p>
+            <p className="card-empty-copy">{t.noLedger}</p>
           ) : (
             <div className="ledger-list">
               {workspace.creditLedger.slice(0, 30).map((entry) => (
@@ -371,7 +401,9 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
                       {entry.amount.toLocaleString()}
                     </strong>
                     <span>
-                      {entry.availableAfter.toLocaleString()} available
+                      {formatMessage(t.availableAfter, {
+                        count: entry.availableAfter.toLocaleString(),
+                      })}
                     </span>
                   </div>
                 </div>
@@ -383,14 +415,12 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
         <section className="card customer-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Events</span>
-              <h2 className="card-title">Recent billing events</h2>
+              <span className="builder-kicker">{t.eventsKicker}</span>
+              <h2 className="card-title">{t.eventsTitle}</h2>
             </div>
           </div>
           {workspace.events.length === 0 ? (
-            <p className="card-empty-copy">
-              No customer-linked provider events found.
-            </p>
+            <p className="card-empty-copy">{t.noEvents}</p>
           ) : (
             <div className="customer-event-list">
               {workspace.events.map((event) => (
@@ -410,7 +440,7 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
       </div>
 
       <div className="customer-workspace-footer">
-        <Link href="/customers">← Back to customer list</Link>
+        <Link href="/customers">{t.backToList}</Link>
       </div>
     </PageContainer>
   );

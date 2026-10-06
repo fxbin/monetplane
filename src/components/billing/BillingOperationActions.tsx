@@ -2,12 +2,13 @@
 
 import { useRouter } from "next/navigation";
 import { type ReactNode, useId, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 
-async function requestAction(url: string) {
+async function requestAction(url: string, fallbackError: string) {
   const response = await fetch(url, { method: "POST" });
   const body = (await response.json()) as { error?: string };
   if (!response.ok) {
-    throw new Error(body.error ?? "Billing operation failed");
+    throw new Error(body.error ?? fallbackError);
   }
   return body;
 }
@@ -20,6 +21,7 @@ type ConfirmActionProps = {
   endpoint: string;
   children?: ReactNode;
   danger?: boolean;
+  labels: Dictionary["operationActions"];
 };
 
 function ConfirmAction({
@@ -30,6 +32,7 @@ function ConfirmAction({
   endpoint,
   children,
   danger = false,
+  labels,
 }: ConfirmActionProps) {
   const router = useRouter();
   const titleId = useId();
@@ -41,13 +44,11 @@ function ConfirmAction({
     setPending(true);
     setError(null);
     try {
-      await requestAction(endpoint);
+      await requestAction(endpoint, labels.failed);
       setOpen(false);
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Billing operation failed",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failed);
     } finally {
       setPending(false);
     }
@@ -74,7 +75,7 @@ function ConfirmAction({
             role="dialog"
           >
             <div>
-              <span className="builder-kicker">Confirm billing operation</span>
+              <span className="builder-kicker">{labels.confirmKicker}</span>
               <h2 id={titleId}>{title}</h2>
               <p>{description}</p>
             </div>
@@ -91,7 +92,7 @@ function ConfirmAction({
                 type="button"
                 onClick={() => setOpen(false)}
               >
-                Cancel
+                {labels.cancel}
               </button>
               <button
                 className="btn btn-primary"
@@ -99,7 +100,7 @@ function ConfirmAction({
                 type="button"
                 onClick={() => void confirm()}
               >
-                {pending ? "Working…" : confirmLabel}
+                {pending ? labels.working : confirmLabel}
               </button>
             </div>
           </section>
@@ -109,65 +110,81 @@ function ConfirmAction({
   );
 }
 
-export function RefundPaymentAction({ paymentId }: { paymentId: string }) {
+export function RefundPaymentAction({
+  paymentId,
+  labels,
+}: {
+  paymentId: string;
+  labels: Dictionary["operationActions"];
+}) {
   return (
     <ConfirmAction
       danger
-      title="Refund payment"
-      description="Issue a full refund through the configured provider. MonetPlane records the operation before the provider call so any local persistence drift remains recoverable."
-      triggerLabel="Refund payment"
-      confirmLabel="Confirm full refund"
+      title={labels.refundTitle}
+      description={labels.refundDesc}
+      triggerLabel={labels.refundTrigger}
+      confirmLabel={labels.refundConfirm}
       endpoint={`/api/admin/payments/${encodeURIComponent(paymentId)}/refund`}
+      labels={labels}
     />
   );
 }
 
 export function CancelSubscriptionAction({
   subscriptionId,
+  labels,
 }: {
   subscriptionId: string;
+  labels: Dictionary["operationActions"];
 }) {
   return (
     <ConfirmAction
       danger
-      title="Cancel subscription"
-      description="Cancel this subscription through its provider and reconcile the normalized result back into MonetPlane."
-      triggerLabel="Cancel subscription"
-      confirmLabel="Confirm cancellation"
+      title={labels.cancelTitle}
+      description={labels.cancelDesc}
+      triggerLabel={labels.cancelTrigger}
+      confirmLabel={labels.cancelConfirm}
       endpoint={`/api/admin/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`}
+      labels={labels}
     />
   );
 }
 
 export function ReconcileBillingOperationAction({
   operationId,
+  labels,
 }: {
   operationId: string;
+  labels: Dictionary["operationActions"];
 }) {
   return (
     <ConfirmAction
-      title="Reconcile operation"
-      description="Reapply the already-recorded provider-normalized result to MonetPlane. This does not call the provider again."
-      triggerLabel="Reconcile"
-      confirmLabel="Reconcile local state"
+      title={labels.reconcileTitle}
+      description={labels.reconcileDesc}
+      triggerLabel={labels.reconcileTrigger}
+      confirmLabel={labels.reconcileConfirm}
       endpoint={`/api/admin/operations/${encodeURIComponent(operationId)}/reconcile`}
+      labels={labels}
     />
   );
 }
 
 export function RetryBillingOperationAction({
   operationId,
+  labels,
 }: {
   operationId: string;
+  labels: Dictionary["operationActions"];
 }) {
   return (
     <ConfirmAction
       danger
-      title="Retry rejected provider operation"
-      description="Create a new journal attempt and call the provider again. Retry is only available when the previous provider attempt was explicitly rejected, so uncertain outcomes cannot be duplicated accidentally."
-      triggerLabel="Retry"
-      confirmLabel="Create retry attempt"
+      title={labels.retryTitle}
+      description={labels.retryDesc}
+      triggerLabel={labels.retryTrigger}
+      confirmLabel={labels.retryConfirm}
       endpoint={`/api/admin/operations/${encodeURIComponent(operationId)}/retry`}
+      labels={labels}
     />
   );
 }

@@ -210,12 +210,12 @@ export default async function OverviewPage() {
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Payment</th>
-                    <th>Customer</th>
-                    <th>Provider</th>
-                    <th>Status</th>
-                    <th>Amount</th>
-                    <th>Date</th>
+                    <th>{t.thPayment}</th>
+                    <th>{t.thCustomer}</th>
+                    <th>{t.thProvider}</th>
+                    <th>{t.thStatus}</th>
+                    <th>{t.thAmount}</th>
+                    <th>{t.thDate}</th>
                   </tr>
                 </thead>
                 <tbody>

@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { StatusBadge } from "@/components/ui/console";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 
 type Endpoint = {
   id: string;
@@ -34,13 +36,15 @@ export function WebhookManager({
   endpoints,
   deliveries,
   environmentLabel,
+  labels,
 }: {
   endpoints: Endpoint[];
   deliveries: Delivery[];
   environmentLabel: string;
+  labels: Dictionary["webhookManager"];
 }) {
   const router = useRouter();
-  const [name, setName] = useState("Backend events");
+  const [name, setName] = useState(labels.namePlaceholder);
   const [url, setUrl] = useState("");
   const [eventTypes, setEventTypes] = useState("*");
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,7 +60,7 @@ export function WebhookManager({
     const body = (await response.json()) as Record<string, unknown>;
     if (!response.ok) {
       throw new Error(
-        typeof body.error === "string" ? body.error : "Request failed",
+        typeof body.error === "string" ? body.error : labels.requestFailed,
       );
     }
     return body;
@@ -81,14 +85,12 @@ export function WebhookManager({
       setRevealed({
         title: `${endpoint.name} signing secret`,
         secret: endpoint.secret,
-        notice: String(body.notice ?? "Store this secret now."),
+        notice: String(body.notice ?? labels.storeNow),
       });
       setUrl("");
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Failed to create webhook",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedCreate);
     } finally {
       setBusy(null);
     }
@@ -107,18 +109,14 @@ export function WebhookManager({
       if (action === "rotate") {
         const endpoint = body.endpoint as { name: string; secret: string };
         setRevealed({
-          title: `${endpoint.name} rotated secret`,
+          title: formatMessage(labels.rotatedTitle, { name: endpoint.name }),
           secret: endpoint.secret,
-          notice: String(
-            body.notice ?? "Update the receiver before the next delivery.",
-          ),
+          notice: String(body.notice ?? labels.rotateNotice),
         });
       }
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Webhook action failed",
-      );
+      setError(cause instanceof Error ? cause.message : labels.actionFailed);
     } finally {
       setBusy(null);
     }
@@ -129,25 +127,28 @@ export function WebhookManager({
       <section className="developer-panel">
         <div className="developer-panel-heading">
           <div>
-            <h2>Add {environmentLabel} endpoint</h2>
-            <p>
-              MonetPlane signs each POST with HMAC-SHA256. Production endpoints
-              must use HTTPS; Sandbox may use HTTP for local testing.
-            </p>
+            <h2>
+              {formatMessage(labels.addTitle, {
+                environment: environmentLabel,
+              })}
+            </h2>
+            <p>{labels.addDesc}</p>
           </div>
         </div>
         <form className="webhook-create-grid" onSubmit={createEndpoint}>
-          <label>
-            <span>Name</span>
+          <label className="filter-field">
+            <span className="filter-field-label">{labels.name}</span>
             <input
+              className="form-input"
               value={name}
               onChange={(event) => setName(event.target.value)}
               required
             />
           </label>
-          <label className="webhook-url-field">
-            <span>Endpoint URL</span>
+          <label className="webhook-url-field filter-field">
+            <span className="filter-field-label">{labels.endpointUrl}</span>
             <input
+              className="form-input"
               type="url"
               value={url}
               onChange={(event) => setUrl(event.target.value)}
@@ -155,12 +156,13 @@ export function WebhookManager({
               required
             />
           </label>
-          <label>
-            <span>Events</span>
+          <label className="filter-field">
+            <span className="filter-field-label">{labels.events}</span>
             <input
+              className="form-input"
               value={eventTypes}
               onChange={(event) => setEventTypes(event.target.value)}
-              placeholder="*, payment.succeeded"
+              placeholder={labels.eventsPlaceholder}
             />
           </label>
           <button
@@ -168,7 +170,7 @@ export function WebhookManager({
             type="submit"
             disabled={busy === "create"}
           >
-            {busy === "create" ? "Adding…" : "Add endpoint"}
+            {busy === "create" ? labels.adding : labels.addButton}
           </button>
         </form>
       </section>
@@ -186,14 +188,14 @@ export function WebhookManager({
               type="button"
               onClick={() => navigator.clipboard.writeText(revealed.secret)}
             >
-              Copy once
+              {labels.copyOnce}
             </button>
             <button
               className="btn btn-secondary"
               type="button"
               onClick={() => setRevealed(null)}
             >
-              I stored it
+              {labels.stored}
             </button>
           </div>
         </section>
@@ -208,11 +210,8 @@ export function WebhookManager({
       <section className="developer-panel">
         <div className="developer-panel-heading">
           <div>
-            <h2>Endpoints</h2>
-            <p>
-              Signing secrets are write-only after creation. Rotate only when
-              the receiver can be updated immediately.
-            </p>
+            <h2>{labels.endpointsTitle}</h2>
+            <p>{labels.endpointsDesc}</p>
           </div>
         </div>
         {endpoints.length ? (
@@ -244,7 +243,7 @@ export function WebhookManager({
                         )
                       }
                     >
-                      Send test
+                      {labels.sendTest}
                     </button>
                     <button
                       className="btn btn-secondary"
@@ -258,14 +257,18 @@ export function WebhookManager({
                         )
                       }
                     >
-                      Rotate secret
+                      {labels.rotateSecret}
                     </button>
                     <button
                       className="btn btn-secondary"
                       type="button"
                       disabled={busy !== null}
                       onClick={() =>
-                        window.confirm(`Disable ${endpoint.name}?`) &&
+                        window.confirm(
+                          formatMessage(labels.disableConfirm, {
+                            name: endpoint.name,
+                          }),
+                        ) &&
                         act(
                           `disable:${endpoint.id}`,
                           `/api/admin/webhooks/${endpoint.id}`,
@@ -273,7 +276,7 @@ export function WebhookManager({
                         )
                       }
                     >
-                      Disable
+                      {labels.disable}
                     </button>
                   </div>
                 )}
@@ -281,20 +284,15 @@ export function WebhookManager({
             ))}
           </div>
         ) : (
-          <div className="developer-empty">
-            No endpoint configured for this environment.
-          </div>
+          <div className="developer-empty">{labels.endpointsEmpty}</div>
         )}
       </section>
 
       <section className="developer-panel">
         <div className="developer-panel-heading">
           <div>
-            <h2>Recent deliveries</h2>
-            <p>
-              Failures retain status, HTTP code, and a bounded error message.
-              Response bodies are not stored.
-            </p>
+            <h2>{labels.deliveriesTitle}</h2>
+            <p>{labels.deliveriesDesc}</p>
           </div>
         </div>
         {deliveries.length ? (
@@ -302,13 +300,13 @@ export function WebhookManager({
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Event</th>
-                  <th>Endpoint</th>
-                  <th>Status</th>
-                  <th>Attempts</th>
-                  <th>HTTP</th>
-                  <th>Created</th>
-                  <th aria-label="Actions" />
+                  <th>{labels.thEvent}</th>
+                  <th>{labels.thEndpoint}</th>
+                  <th>{labels.thStatus}</th>
+                  <th>{labels.thAttempts}</th>
+                  <th>{labels.thHttp}</th>
+                  <th>{labels.thCreated}</th>
+                  <th aria-label={labels.thActions} />
                 </tr>
               </thead>
               <tbody>
@@ -346,7 +344,7 @@ export function WebhookManager({
                             )
                           }
                         >
-                          Retry
+                          {labels.retry}
                         </button>
                       )}
                     </td>
@@ -356,9 +354,7 @@ export function WebhookManager({
             </table>
           </div>
         ) : (
-          <div className="developer-empty">
-            No deliveries yet. Send a test to verify the receiver.
-          </div>
+          <div className="developer-empty">{labels.deliveriesEmpty}</div>
         )}
       </section>
     </div>

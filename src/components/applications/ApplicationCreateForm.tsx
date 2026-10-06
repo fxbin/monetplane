@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 
 type CreateResult = {
   application: {
@@ -25,7 +26,11 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-export function ApplicationCreateForm() {
+export function ApplicationCreateForm({
+  labels,
+}: {
+  labels: Dictionary["applicationCreate"];
+}) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -57,18 +62,14 @@ export function ApplicationCreateForm() {
         | { error?: string };
       if (!response.ok || !("application" in result)) {
         throw new Error(
-          "error" in result && result.error
-            ? result.error
-            : "Failed to create project",
+          "error" in result && result.error ? result.error : labels.failed,
         );
       }
       setCreated(result);
       router.refresh();
     } catch (submitError) {
       setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Failed to create project",
+        submitError instanceof Error ? submitError.message : labels.failed,
       );
     } finally {
       setPending(false);
@@ -86,19 +87,16 @@ export function ApplicationCreateForm() {
     return (
       <div className="project-created-grid">
         <section className="card project-success-card">
-          <span className="project-success-kicker">Project created</span>
+          <span className="project-success-kicker">{labels.createdKicker}</span>
           <h2>{created.application.name}</h2>
-          <p>
-            MonetPlane selected this project and switched the console to Sandbox
-            for safe onboarding.
-          </p>
+          <p>{labels.createdDesc}</p>
           <dl className="project-summary-list">
             <div>
-              <dt>Project ID</dt>
+              <dt>{labels.projectId}</dt>
               <dd className="cell-mono">{created.application.id}</dd>
             </div>
             <div>
-              <dt>Slug</dt>
+              <dt>{labels.slug}</dt>
               <dd className="cell-mono">{created.application.slug}</dd>
             </div>
           </dl>
@@ -106,14 +104,9 @@ export function ApplicationCreateForm() {
 
         <section className="card secret-reveal-card">
           <div>
-            <span className="secret-reveal-kicker">
-              Server key · shown once
-            </span>
-            <h2>Save this key now</h2>
-            <p>
-              This secret authenticates server-side MonetPlane SDK requests. It
-              will not be shown again after you leave this page.
-            </p>
+            <span className="secret-reveal-kicker">{labels.secretKicker}</span>
+            <h2>{labels.saveNowTitle}</h2>
+            <p>{labels.saveNowDesc}</p>
           </div>
           <div className="secret-reveal-value">
             <code>{created.credential.secret}</code>
@@ -122,29 +115,26 @@ export function ApplicationCreateForm() {
               type="button"
               onClick={() => void copySecret()}
             >
-              {copied ? "Copied" : "Copy key"}
+              {copied ? labels.copied : labels.copyKey}
             </button>
           </div>
-          <div className="secret-warning">
-            Keep this value in a server-side environment variable. Never expose
-            it in browser code or a public repository.
-          </div>
+          <div className="secret-warning">{labels.secretWarning}</div>
         </section>
 
         <section className="card onboarding-next-card">
-          <h2>Continue setup</h2>
+          <h2>{labels.continueTitle}</h2>
           <div className="onboarding-next-actions">
             <a className="btn btn-primary" href="/providers">
-              Connect Sandbox provider
+              {labels.connectSandbox}
             </a>
             <a className="btn btn-secondary" href="/products">
-              Create product
+              {labels.createProduct}
             </a>
             <a
               className="btn btn-secondary"
               href={`/applications/${created.application.id}`}
             >
-              View project details
+              {labels.viewProject}
             </a>
           </div>
         </section>
@@ -158,18 +148,18 @@ export function ApplicationCreateForm() {
         <div className="project-form-heading">
           <span className="project-form-step">1</span>
           <div>
-            <h2>Project identity</h2>
-            <p>Use one project for one product or website billing boundary.</p>
+            <h2>{labels.step1Title}</h2>
+            <p>{labels.step1Desc}</p>
           </div>
         </div>
 
         <div className="project-form-grid">
           <label className="form-field">
-            <span className="form-label">Project name</span>
+            <span className="form-label">{labels.projectName}</span>
             <input
               className="form-input"
               name="name"
-              placeholder="PicToFu"
+              placeholder={labels.projectNamePlaceholder}
               required
               value={name}
               onChange={(event) => {
@@ -180,11 +170,11 @@ export function ApplicationCreateForm() {
             />
           </label>
           <label className="form-field">
-            <span className="form-label">Project slug</span>
+            <span className="form-label">{labels.projectSlug}</span>
             <input
               className="form-input cell-mono"
               name="slug"
-              placeholder="pictofu"
+              placeholder={labels.projectSlugPlaceholder}
               pattern="[a-z0-9][a-z0-9-]*"
               required
               value={slug}
@@ -193,9 +183,7 @@ export function ApplicationCreateForm() {
                 setSlug(event.target.value.toLowerCase());
               }}
             />
-            <span className="form-help">
-              Lowercase letters, numbers, and hyphens.
-            </span>
+            <span className="form-help">{labels.slugHelp}</span>
           </label>
         </div>
       </section>
@@ -204,31 +192,28 @@ export function ApplicationCreateForm() {
         <div className="project-form-heading">
           <span className="project-form-step">2</span>
           <div>
-            <h2>Domains and callbacks</h2>
-            <p>
-              Optional now. These values are used to resolve and secure billing
-              flows.
-            </p>
+            <h2>{labels.step2Title}</h2>
+            <p>{labels.step2Desc}</p>
           </div>
         </div>
 
         <div className="project-form-grid">
           <label className="form-field">
-            <span className="form-label">Primary hostname</span>
+            <span className="form-label">{labels.primaryHostname}</span>
             <input
               className="form-input"
               name="hostname"
-              placeholder="app.example.com"
+              placeholder={labels.hostnamePlaceholder}
               value={hostname}
               onChange={(event) => setHostname(event.target.value)}
             />
           </label>
           <label className="form-field">
-            <span className="form-label">Allowed callback origin</span>
+            <span className="form-label">{labels.callbackOrigin}</span>
             <input
               className="form-input"
               name="callbackOrigin"
-              placeholder="https://app.example.com"
+              placeholder={labels.callbackPlaceholder}
               value={callbackOrigin}
               onChange={(event) => setCallbackOrigin(event.target.value)}
             />
@@ -240,27 +225,21 @@ export function ApplicationCreateForm() {
         <div className="project-form-heading">
           <span className="project-form-step">3</span>
           <div>
-            <h2>Server credential</h2>
-            <p>
-              MonetPlane will generate one server key after project creation and
-              show it exactly once.
-            </p>
+            <h2>{labels.step3Title}</h2>
+            <p>{labels.step3Desc}</p>
           </div>
         </div>
-        <div className="security-callout">
-          Server keys are for your backend only. Browser-side SDK usage must
-          never include application credentials.
-        </div>
+        <div className="security-callout">{labels.securityCallout}</div>
       </section>
 
       {error && <p className="form-error">{error}</p>}
 
       <div className="project-form-actions">
         <a className="btn btn-secondary" href="/applications">
-          Cancel
+          {labels.cancel}
         </a>
         <button className="btn btn-primary" type="submit" disabled={pending}>
-          {pending ? "Creating project…" : "Create project and server key"}
+          {pending ? labels.creating : labels.submit}
         </button>
       </div>
     </form>

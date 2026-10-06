@@ -1,16 +1,20 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { TeamManager } from "@/components/team/TeamManager";
+import { getDictionary } from "@/i18n/server";
 import { getTeamPageData } from "@/server/control-plane/team";
 
 export const dynamic = "force-dynamic";
 
 export default async function TeamPage() {
-  const data = await getTeamPageData();
+  const [data, dictionary] = await Promise.all([
+    getTeamPageData(),
+    getDictionary(),
+  ]);
 
   return (
     <PageContainer
-      title="Team"
-      description="Workspace operators, their console roles, and project access scopes. Every change is recorded in the audit log."
+      title={dictionary.team.title}
+      description={dictionary.team.description}
     >
       <TeamManager
         viewer={{ operatorId: data.actor.operatorId, role: data.actor.role }}
@@ -18,6 +22,7 @@ export default async function TeamPage() {
         invitations={data.invitations}
         applications={data.applications}
         matrix={data.matrix}
+        labels={dictionary.team}
       />
     </PageContainer>
   );

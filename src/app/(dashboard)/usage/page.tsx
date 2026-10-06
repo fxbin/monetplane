@@ -1,4 +1,5 @@
 import { PageContainer } from "@/components/layout/PageContainer";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getUsageAnalytics } from "@/server/control-plane/analytics";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -13,18 +14,17 @@ function formatMonth(month: string): string {
 }
 
 export default async function UsagePage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.usage;
   const application = context.selectedApplication;
 
   if (!application) {
     return (
-      <PageContainer
-        title="Usage"
-        description="Create a project to see credit usage analytics."
-      >
-        <p className="cell-muted">
-          Usage analytics appear after you create a project.
-        </p>
+      <PageContainer title={t.title} description={t.noProjectDescription}>
+        <p className="cell-muted">{t.noProjectBody}</p>
       </PageContainer>
     );
   }
@@ -42,11 +42,17 @@ export default async function UsagePage() {
 
   return (
     <PageContainer
-      title="Usage"
-      description={`${application.name} · credit consumption in ${context.environment === "test" ? "Sandbox" : "Production"}.`}
+      title={t.title}
+      description={formatMessage(t.description, {
+        application: application.name,
+        environment:
+          context.environment === "test"
+            ? dictionary.common.sandbox
+            : dictionary.common.production,
+      })}
     >
       <div className="card">
-        <h2 className="card-title">Credits used by month</h2>
+        <h2 className="card-title">{t.monthlyTitle}</h2>
         {hasUsage ? (
           <div className="chart-bars">
             {analytics.monthly.map((entry) => (
@@ -65,23 +71,21 @@ export default async function UsagePage() {
             ))}
           </div>
         ) : (
-          <p className="cell-muted">
-            No credit transactions yet. Grant or debit credits to see usage.
-          </p>
+          <p className="cell-muted">{t.monthlyEmpty}</p>
         )}
       </div>
 
       <div className="card">
-        <h2 className="card-title">By credit type</h2>
+        <h2 className="card-title">{t.byTypeTitle}</h2>
         {analytics.byCreditType.length > 0 ? (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Credit type</th>
-                  <th>Granted</th>
-                  <th>Used</th>
-                  <th>Transactions</th>
+                  <th>{t.thCreditType}</th>
+                  <th>{t.thGranted}</th>
+                  <th>{t.thUsed}</th>
+                  <th>{t.thTransactions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -97,21 +101,21 @@ export default async function UsagePage() {
             </table>
           </div>
         ) : (
-          <p className="cell-muted">No credit activity.</p>
+          <p className="cell-muted">{t.byTypeEmpty}</p>
         )}
       </div>
 
       <div className="card">
-        <h2 className="card-title">Top customers by usage</h2>
+        <h2 className="card-title">{t.topCustomersTitle}</h2>
         {analytics.topCustomers.length > 0 ? (
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Customer</th>
-                  <th>External ID</th>
-                  <th>Credits used</th>
-                  <th>Transactions</th>
+                  <th>{t.thCustomer}</th>
+                  <th>{t.thExternalId}</th>
+                  <th>{t.thCreditsUsed}</th>
+                  <th>{t.thTransactions}</th>
                 </tr>
               </thead>
               <tbody>
@@ -127,7 +131,7 @@ export default async function UsagePage() {
             </table>
           </div>
         ) : (
-          <p className="cell-muted">No customers with credit activity yet.</p>
+          <p className="cell-muted">{t.topCustomersEmpty}</p>
         )}
       </div>
     </PageContainer>

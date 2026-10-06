@@ -1,4 +1,5 @@
 import { CancelSubscriptionButton } from "@/components/portal/PortalActions";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { PortalServiceError } from "@/modules/portal/service";
 import { getPortalBillingState } from "@/server/control-plane/portal";
@@ -28,16 +29,15 @@ export default async function PortalPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const params = await searchParams;
+  const [params, dictionary] = await Promise.all([
+    searchParams,
+    getDictionary(),
+  ]);
+  const t = dictionary.portal;
   const token = typeof params.token === "string" ? params.token : "";
 
   if (!token) {
-    return (
-      <PortalMessage
-        title="Billing portal"
-        description="This page needs a portal session token. Start the billing portal from inside the application."
-      />
-    );
+    return <PortalMessage title={t.title} description={t.noToken} />;
   }
 
   let state: Awaited<ReturnType<typeof getPortalBillingState>>;
@@ -46,16 +46,11 @@ export default async function PortalPage({
   } catch (error) {
     if (error instanceof PortalServiceError) {
       return (
-        <PortalMessage title="Session ended" description={error.message} />
+        <PortalMessage title={t.sessionEnded} description={error.message} />
       );
     }
     console.error("[portal] Error:", error);
-    return (
-      <PortalMessage
-        title="Something went wrong"
-        description="The billing portal could not be loaded. Try starting a new session from the application."
-      />
-    );
+    return <PortalMessage title={t.genericTitle} description={t.genericDesc} />;
   }
 
   const activeSubscriptions = state.subscriptions.filter(
@@ -88,7 +83,7 @@ export default async function PortalPage({
             )}
             <div>
               <h1 className="portal-title">{state.branding.displayName}</h1>
-              <p className="portal-subtitle">Billing &amp; subscriptions</p>
+              <p className="portal-subtitle">{t.subtitle}</p>
             </div>
           </div>
           {state.session.returnUrl && (
@@ -97,23 +92,19 @@ export default async function PortalPage({
               href={state.session.returnUrl}
               rel="noreferrer"
             >
-              ← Back to application
+              {t.backToApp}
             </a>
           )}
         </header>
 
         {state.session.environment === "test" && (
-          <p className="portal-test-banner">
-            Sandbox environment — billing data shown is test data.
-          </p>
+          <p className="portal-test-banner">{t.sandboxBanner}</p>
         )}
 
         <section className="portal-section">
-          <h2 className="portal-section-title">Current subscriptions</h2>
+          <h2 className="portal-section-title">{t.currentTitle}</h2>
           {activeSubscriptions.length === 0 ? (
-            <p className="portal-empty">
-              You don&apos;t have an active subscription.
-            </p>
+            <p className="portal-empty">{t.emptySubscriptions}</p>
           ) : (
             <div className="portal-subscription-list">
               {activeSubscriptions.map((subscription) => (
@@ -130,17 +121,23 @@ export default async function PortalPage({
                     <div className="portal-plan-meta">
                       {subscription.status === "past_due" && (
                         <span className="portal-badge portal-badge-warning">
-                          Payment issue
+                          {t.paymentIssue}
                         </span>
                       )}
                       {subscription.cancelAtPeriodEnd ? (
                         <span className="portal-badge">
-                          Ends {formatDate(subscription.currentPeriodEnd ?? "")}
+                          {formatMessage(t.ends, {
+                            date: formatDate(
+                              subscription.currentPeriodEnd ?? "",
+                            ),
+                          })}
                         </span>
                       ) : (
                         subscription.currentPeriodEnd && (
                           <span className="portal-badge">
-                            Renews {formatDate(subscription.currentPeriodEnd)}
+                            {formatMessage(t.renews, {
+                              date: formatDate(subscription.currentPeriodEnd),
+                            })}
                           </span>
                         )
                       )}
@@ -163,6 +160,7 @@ export default async function PortalPage({
                         <CancelSubscriptionButton
                           token={token}
                           subscriptionId={subscription.id}
+                          labels={t}
                         />
                       )}
                   </div>
@@ -173,13 +171,16 @@ export default async function PortalPage({
           {historySubscriptions.length > 0 && (
             <details className="portal-details">
               <summary>
-                Past subscriptions ({historySubscriptions.length})
+                {formatMessage(t.pastSummary, {
+                  count: String(historySubscriptions.length),
+                })}
               </summary>
               <ul className="portal-history-list">
                 {historySubscriptions.map((subscription) => (
                   <li key={subscription.id}>
-                    {subscription.items[0]?.productName ?? "Subscription"} ·{" "}
-                    {subscription.status}
+                    {subscription.items[0]?.productName ??
+                      t.subscriptionFallback}{" "}
+                    · {subscription.status}
                   </li>
                 ))}
               </ul>
@@ -189,22 +190,20 @@ export default async function PortalPage({
 
         {state.capabilities.paymentManagement && (
           <section className="portal-section">
-            <h2 className="portal-section-title">Payment method</h2>
-            <p className="portal-empty">
-              Manage your payment method with our secure payment provider.
-            </p>
+            <h2 className="portal-section-title">{t.paymentMethodTitle}</h2>
+            <p className="portal-empty">{t.paymentMethodDesc}</p>
             <a
               className="portal-button"
               href={`/api/portal/payment-management?token=${token}`}
             >
-              Manage payment method
+              {t.managePaymentMethod}
             </a>
           </section>
         )}
 
         {state.entitlements.length > 0 && (
           <section className="portal-section">
-            <h2 className="portal-section-title">Your plan features</h2>
+            <h2 className="portal-section-title">{t.featuresTitle}</h2>
             <ul className="portal-feature-list">
               {state.entitlements.map((entitlement) => (
                 <li key={entitlement.featureKey}>{entitlement.featureKey}</li>
@@ -215,14 +214,14 @@ export default async function PortalPage({
 
         {state.credits.length > 0 && (
           <section className="portal-section">
-            <h2 className="portal-section-title">Credits</h2>
+            <h2 className="portal-section-title">{t.creditsTitle}</h2>
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Credit type</th>
-                    <th>Available</th>
-                    <th>Reserved</th>
+                    <th>{t.thCreditType}</th>
+                    <th>{t.thAvailable}</th>
+                    <th>{t.thReserved}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -240,17 +239,17 @@ export default async function PortalPage({
         )}
 
         <section className="portal-section">
-          <h2 className="portal-section-title">Billing history</h2>
+          <h2 className="portal-section-title">{t.historyTitle}</h2>
           {state.payments.length === 0 ? (
-            <p className="portal-empty">No payments yet.</p>
+            <p className="portal-empty">{t.noPayments}</p>
           ) : (
             <div className="table-wrapper">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Amount</th>
-                    <th>Status</th>
+                    <th>{t.thDate}</th>
+                    <th>{t.thAmount}</th>
+                    <th>{t.thStatus}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -283,7 +282,7 @@ export default async function PortalPage({
             <ul className="portal-history-list">
               {state.refunds.map((refund) => (
                 <li key={refund.id}>
-                  Refund {refund.status}
+                  {formatMessage(t.refundLine, { status: refund.status })}
                   {refund.amountMinor !== null &&
                     ` · ${formatAmount(refund.amountMinor, state.payments[0]?.currency ?? "USD")}`}
                   · {formatDate(refund.createdAt)}
@@ -295,7 +294,7 @@ export default async function PortalPage({
 
         {state.branding.supportEmail && (
           <footer className="portal-footer">
-            Questions?{" "}
+            {t.questions}{" "}
             <a href={`mailto:${state.branding.supportEmail}`}>
               {state.branding.supportEmail}
             </a>
