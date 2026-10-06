@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProductProviderRouteEditor } from "@/components/products/ProductProviderRouteEditor";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
@@ -15,18 +16,21 @@ type ProductDetailPageProps = {
   params: Promise<{ productId: string }>;
 };
 
-const TYPE_LABELS: Record<string, string> = {
-  one_time: "One-time purchase",
-  subscription: "Subscription",
-  credit_pack: "Credit pack",
-  usage_based: "Usage-oriented plan",
-};
-
 export default async function ProductDetailPage({
   params,
 }: ProductDetailPageProps) {
   const { productId } = await params;
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.productsDetail;
+  const TYPE_LABELS: Record<string, string> = {
+    one_time: t.typeOneTime,
+    subscription: t.typeSubscription,
+    credit_pack: t.typeCreditPack,
+    usage_based: t.typeUsage,
+  };
   if (!context.selectedApplication) notFound();
 
   const [detail, providerOptions] = await Promise.all([
@@ -45,9 +49,11 @@ export default async function ProductDetailPage({
   const price = detail.primaryPrice;
   const typeLabel = detail.productType
     ? (TYPE_LABELS[detail.productType] ?? detail.productType)
-    : "Legacy catalog product";
+    : t.typeLegacy;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   const checkoutPayload = price
     ? JSON.stringify(
@@ -68,9 +74,11 @@ export default async function ProductDetailPage({
       title={detail.product.name}
       description={
         detail.product.description ??
-        `Catalog product in ${context.selectedApplication.name}.`
+        formatMessage(t.defaultDescription, {
+          application: context.selectedApplication.name,
+        })
       }
-      primaryAction={{ label: "Back to products", href: "/products" }}
+      primaryAction={{ label: t.backToProducts, href: "/products" }}
     >
       <div className="product-detail-hero card">
         <div className="product-detail-identity">
@@ -81,24 +89,28 @@ export default async function ProductDetailPage({
           </div>
           <code>{detail.product.key}</code>
           <p>
-            Created {formatDateTime(detail.product.createdAt)} · Project{" "}
-            {context.selectedApplication.name}
+            {formatMessage(t.createdAt, {
+              date: formatDateTime(detail.product.createdAt),
+              application: context.selectedApplication.name,
+            })}
           </p>
         </div>
 
         <div className="product-detail-price">
-          <span>Primary price</span>
+          <span>{t.primaryPrice}</span>
           {price ? (
             <>
               <strong>{formatAmount(price.amountMinor, price.currency)}</strong>
               <small>
                 {price.billingType === "recurring"
-                  ? `per ${price.recurringInterval === "year" ? "year" : "month"}`
-                  : "one time"}
+                  ? price.recurringInterval === "year"
+                    ? t.perYear
+                    : t.perMonth
+                  : t.oneTime}
               </small>
             </>
           ) : (
-            <strong>Not configured</strong>
+            <strong>{t.notConfigured}</strong>
           )}
         </div>
       </div>
@@ -107,33 +119,35 @@ export default async function ProductDetailPage({
         <section className="card product-detail-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Benefits</span>
-              <h2 className="card-title">Credits & features</h2>
+              <span className="builder-kicker">{t.benefitsKicker}</span>
+              <h2 className="card-title">{t.benefitsTitle}</h2>
             </div>
           </div>
 
           {detail.creditGrants.length === 0 &&
           detail.featureGrants.length === 0 ? (
-            <p className="card-empty-copy">
-              No grants configured for this product.
-            </p>
+            <p className="card-empty-copy">{t.noGrants}</p>
           ) : (
             <div className="grant-summary-list">
               {detail.creditGrants.map((grant) => (
                 <div key={grant.id} className="grant-summary-row">
-                  <span className="grant-kind credit">Credit</span>
+                  <span className="grant-kind credit">{t.creditKind}</span>
                   <div>
                     <strong>{grant.referenceKey}</strong>
-                    <span>{grant.quantity ?? 0} units granted</span>
+                    <span>
+                      {formatMessage(t.unitsGranted, {
+                        count: String(grant.quantity ?? 0),
+                      })}
+                    </span>
                   </div>
                 </div>
               ))}
               {detail.featureGrants.map((grant) => (
                 <div key={grant.id} className="grant-summary-row">
-                  <span className="grant-kind feature">Feature</span>
+                  <span className="grant-kind feature">{t.featureKind}</span>
                   <div>
                     <strong>{grant.referenceKey}</strong>
-                    <span>Entitlement unlocked</span>
+                    <span>{t.entitlementUnlocked}</span>
                   </div>
                 </div>
               ))}
@@ -144,8 +158,12 @@ export default async function ProductDetailPage({
         <section className="card product-detail-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">{environmentLabel} routing</span>
-              <h2 className="card-title">Preferred payment provider</h2>
+              <span className="builder-kicker">
+                {formatMessage(t.routingKicker, {
+                  environment: environmentLabel,
+                })}
+              </span>
+              <h2 className="card-title">{t.routingTitle}</h2>
             </div>
           </div>
 
@@ -162,17 +180,20 @@ export default async function ProductDetailPage({
               <StatusBadge
                 status={detail.provider.mode}
                 label={
-                  detail.provider.mode === "test" ? "Sandbox" : "Production"
+                  detail.provider.mode === "test"
+                    ? dictionary.common.sandbox
+                    : dictionary.common.production
                 }
               />
             </div>
           ) : (
             <div className="provider-missing-route">
-              <strong>No provider preference in {environmentLabel}</strong>
-              <p>
-                This can happen for legacy products or when the product was
-                first created in the other environment.
-              </p>
+              <strong>
+                {formatMessage(t.noProviderTitle, {
+                  environment: environmentLabel,
+                })}
+              </strong>
+              <p>{t.noProviderDesc}</p>
             </div>
           )}
 
@@ -186,57 +207,51 @@ export default async function ProductDetailPage({
               name: provider.name,
               mode: provider.mode,
             }))}
+            labels={dictionary.routeEditor}
           />
 
-          <p className="product-routing-note">
-            The checkout contract still accepts an explicit provider connection
-            ID. This routing preference keeps the intended provider visible and
-            copyable without implying full environment-scoped routing is
-            available in this release.
-          </p>
+          <p className="product-routing-note">{t.routingNote}</p>
         </section>
       </div>
 
       <section className="card product-detail-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Checkout reference</span>
-            <h2 className="card-title">Use these catalog IDs</h2>
+            <span className="builder-kicker">{t.checkoutKicker}</span>
+            <h2 className="card-title">{t.checkoutTitle}</h2>
           </div>
         </div>
         {checkoutPayload ? (
           <div className="checkout-reference-grid">
             <dl className="product-id-list">
               <div>
-                <dt>Product ID</dt>
+                <dt>{t.productIdLabel}</dt>
                 <dd>
                   <code>{detail.product.id}</code>
                 </dd>
               </div>
               <div>
-                <dt>Price ID</dt>
+                <dt>{t.priceIdLabel}</dt>
                 <dd>
                   <code>{price?.id}</code>
                 </dd>
               </div>
               <div>
-                <dt>Provider connection</dt>
+                <dt>{t.providerConnectionLabel}</dt>
                 <dd>
-                  <code>{detail.providerConnectionId ?? "Not configured"}</code>
+                  <code>{detail.providerConnectionId ?? t.notConfigured}</code>
                 </dd>
               </div>
             </dl>
             <div className="checkout-payload">
-              <span>Checkout input shape</span>
+              <span>{t.checkoutShape}</span>
               <pre>
                 <code>{checkoutPayload}</code>
               </pre>
             </div>
           </div>
         ) : (
-          <p className="card-empty-copy">
-            Create an active price before starting checkout.
-          </p>
+          <p className="card-empty-copy">{t.createPriceFirst}</p>
         )}
       </section>
     </PageContainer>

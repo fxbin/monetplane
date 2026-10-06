@@ -1,21 +1,25 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getProductBuilderList } from "@/server/control-plane/products";
 
 export const dynamic = "force-dynamic";
 
-const TYPE_LABELS: Record<string, string> = {
-  one_time: "One-time",
-  subscription: "Subscription",
-  credit_pack: "Credit pack",
-  usage_based: "Usage-oriented",
-};
-
 export default async function ProductsPage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.products;
+  const TYPE_LABELS: Record<string, string> = {
+    one_time: t.typeOneTime,
+    subscription: t.typeSubscription,
+    credit_pack: t.typeCreditPack,
+    usage_based: t.typeUsage,
+  };
   const projectName = context.selectedApplication?.name;
   const products = context.selectedApplication
     ? await getProductBuilderList(
@@ -24,35 +28,39 @@ export default async function ProductsPage() {
       )
     : [];
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   return (
     <PageContainer
-      title="Products"
+      title={t.title}
       description={
         projectName
-          ? `Create and manage what customers can buy in ${projectName}.`
-          : "Create a project before adding products."
+          ? formatMessage(t.descriptionWithProject, {
+              application: projectName,
+            })
+          : t.descriptionNoProject
       }
       primaryAction={
         context.selectedApplication
-          ? { label: "Create product", href: "/products/new" }
-          : { label: "Create project", href: "/applications/new" }
+          ? { label: t.createProduct, href: "/products/new" }
+          : { label: t.createProject, href: "/applications/new" }
       }
     >
       {products.length > 0 ? (
         <>
           <div className="catalog-summary-row">
             <div>
-              <span className="builder-kicker">Current catalog</span>
+              <span className="builder-kicker">{t.catalogKicker}</span>
               <strong>
-                {products.length} product{products.length === 1 ? "" : "s"}
+                {formatMessage(t.productsCount, {
+                  count: String(products.length),
+                })}
               </strong>
             </div>
             <p>
-              Provider column shows the routing preference for{" "}
-              {environmentLabel}. Product definitions are shared across
-              environments; billing runtime data is environment-isolated.
+              {formatMessage(t.catalogNote, { environment: environmentLabel })}
             </p>
           </div>
 
@@ -61,12 +69,16 @@ export default async function ProductsPage() {
               <table className="data-table product-table">
                 <thead>
                   <tr>
-                    <th>Product</th>
-                    <th>Type</th>
-                    <th>Primary price</th>
-                    <th>Benefits</th>
-                    <th>{environmentLabel} provider</th>
-                    <th>Status</th>
+                    <th>{t.thProduct}</th>
+                    <th>{t.thType}</th>
+                    <th>{t.thPrice}</th>
+                    <th>{t.thBenefits}</th>
+                    <th>
+                      {formatMessage(t.thProvider, {
+                        environment: environmentLabel,
+                      })}
+                    </th>
+                    <th>{t.thStatus}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -90,7 +102,7 @@ export default async function ProductsPage() {
                             {item.productType
                               ? (TYPE_LABELS[item.productType] ??
                                 item.productType)
-                              : "Legacy"}
+                              : t.typeLegacy}
                           </span>
                         </td>
                         <td>
@@ -104,31 +116,37 @@ export default async function ProductsPage() {
                               </strong>
                               <span>
                                 {price.billingType === "recurring"
-                                  ? `/${price.recurringInterval === "year" ? "year" : "month"}`
-                                  : "one time"}
+                                  ? price.recurringInterval === "year"
+                                    ? t.perYear
+                                    : t.perMonth
+                                  : t.oneTime}
                               </span>
                             </div>
                           ) : (
-                            <span className="cell-muted">No active price</span>
+                            <span className="cell-muted">
+                              {t.noActivePrice}
+                            </span>
                           )}
                         </td>
                         <td>
                           <div className="benefit-chip-row">
                             {item.creditGrants.length > 0 && (
                               <span className="benefit-chip credit">
-                                {item.creditGrants.length} credit
-                                {item.creditGrants.length === 1 ? "" : "s"}
+                                {formatMessage(t.creditsCount, {
+                                  count: String(item.creditGrants.length),
+                                })}
                               </span>
                             )}
                             {item.featureGrants.length > 0 && (
                               <span className="benefit-chip feature">
-                                {item.featureGrants.length} feature
-                                {item.featureGrants.length === 1 ? "" : "s"}
+                                {formatMessage(t.featuresCount, {
+                                  count: String(item.featureGrants.length),
+                                })}
                               </span>
                             )}
                             {item.creditGrants.length === 0 &&
                               item.featureGrants.length === 0 && (
-                                <span className="cell-muted">None</span>
+                                <span className="cell-muted">{t.none}</span>
                               )}
                           </div>
                         </td>
@@ -140,7 +158,7 @@ export default async function ProductsPage() {
                             </div>
                           ) : (
                             <span className="routing-missing">
-                              Not configured
+                              {t.notConfigured}
                             </span>
                           )}
                         </td>
@@ -159,13 +177,13 @@ export default async function ProductsPage() {
         <div className="empty-state">
           <h2 className="empty-state-title">
             {context.selectedApplication
-              ? "Create your first product"
-              : "Create a project first"}
+              ? t.emptyTitleWithProject
+              : t.emptyTitleNoProject}
           </h2>
           <p className="empty-state-desc">
             {context.selectedApplication
-              ? "Use the guided builder to configure a price, credit grants, feature entitlements, and a payment provider without editing raw catalog records."
-              : "Products are always owned by a MonetPlane project so catalog state stays isolated."}
+              ? t.emptyDescWithProject
+              : t.emptyDescNoProject}
           </p>
           <div className="empty-state-actions">
             <Link
@@ -176,9 +194,7 @@ export default async function ProductsPage() {
                   : "/applications/new"
               }
             >
-              {context.selectedApplication
-                ? "Create product"
-                : "Create project"}
+              {context.selectedApplication ? t.createProduct : t.createProject}
             </Link>
           </div>
         </div>
