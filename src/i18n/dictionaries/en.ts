@@ -110,9 +110,9 @@ export const en = {
     privacyStrong: "Normalized events only",
     privacyBody:
       "Raw provider webhook bodies are retained for processing but are not exposed in this developer console.",
-    customerPlaceholder: "external or internal id",
     provider: "Provider",
     customer: "Customer",
+    customerPlaceholder: "external or internal id",
     order: "Order",
     status: "Status",
     type: "Type",
