@@ -12,6 +12,7 @@ type ProviderConnectFormProps = {
   environment: "test" | "live";
   /** Locale-resolved labels. */
   labels: Dictionary["providersNew"];
+  connectLabels: Dictionary["providerConnect"];
 };
 
 type CreateProviderResponse = {
@@ -28,6 +29,7 @@ export function ProviderConnectForm({
   projectName,
   environment,
   labels,
+  connectLabels,
 }: ProviderConnectFormProps) {
   const router = useRouter();
   const environmentLabel =
@@ -87,11 +89,8 @@ export function ProviderConnectForm({
         <div className="project-form-heading">
           <span className="project-form-step">1</span>
           <div>
-            <h2>Choose provider</h2>
-            <p>
-              Connect one of the payment adapters already implemented by
-              MonetPlane.
-            </p>
+            <h2>{connectLabels.chooseTitle}</h2>
+            <p>{connectLabels.chooseDesc}</p>
           </div>
         </div>
 
@@ -126,17 +125,18 @@ export function ProviderConnectForm({
         <div className="project-form-heading">
           <span className="project-form-step">2</span>
           <div>
-            <h2>Connection identity</h2>
+            <h2>{connectLabels.identityTitle}</h2>
             <p>
-              This connection belongs to {projectName} and the current console
-              environment.
+              {formatMessage(connectLabels.identityDesc, {
+                application: projectName,
+              })}
             </p>
           </div>
         </div>
 
         <div className="project-form-grid">
           <label className="form-field">
-            <span className="form-label">Connection name</span>
+            <span className="form-label">{connectLabels.connectionName}</span>
             <input
               className="form-input"
               value={name}
@@ -145,22 +145,18 @@ export function ProviderConnectForm({
               required
             />
             <span className="form-help">
-              A human-readable label. The default includes the environment so a
-              Sandbox and Production connection can coexist safely.
+              {connectLabels.connectionNameHelp}
             </span>
           </label>
 
           <div className="form-field">
-            <span className="form-label">Environment</span>
+            <span className="form-label">{connectLabels.environment}</span>
             <div className={`provider-environment-lock is-${environment}`}>
               <span className="provider-environment-dot" />
               <strong>{environmentLabel}</strong>
               <span>{environment === "test" ? "test" : "live"}</span>
             </div>
-            <span className="form-help">
-              Change Sandbox / Production from the top bar before creating a
-              connection. The API does not accept a client-supplied mode.
-            </span>
+            <span className="form-help">{connectLabels.environmentHelp}</span>
           </div>
         </div>
       </section>
@@ -169,11 +165,12 @@ export function ProviderConnectForm({
         <div className="project-form-heading">
           <span className="project-form-step">3</span>
           <div>
-            <h2>{setup.label} connection config</h2>
-            <p>
-              Secrets and provider runtime configuration are encrypted before
-              storage and are never returned by the provider list API.
-            </p>
+            <h2>
+              {formatMessage(connectLabels.configTitle, {
+                provider: setup.label,
+              })}
+            </h2>
+            <p>{connectLabels.configDesc}</p>
           </div>
         </div>
 
@@ -200,10 +197,7 @@ export function ProviderConnectForm({
           ))}
         </div>
 
-        <div className="provider-secret-note">
-          MonetPlane stores an encrypted connection envelope. After creation the
-          console only exposes field metadata, never persisted values.
-        </div>
+        <div className="provider-secret-note">{connectLabels.secretNote}</div>
       </section>
 
       {error && (
@@ -214,7 +208,7 @@ export function ProviderConnectForm({
 
       <div className="provider-connect-actions">
         <Link href="/providers" className="btn btn-secondary">
-          Cancel
+          {connectLabels.cancel}
         </Link>
         <button className="btn btn-primary" type="submit" disabled={pending}>
           {pending

@@ -395,7 +395,7 @@ export function ProductBuilderWizard({
                 <textarea
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
-                  placeholder="Everything a growing customer needs."
+                  placeholder={labels.fieldDescriptionPlaceholder}
                   rows={3}
                 />
               </label>

@@ -40,6 +40,7 @@ export default async function NewProviderPage() {
         projectName={context.selectedApplication.name}
         environment={context.environment}
         labels={t}
+        connectLabels={dictionary.providerConnect}
       />
     </PageContainer>
   );

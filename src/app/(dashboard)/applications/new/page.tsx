@@ -8,7 +8,7 @@ export default async function NewApplicationPage() {
 
   return (
     <PageContainer title={t.title} description={t.description}>
-      <ApplicationCreateForm />
+      <ApplicationCreateForm labels={dictionary.applicationCreate} />
     </PageContainer>
   );
 }

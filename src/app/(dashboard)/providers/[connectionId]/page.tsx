@@ -102,6 +102,7 @@ export default async function ProviderDetailPage({
             providerLabel={providerLabel}
             status={connection.status}
             credentialFields={setup?.credentialFields ?? []}
+            labels={dictionary.providerActions}
           />
         </section>
 
@@ -184,6 +185,7 @@ export default async function ProviderDetailPage({
         providerLabel={providerLabel}
         environment={connection.mode}
         disabled={connection.status !== "active"}
+        labels={dictionary.providerDiagnostics}
       />
 
       <section className="card provider-environment-boundary-card">

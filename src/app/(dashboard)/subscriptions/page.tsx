@@ -56,10 +56,7 @@ export default async function SubscriptionsPage({
     : [[], []];
 
   return (
-    <PageContainer
-      title="Subscriptions"
-      description="Inspect recurring billing lifecycle, customer access, provider state, and cancellation recovery."
-    >
+    <PageContainer title="Subscriptions" description={t.description}>
       {applicationId && (
         <BillingOperationsFilters
           action="/subscriptions"

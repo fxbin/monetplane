@@ -1,6 +1,8 @@
 "use client";
 
 import { type FormEvent, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 
 type DiagnosticKind = "configuration" | "payment" | "subscription";
 
@@ -46,18 +48,21 @@ export function ProviderDiagnostics({
   providerLabel,
   environment,
   disabled,
+  labels,
 }: {
   connectionId: string;
   providerLabel: string;
   environment: "test" | "live";
   disabled: boolean;
+  labels: Dictionary["providerDiagnostics"];
 }) {
   const [kind, setKind] = useState<DiagnosticKind>("configuration");
   const [providerResourceId, setProviderResourceId] = useState("");
   const [pending, setPending] = useState(false);
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const environmentLabel = environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    environment === "test" ? labels.sandbox : labels.production;
 
   async function runDiagnostic(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -81,13 +86,11 @@ export function ProviderDiagnostics({
       );
       const body = (await response.json()) as DiagnosticResponse;
       if (!response.ok || !body.result) {
-        throw new Error(body.error ?? "Provider diagnostic failed");
+        throw new Error(body.error ?? labels.failed);
       }
       setResult(body.result);
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : "Provider diagnostic failed",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failed);
     } finally {
       setPending(false);
     }
@@ -97,25 +100,23 @@ export function ProviderDiagnostics({
     <section className="card provider-diagnostic-card">
       <div className="card-heading-row">
         <div>
-          <span className="provider-detail-kicker">Diagnostics</span>
-          <h2 className="card-title">Runtime verification</h2>
+          <span className="provider-detail-kicker">{labels.kicker}</span>
+          <h2 className="card-title">{labels.title}</h2>
         </div>
-        <span className="provider-diagnostic-readonly">Read-only</span>
+        <span className="provider-diagnostic-readonly">{labels.readOnly}</span>
       </div>
 
       <p className="provider-diagnostic-intro">
-        Verify the real {providerLabel} adapter and this {environmentLabel}
-        credential boundary without creating a checkout, refund, cancellation,
-        or other provider mutation.
+        {formatMessage(labels.intro, {
+          provider: providerLabel,
+          environment: environmentLabel,
+        })}
       </p>
 
       {disabled ? (
         <div className="provider-runtime-warning">
-          <strong>Diagnostics unavailable</strong>
-          <span>
-            Revoked connections cannot decrypt credentials or execute provider
-            runtime probes.
-          </span>
+          <strong>{labels.unavailableTitle}</strong>
+          <span>{labels.unavailableDesc}</span>
         </div>
       ) : (
         <form className="provider-diagnostic-form" onSubmit={runDiagnostic}>
@@ -130,10 +131,8 @@ export function ProviderDiagnostics({
                 setError(null);
               }}
             >
-              <strong>Configuration</strong>
-              <span>
-                Resolve adapter, decrypt credentials, inspect capabilities.
-              </span>
+              <strong>{labels.kindConfiguration}</strong>
+              <span>{labels.kindConfigurationDesc}</span>
             </button>
             <button
               className={`provider-diagnostic-kind${kind === "payment" ? " is-selected" : ""}`}
@@ -145,8 +144,8 @@ export function ProviderDiagnostics({
                 setError(null);
               }}
             >
-              <strong>Payment lookup</strong>
-              <span>Query one provider payment and normalize its state.</span>
+              <strong>{labels.kindPayment}</strong>
+              <span>{labels.kindPaymentDesc}</span>
             </button>
             <button
               className={`provider-diagnostic-kind${kind === "subscription" ? " is-selected" : ""}`}
@@ -158,15 +157,20 @@ export function ProviderDiagnostics({
                 setError(null);
               }}
             >
-              <strong>Subscription lookup</strong>
-              <span>Query one provider subscription without changing it.</span>
+              <strong>{labels.kindSubscription}</strong>
+              <span>{labels.kindSubscriptionDesc}</span>
             </button>
           </div>
 
           {kind !== "configuration" && (
             <label className="form-field provider-diagnostic-resource">
               <span className="form-label">
-                Provider {kind === "payment" ? "payment" : "subscription"} ID
+                {formatMessage(labels.resourceIdLabel, {
+                  kind:
+                    kind === "payment"
+                      ? labels.kindPayment
+                      : labels.kindSubscription,
+                })}
               </span>
               <input
                 className="form-input cell-mono"
@@ -174,32 +178,30 @@ export function ProviderDiagnostics({
                 onChange={(event) => setProviderResourceId(event.target.value)}
                 placeholder={
                   kind === "payment"
-                    ? "Provider payment / order ID"
-                    : "Provider subscription ID"
+                    ? labels.paymentPlaceholder
+                    : labels.subscriptionPlaceholder
                 }
                 required
               />
-              <span className="form-help">
-                Use the provider-native ID. The probe performs a read-only
-                lookup through the same production runtime adapter used by
-                MonetPlane.
-              </span>
+              <span className="form-help">{labels.resourceHelp}</span>
             </label>
           )}
 
           <div className="provider-diagnostic-action-row">
             <div>
-              <strong>{environmentLabel} boundary</strong>
-              <span>
-                The API refuses connections from the other console environment.
-              </span>
+              <strong>
+                {formatMessage(labels.boundaryTitle, {
+                  environment: environmentLabel,
+                })}
+              </strong>
+              <span>{labels.boundaryDesc}</span>
             </div>
             <button
               className="btn btn-secondary"
               type="submit"
               disabled={pending}
             >
-              {pending ? "Running…" : "Run diagnostic"}
+              {pending ? labels.running : labels.runButton}
             </button>
           </div>
         </form>
@@ -207,7 +209,7 @@ export function ProviderDiagnostics({
 
       {error && (
         <div className="provider-diagnostic-result is-error" role="alert">
-          <strong>Diagnostic failed</strong>
+          <strong>{labels.errorTitle}</strong>
           <span>{error}</span>
         </div>
       )}
@@ -216,7 +218,7 @@ export function ProviderDiagnostics({
         <output className="provider-diagnostic-result is-success">
           <div className="provider-diagnostic-result-heading">
             <div>
-              <strong>Diagnostic passed</strong>
+              <strong>{labels.passedTitle}</strong>
               <span>{result.summary}</span>
             </div>
             <time dateTime={result.checkedAt}>
@@ -227,25 +229,25 @@ export function ProviderDiagnostics({
           {result.payment && (
             <dl className="provider-diagnostic-data">
               <div>
-                <dt>Status</dt>
+                <dt>{labels.dtStatus}</dt>
                 <dd>{result.payment.status}</dd>
               </div>
               <div>
-                <dt>Provider payment</dt>
+                <dt>{labels.dtProviderPayment}</dt>
                 <dd className="cell-mono">
                   {result.payment.providerPaymentId}
                 </dd>
               </div>
               <div>
-                <dt>Amount (minor units)</dt>
+                <dt>{labels.dtAmount}</dt>
                 <dd>
                   {result.payment.amountMinor} {result.payment.currency}
                 </dd>
               </div>
               <div>
-                <dt>Provider customer</dt>
+                <dt>{labels.dtProviderCustomer}</dt>
                 <dd className="cell-mono">
-                  {result.payment.providerCustomerId ?? "Not returned"}
+                  {result.payment.providerCustomerId ?? labels.notReturned}
                 </dd>
               </div>
             </dl>
@@ -254,24 +256,28 @@ export function ProviderDiagnostics({
           {result.subscription && (
             <dl className="provider-diagnostic-data">
               <div>
-                <dt>Status</dt>
+                <dt>{labels.dtStatus}</dt>
                 <dd>{result.subscription.status}</dd>
               </div>
               <div>
-                <dt>Provider subscription</dt>
+                <dt>{labels.dtProviderSubscription}</dt>
                 <dd className="cell-mono">
                   {result.subscription.providerSubscriptionId}
                 </dd>
               </div>
               <div>
-                <dt>Current period end</dt>
+                <dt>{labels.dtPeriodEnd}</dt>
                 <dd>
-                  {result.subscription.currentPeriodEnd ?? "Not returned"}
+                  {result.subscription.currentPeriodEnd ?? labels.notReturned}
                 </dd>
               </div>
               <div>
-                <dt>Cancel at period end</dt>
-                <dd>{result.subscription.cancelAtPeriodEnd ? "Yes" : "No"}</dd>
+                <dt>{labels.dtCancelAtPeriodEnd}</dt>
+                <dd>
+                  {result.subscription.cancelAtPeriodEnd
+                    ? labels.yes
+                    : labels.no}
+                </dd>
               </div>
             </dl>
           )}
