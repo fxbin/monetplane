@@ -7,6 +7,7 @@ import {
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getSubscriptionDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -20,10 +21,12 @@ type SubscriptionPageProps = {
 export default async function SubscriptionPage({
   params,
 }: SubscriptionPageProps) {
-  const [{ subscriptionId }, context] = await Promise.all([
+  const [{ subscriptionId }, context, dictionary] = await Promise.all([
     params,
     getConsoleContext(),
+    getDictionary(),
   ]);
+  const t = dictionary.subscriptionDetail;
   if (!context.selectedApplication) notFound();
 
   let subscription: Awaited<ReturnType<typeof getSubscriptionDetail>>;
@@ -45,13 +48,13 @@ export default async function SubscriptionPage({
 
   return (
     <PageContainer
-      title="Subscription detail"
-      description="Recurring billing state, customer access, cancellation eligibility, and operation recovery."
-      primaryAction={{ label: "Back to subscriptions", href: "/subscriptions" }}
+      title={t.title}
+      description={t.description}
+      primaryAction={{ label: t.back, href: "/subscriptions" }}
     >
       <section className="billing-detail-hero card">
         <div>
-          <span className="builder-kicker">Subscription</span>
+          <span className="builder-kicker">{t.kicker}</span>
           <h2>
             {subscription.items[0]?.productName ??
               subscription.items[0]?.productKey ??
@@ -60,7 +63,11 @@ export default async function SubscriptionPage({
           <div className="billing-detail-meta">
             <code>{subscription.id}</code>
             <span>{subscription.providerSubscriptionId}</span>
-            <span>Updated {formatDateTime(subscription.updatedAt)}</span>
+            <span>
+              {formatMessage(t.updated, {
+                date: formatDateTime(subscription.updatedAt),
+              })}
+            </span>
           </div>
         </div>
         <StatusBadge
@@ -71,41 +78,43 @@ export default async function SubscriptionPage({
 
       <div className="billing-summary-grid">
         <section className="card billing-summary-card">
-          <span>Customer</span>
+          <span>{t.customer}</span>
           <Link href={`/customers/${subscription.applicationCustomerId}`}>
-            <strong>{subscription.externalCustomerId ?? "Customer"}</strong>
+            <strong>
+              {subscription.externalCustomerId ?? t.customerFallback}
+            </strong>
           </Link>
-          <small>{subscription.customerEmail ?? "No email"}</small>
+          <small>{subscription.customerEmail ?? t.noEmail}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Provider</span>
+          <span>{t.provider}</span>
           <strong>
-            {subscription.providerName ?? subscription.provider ?? "Unknown"}
+            {subscription.providerName ?? subscription.provider ?? t.unknown}
           </strong>
           <small>{subscription.providerConnectionId}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Current period</span>
+          <span>{t.currentPeriod}</span>
           <strong>
             {subscription.currentPeriodEnd
               ? formatDateTime(subscription.currentPeriodEnd)
-              : "No period end"}
+              : t.noPeriodEnd}
           </strong>
           <small>
             {subscription.cancelAtPeriodEnd
-              ? "Cancellation scheduled"
-              : "Renews normally"}
+              ? t.cancellationScheduled
+              : t.renewsNormally}
           </small>
         </section>
         <section className="card billing-summary-card">
-          <span>Operator operations</span>
+          <span>{t.operationsCard}</span>
           <strong>{subscription.operations.length}</strong>
           <small>
             {subscription.operations.some(
               (operation) => operation.status === "needs_reconciliation",
             )
-              ? "Reconciliation needed"
-              : "No reconciliation alert"}
+              ? t.reconciliationNeeded
+              : t.noReconciliationAlert}
           </small>
         </section>
       </div>
@@ -113,25 +122,25 @@ export default async function SubscriptionPage({
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Operation</span>
-            <h2 className="card-title">Cancellation eligibility</h2>
+            <span className="builder-kicker">{t.operationKicker}</span>
+            <h2 className="card-title">{t.cancellationTitle}</h2>
           </div>
         </div>
         {subscription.cancellationEligibility.eligible ? (
           <div className="billing-operation-callout is-eligible">
             <div>
-              <strong>Cancellation is available</strong>
-              <p>
-                The connected provider declares subscription cancellation
-                capability.
-              </p>
+              <strong>{t.cancellationAvailable}</strong>
+              <p>{t.cancellationAvailableDesc}</p>
             </div>
-            <CancelSubscriptionAction subscriptionId={subscription.id} />
+            <CancelSubscriptionAction
+              subscriptionId={subscription.id}
+              labels={dictionary.operationActions}
+            />
           </div>
         ) : (
           <div className="billing-operation-callout">
             <div>
-              <strong>Cancellation unavailable</strong>
+              <strong>{t.cancellationUnavailable}</strong>
               <p>{subscription.cancellationEligibility.reason}</p>
             </div>
           </div>
@@ -141,12 +150,12 @@ export default async function SubscriptionPage({
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Plan</span>
-            <h2 className="card-title">Subscription items</h2>
+            <span className="builder-kicker">{t.itemsKicker}</span>
+            <h2 className="card-title">{t.itemsTitle}</h2>
           </div>
         </div>
         {subscription.items.length === 0 ? (
-          <p className="card-empty-copy">No subscription items are recorded.</p>
+          <p className="card-empty-copy">{t.noItems}</p>
         ) : (
           <div className="billing-item-list">
             {subscription.items.map((item) => (
@@ -165,7 +174,10 @@ export default async function SubscriptionPage({
                   item.amountMinor !== undefined &&
                   item.currency
                     ? `${formatAmount(item.amountMinor, item.currency)}/${item.recurringInterval ?? "period"}`
-                    : `${item.quantity} × item`}
+                    : formatMessage(t.quantityTimes, {
+                        count: String(item.quantity),
+                        amount: "",
+                      })}
                 </span>
               </div>
             ))}
@@ -177,14 +189,12 @@ export default async function SubscriptionPage({
         <section className="card billing-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Operations</span>
-              <h2 className="card-title">Recovery journal</h2>
+              <span className="builder-kicker">{t.operationsKicker}</span>
+              <h2 className="card-title">{t.journalTitle}</h2>
             </div>
           </div>
           {subscription.operations.length === 0 ? (
-            <p className="card-empty-copy">
-              No operator mutations have been recorded.
-            </p>
+            <p className="card-empty-copy">{t.noOperations}</p>
           ) : (
             <div className="billing-operation-list">
               {subscription.operations.map((operation) => (
@@ -193,15 +203,18 @@ export default async function SubscriptionPage({
                     <strong>{operation.type.replace("_", " ")}</strong>
                     <code>{operation.id}</code>
                     <span>
-                      Attempt {operation.attemptNumber}
-                      {operation.retryOfOperationId ? " · retry" : ""}
+                      {formatMessage(t.attempt, {
+                        number: String(operation.attemptNumber),
+                      })}
+                      {operation.retryOfOperationId ? t.retrySuffix : ""}
                       {" · "}
                       {formatDateTime(operation.createdAt)}
                     </span>
                     {operation.failureKind && (
                       <small>
-                        Provider outcome:{" "}
-                        {operation.failureKind.replaceAll("_", " ")}
+                        {formatMessage(t.providerOutcome, {
+                          outcome: operation.failureKind.replaceAll("_", " "),
+                        })}
                       </small>
                     )}
                     {operation.errorMessage && (
@@ -218,12 +231,14 @@ export default async function SubscriptionPage({
                     ) && (
                       <ReconcileBillingOperationAction
                         operationId={operation.id}
+                        labels={dictionary.operationActions}
                       />
                     )}
                     {operation.status === "failed" &&
                       operation.failureKind === "rejected" && (
                         <RetryBillingOperationAction
                           operationId={operation.id}
+                          labels={dictionary.operationActions}
                         />
                       )}
                   </div>
@@ -236,14 +251,12 @@ export default async function SubscriptionPage({
         <section className="card billing-section">
           <div className="card-heading-row">
             <div>
-              <span className="builder-kicker">Timeline</span>
-              <h2 className="card-title">Provider events</h2>
+              <span className="builder-kicker">{t.timelineKicker}</span>
+              <h2 className="card-title">{t.eventsTitle}</h2>
             </div>
           </div>
           {subscription.events.length === 0 ? (
-            <p className="card-empty-copy">
-              No related provider events were found.
-            </p>
+            <p className="card-empty-copy">{t.noEvents}</p>
           ) : (
             <div className="billing-timeline">
               {subscription.events.map((event) => (

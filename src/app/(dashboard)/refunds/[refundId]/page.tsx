@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount, formatDateTime } from "@/lib/format";
 import { getRefundDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
@@ -13,10 +14,12 @@ type RefundPageProps = {
 };
 
 export default async function RefundPage({ params }: RefundPageProps) {
-  const [{ refundId }, context] = await Promise.all([
+  const [{ refundId }, context, dictionary] = await Promise.all([
     params,
     getConsoleContext(),
+    getDictionary(),
   ]);
+  const t = dictionary.refundDetail;
   if (!context.selectedApplication) notFound();
 
   let refund: Awaited<ReturnType<typeof getRefundDetail>>;
@@ -35,17 +38,17 @@ export default async function RefundPage({ params }: RefundPageProps) {
 
   return (
     <PageContainer
-      title="Refund detail"
-      description="Normalized refund state with the payment, customer, product, and event context needed to explain what happened."
-      primaryAction={{ label: "Back to refunds", href: "/refunds" }}
+      title={t.title}
+      description={t.description}
+      primaryAction={{ label: t.back, href: "/refunds" }}
     >
       <section className="billing-detail-hero card">
         <div>
-          <span className="builder-kicker">Refund</span>
+          <span className="builder-kicker">{t.kicker}</span>
           <h2>
             {refund.amountMinor !== null && refund.paymentCurrency
               ? formatAmount(refund.amountMinor, refund.paymentCurrency)
-              : "Refund"}
+              : t.kicker}
           </h2>
           <div className="billing-detail-meta">
             <code>{refund.id}</code>
@@ -58,46 +61,44 @@ export default async function RefundPage({ params }: RefundPageProps) {
 
       <div className="billing-summary-grid">
         <section className="card billing-summary-card">
-          <span>Payment</span>
+          <span>{t.payment}</span>
           <Link href={`/payments/${refund.paymentId}`}>
             <strong>{refund.paymentId}</strong>
           </Link>
           <small>{refund.payment.providerPaymentId}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Customer</span>
+          <span>{t.customer}</span>
           {refund.applicationCustomerId ? (
             <Link href={`/customers/${refund.applicationCustomerId}`}>
-              <strong>{refund.externalCustomerId ?? "Customer"}</strong>
+              <strong>{refund.externalCustomerId ?? t.customerFallback}</strong>
             </Link>
           ) : (
-            <strong>Unknown</strong>
+            <strong>{t.unknown}</strong>
           )}
-          <small>{refund.customerEmail ?? "No email"}</small>
+          <small>{refund.customerEmail ?? t.noEmail}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Provider</span>
-          <strong>{refund.providerName ?? refund.provider ?? "Unknown"}</strong>
+          <span>{t.provider}</span>
+          <strong>{refund.providerName ?? refund.provider ?? t.unknown}</strong>
           <small>{refund.providerConnectionId}</small>
         </section>
         <section className="card billing-summary-card">
-          <span>Order</span>
-          <strong>{refund.orderId ?? "Not linked"}</strong>
-          <small>{refund.payment.billingMode ?? "Unknown billing mode"}</small>
+          <span>{t.order}</span>
+          <strong>{refund.orderId ?? t.notLinked}</strong>
+          <small>{refund.payment.billingMode ?? t.unknownBillingMode}</small>
         </section>
       </div>
 
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Product context</span>
-            <h2 className="card-title">Refunded items</h2>
+            <span className="builder-kicker">{t.productKicker}</span>
+            <h2 className="card-title">{t.itemsTitle}</h2>
           </div>
         </div>
         {refund.items.length === 0 ? (
-          <p className="card-empty-copy">
-            No order items are linked to this refund.
-          </p>
+          <p className="card-empty-copy">{t.noItems}</p>
         ) : (
           <div className="billing-item-list">
             {refund.items.map((item) => (
@@ -111,7 +112,11 @@ export default async function RefundPage({ params }: RefundPageProps) {
                   </strong>
                   <code>{item.productId}</code>
                 </div>
-                <span>{item.quantity} × item</span>
+                <span>
+                  {formatMessage(t.quantityTimes, {
+                    count: String(item.quantity),
+                  })}
+                </span>
               </div>
             ))}
           </div>
@@ -121,15 +126,13 @@ export default async function RefundPage({ params }: RefundPageProps) {
       <section className="card billing-section">
         <div className="card-heading-row">
           <div>
-            <span className="builder-kicker">Timeline</span>
-            <h2 className="card-title">Payment events</h2>
+            <span className="builder-kicker">{t.timelineKicker}</span>
+            <h2 className="card-title">{t.eventsTitle}</h2>
           </div>
-          <span className="customer-section-note">Normalized events only</span>
+          <span className="customer-section-note">{t.eventsNote}</span>
         </div>
         {refund.payment.events.length === 0 ? (
-          <p className="card-empty-copy">
-            No related provider events were found.
-          </p>
+          <p className="card-empty-copy">{t.noEvents}</p>
         ) : (
           <div className="billing-timeline">
             {refund.payment.events.map((event) => (

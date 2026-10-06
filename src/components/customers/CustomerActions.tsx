@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { type ReactNode, useId, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 
 type ActionDialogProps = {
   title: string;
@@ -11,6 +13,7 @@ type ActionDialogProps = {
   confirmLabel: string;
   children?: ReactNode;
   onConfirm: () => Promise<void>;
+  labels: Dictionary["customerActions"];
 };
 
 function ActionDialog({
@@ -21,6 +24,7 @@ function ActionDialog({
   confirmLabel,
   children,
   onConfirm,
+  labels,
 }: ActionDialogProps) {
   const titleId = useId();
   const [open, setOpen] = useState(false);
@@ -34,7 +38,7 @@ function ActionDialog({
       await onConfirm();
       setOpen(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Operation failed");
+      setError(cause instanceof Error ? cause.message : labels.failed);
     } finally {
       setPending(false);
     }
@@ -61,7 +65,9 @@ function ActionDialog({
             role="dialog"
           >
             <div>
-              <span className="customer-action-kicker">Confirm operation</span>
+              <span className="customer-action-kicker">
+                {labels.confirmKicker}
+              </span>
               <h2 id={titleId}>{title}</h2>
               <p>{description}</p>
             </div>
@@ -78,7 +84,7 @@ function ActionDialog({
                 disabled={pending}
                 onClick={() => setOpen(false)}
               >
-                Cancel
+                {labels.cancel}
               </button>
               <button
                 className="btn btn-primary"
@@ -86,7 +92,7 @@ function ActionDialog({
                 disabled={pending}
                 onClick={() => void confirm()}
               >
-                {pending ? "Working…" : confirmLabel}
+                {pending ? labels.working : confirmLabel}
               </button>
             </div>
           </section>
@@ -96,14 +102,24 @@ function ActionDialog({
   );
 }
 
-async function requestAction(url: string, init?: RequestInit) {
+async function requestAction(
+  url: string,
+  fallback: string,
+  init?: RequestInit,
+) {
   const response = await fetch(url, init);
   const result = (await response.json()) as { error?: string };
-  if (!response.ok) throw new Error(result.error ?? "Operation failed");
+  if (!response.ok) throw new Error(result.error ?? fallback);
   return result;
 }
 
-export function GrantCreditsAction({ customerId }: { customerId: string }) {
+export function GrantCreditsAction({
+  customerId,
+  labels,
+}: {
+  customerId: string;
+  labels: Dictionary["customerActions"];
+}) {
   const router = useRouter();
   const [creditType, setCreditType] = useState("credits");
   const [amount, setAmount] = useState("100");
@@ -111,17 +127,19 @@ export function GrantCreditsAction({ customerId }: { customerId: string }) {
 
   return (
     <ActionDialog
-      title="Grant credits"
-      description="This creates an admin adjustment in the immutable credit ledger. The resulting balance will be visible immediately."
-      triggerLabel="Grant credits"
-      confirmLabel="Confirm grant"
+      title={labels.grantTitle}
+      description={labels.grantDesc}
+      triggerLabel={labels.grantTrigger}
+      confirmLabel={labels.grantConfirm}
+      labels={labels}
       onConfirm={async () => {
         const parsedAmount = Number(amount);
         if (!Number.isSafeInteger(parsedAmount) || parsedAmount <= 0) {
-          throw new Error("Amount must be a positive whole number");
+          throw new Error(labels.grantAmountInvalid);
         }
         await requestAction(
           `/api/admin/customers/${encodeURIComponent(customerId)}/credits`,
+          labels.failed,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -133,7 +151,7 @@ export function GrantCreditsAction({ customerId }: { customerId: string }) {
     >
       <div className="customer-action-fields">
         <label className="field-group">
-          <span>Credit type</span>
+          <span>{labels.creditType}</span>
           <input
             className="cell-mono"
             value={creditType}
@@ -143,7 +161,7 @@ export function GrantCreditsAction({ customerId }: { customerId: string }) {
           />
         </label>
         <label className="field-group">
-          <span>Amount</span>
+          <span>{labels.amount}</span>
           <input
             inputMode="numeric"
             value={amount}
@@ -151,12 +169,12 @@ export function GrantCreditsAction({ customerId }: { customerId: string }) {
           />
         </label>
         <label className="field-group span-two">
-          <span>Operator note</span>
+          <span>{labels.operatorNote}</span>
           <textarea
             rows={2}
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            placeholder="Why is this adjustment being made?"
+            placeholder={labels.operatorNotePlaceholder}
           />
         </label>
       </div>
@@ -168,22 +186,26 @@ export function CancelSubscriptionAction({
   customerId,
   subscriptionId,
   label,
+  labels,
 }: {
   customerId: string;
   subscriptionId: string;
   label: string;
+  labels: Dictionary["customerActions"];
 }) {
   const router = useRouter();
   return (
     <ActionDialog
-      title="Cancel subscription"
-      description={`Cancel ${label} through its configured payment provider. MonetPlane will apply the provider-neutral subscription state returned by the adapter.`}
-      triggerLabel="Cancel subscription"
+      title={labels.cancelTitle}
+      description={formatMessage(labels.cancelDesc, { label })}
+      triggerLabel={labels.cancelTrigger}
       triggerClassName="btn btn-secondary customer-danger-button"
-      confirmLabel="Confirm cancellation"
+      confirmLabel={labels.cancelConfirm}
+      labels={labels}
       onConfirm={async () => {
         await requestAction(
           `/api/admin/customers/${encodeURIComponent(customerId)}/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+          labels.failed,
           { method: "POST" },
         );
         router.refresh();
@@ -196,22 +218,26 @@ export function RefundPaymentAction({
   customerId,
   paymentId,
   amountLabel,
+  labels,
 }: {
   customerId: string;
   paymentId: string;
   amountLabel: string;
+  labels: Dictionary["customerActions"];
 }) {
   const router = useRouter();
   return (
     <ActionDialog
-      title="Refund payment"
-      description={`Issue a full ${amountLabel} refund through the configured provider. MonetPlane blocks unsafe credit-grant and subscription refunds in this workspace.`}
-      triggerLabel="Refund"
+      title={labels.refundTitle}
+      description={formatMessage(labels.refundDesc, { amount: amountLabel })}
+      triggerLabel={labels.refundTrigger}
       triggerClassName="btn btn-secondary customer-danger-button"
-      confirmLabel="Confirm full refund"
+      confirmLabel={labels.refundConfirm}
+      labels={labels}
       onConfirm={async () => {
         await requestAction(
           `/api/admin/customers/${encodeURIComponent(customerId)}/payments/${encodeURIComponent(paymentId)}/refund`,
+          labels.failed,
           { method: "POST" },
         );
         router.refresh();
