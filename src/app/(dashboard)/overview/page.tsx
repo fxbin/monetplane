@@ -1,6 +1,7 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { formatAmount } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getOverviewCommandCenter } from "@/server/control-plane/overview";
@@ -8,30 +9,30 @@ import { getOverviewCommandCenter } from "@/server/control-plane/overview";
 export const dynamic = "force-dynamic";
 
 export default async function OverviewPage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.overview;
   const application = context.selectedApplication;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   if (!application) {
     return (
-      <PageContainer
-        title="Overview"
-        description="Create a project to start configuring your billing control plane."
-      >
+      <PageContainer title={t.title} description={t.emptyDescription}>
         <div className="empty-state empty-state-guided">
-          <h2 className="empty-state-title">Create your first project</h2>
-          <p className="empty-state-desc">
-            A project represents one product or website using MonetPlane and
-            keeps its billing data isolated.
-          </p>
+          <h2 className="empty-state-title">{t.emptyTitle}</h2>
+          <p className="empty-state-desc">{t.emptyDesc}</p>
           <div className="onboarding-checklist">
             <a
               className="onboarding-item onboarding-item-link"
               href="/applications/new"
             >
               <span className="onboarding-number">1</span>
-              <span>Create a project</span>
+              <span>{t.createProjectStep}</span>
             </a>
           </div>
         </div>
@@ -54,9 +55,12 @@ export default async function OverviewPage() {
 
   return (
     <PageContainer
-      title="Overview"
-      description={`${application.name} · ${environmentLabel} billing health and activity.`}
-      primaryAction={{ label: "Connect provider", href: "/providers" }}
+      title={t.title}
+      description={formatMessage(t.description, {
+        application: application.name,
+        environment: environmentLabel,
+      })}
+      primaryAction={{ label: t.connectProvider, href: "/providers" }}
     >
       {warnings.length > 0 && (
         <div className="overview-warnings">
@@ -74,27 +78,29 @@ export default async function OverviewPage() {
 
       <div className="stat-cards">
         <div className="stat-card">
-          <span className="stat-label">Revenue ({environmentLabel})</span>
+          <span className="stat-label">
+            {formatMessage(t.kpiRevenue, { environment: environmentLabel })}
+          </span>
           <span className="stat-value">
             <CurrencyBreakdown amounts={kpis.revenueByCurrency} />
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Payments</span>
+          <span className="stat-label">{t.kpiPayments}</span>
           <span className="stat-value">{kpis.payments}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Active subscriptions</span>
+          <span className="stat-label">{t.kpiActiveSubscriptions}</span>
           <span className="stat-value">{kpis.activeSubscriptions}</span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Credits granted</span>
+          <span className="stat-label">{t.kpiCreditsGranted}</span>
           <span className="stat-value">
             {kpis.creditsGranted.toLocaleString()}
           </span>
         </div>
         <div className="stat-card">
-          <span className="stat-label">Credits used</span>
+          <span className="stat-label">{t.kpiCreditsUsed}</span>
           <span className="stat-value">
             {kpis.creditsDebited.toLocaleString()}
           </span>
@@ -104,13 +110,11 @@ export default async function OverviewPage() {
       <div className="overview-grid">
         <div className="overview-checklist card">
           <h2 className="card-title">
-            {setupComplete
-              ? "Billing is fully connected"
-              : "Finish setting up billing"}
+            {setupComplete ? t.checklistDone : t.checklistPending}
           </h2>
           {nextStep && (
             <p className="overview-checklist-next">
-              Next: <a href={nextStep.href}>{nextStep.label}</a>
+              {t.next} <a href={nextStep.href}>{nextStep.label}</a>
             </p>
           )}
           <div className="overview-checklist-steps">
@@ -130,14 +134,18 @@ export default async function OverviewPage() {
         </div>
 
         <div className="card">
-          <h2 className="card-title">Provider health · {environmentLabel}</h2>
+          <h2 className="card-title">
+            {formatMessage(t.providerHealthTitle, {
+              environment: environmentLabel,
+            })}
+          </h2>
           {overview.providerHealth.length > 0 ? (
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Provider</th>
-                  <th>Connection</th>
-                  <th>Status</th>
+                  <th>{t.thProvider}</th>
+                  <th>{t.thConnection}</th>
+                  <th>{t.thStatus}</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,21 +162,24 @@ export default async function OverviewPage() {
             </table>
           ) : (
             <p className="cell-muted">
-              No providers connected in {environmentLabel}.{" "}
-              <a href="/providers">Connect one</a> to enable checkout.
+              {formatMessage(t.noProvidersBefore, {
+                environment: environmentLabel,
+              })}
+              <a href="/providers">{t.noProvidersLink}</a>
+              {t.noProvidersAfter}
             </p>
           )}
         </div>
 
         <div className="card">
-          <h2 className="card-title">Top products</h2>
+          <h2 className="card-title">{t.topProducts}</h2>
           {overview.topProducts.length > 0 ? (
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Product</th>
-                  <th>Units</th>
-                  <th>Revenue</th>
+                  <th>{t.thProduct}</th>
+                  <th>{t.thUnits}</th>
+                  <th>{t.thRevenue}</th>
                 </tr>
               </thead>
               <tbody>
@@ -185,14 +196,15 @@ export default async function OverviewPage() {
             </table>
           ) : (
             <p className="cell-muted">
-              No paid orders yet. <a href="/products">Create a product</a> to
-              get started.
+              {t.noProductsBefore}
+              <a href="/products">{t.noProductsLink}</a>
+              {t.noProductsAfter}
             </p>
           )}
         </div>
 
         <div className="card">
-          <h2 className="card-title">Recent payments</h2>
+          <h2 className="card-title">{t.recentPayments}</h2>
           {overview.recentPayments.length > 0 ? (
             <div className="table-wrapper">
               <table className="data-table">
@@ -232,9 +244,7 @@ export default async function OverviewPage() {
             </div>
           ) : (
             <p className="cell-muted">
-              {hasBillingData
-                ? "No payments recorded in this environment yet."
-                : "Run a Sandbox checkout to see your first payment here."}
+              {hasBillingData ? t.noPaymentsYet : t.firstPayment}
             </p>
           )}
         </div>
@@ -242,22 +252,16 @@ export default async function OverviewPage() {
 
       <div className="overview-links">
         <a className="overview-link-card" href="/revenue">
-          <span className="overview-link-title">Revenue →</span>
-          <span className="cell-muted">
-            Monthly revenue and product breakdown
-          </span>
+          <span className="overview-link-title">{t.linkRevenue} →</span>
+          <span className="cell-muted">{t.linkRevenueDesc}</span>
         </a>
         <a className="overview-link-card" href="/usage">
-          <span className="overview-link-title">Usage →</span>
-          <span className="cell-muted">
-            Credit consumption by type and customer
-          </span>
+          <span className="overview-link-title">{t.linkUsage} →</span>
+          <span className="cell-muted">{t.linkUsageDesc}</span>
         </a>
         <a className="overview-link-card" href="/developer">
-          <span className="overview-link-title">Developer →</span>
-          <span className="cell-muted">
-            Quickstart, API keys, integration health
-          </span>
+          <span className="overview-link-title">{t.linkDeveloper} →</span>
+          <span className="cell-muted">{t.linkDeveloperDesc}</span>
         </a>
       </div>
     </PageContainer>

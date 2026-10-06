@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
 import type {
   ConsoleApplication,
   ConsoleEnvironment,
@@ -34,60 +35,72 @@ type NavItem = {
   comingSoon?: boolean;
 };
 
-const navSections: Array<{ label?: string; items: NavItem[] }> = [
+/**
+ * Section structure with dictionary keys — labels resolve from the
+ * active locale's dictionary at render time (i18n, 2026-10-04).
+ */
+const navSections: Array<{
+  labelKey?: keyof Dictionary["nav"]["sections"];
+  items: Array<{
+    labelKey: keyof Dictionary["nav"]["items"];
+    href?: string;
+    icon: NavItem["icon"];
+    comingSoon?: boolean;
+  }>;
+}> = [
   {
-    items: [{ label: "Overview", href: "/overview", icon: "overview" }],
+    items: [{ labelKey: "overview", href: "/overview", icon: "overview" }],
   },
   {
-    label: "Products",
+    labelKey: "products",
     items: [
-      { label: "Products", href: "/products", icon: "box" },
-      { label: "Credits", icon: "credits", comingSoon: true },
-      { label: "Features", icon: "features", comingSoon: true },
+      { labelKey: "products", href: "/products", icon: "box" },
+      { labelKey: "credits", icon: "credits", comingSoon: true },
+      { labelKey: "features", icon: "features", comingSoon: true },
     ],
   },
   {
-    label: "Business",
+    labelKey: "business",
     items: [
-      { label: "Customers", href: "/customers", icon: "customers" },
-      { label: "Payments", href: "/payments", icon: "payments" },
+      { labelKey: "customers", href: "/customers", icon: "customers" },
+      { labelKey: "payments", href: "/payments", icon: "payments" },
       {
-        label: "Subscriptions",
+        labelKey: "subscriptions",
         href: "/subscriptions",
         icon: "subscriptions",
       },
-      { label: "Refunds", href: "/refunds", icon: "refunds" },
+      { labelKey: "refunds", href: "/refunds", icon: "refunds" },
     ],
   },
   {
-    label: "Analytics",
+    labelKey: "analytics",
     items: [
-      { label: "Revenue", href: "/revenue", icon: "revenue" },
-      { label: "Usage", href: "/usage", icon: "usage" },
+      { labelKey: "revenue", href: "/revenue", icon: "revenue" },
+      { labelKey: "usage", href: "/usage", icon: "usage" },
     ],
   },
   {
-    label: "Integrations",
+    labelKey: "integrations",
     items: [
-      { label: "Payment Providers", href: "/providers", icon: "providers" },
-      { label: "Webhooks", href: "/webhooks", icon: "webhooks" },
+      { labelKey: "providers", href: "/providers", icon: "providers" },
+      { labelKey: "webhooks", href: "/webhooks", icon: "webhooks" },
     ],
   },
   {
-    label: "Developer",
+    labelKey: "developer",
     items: [
-      { label: "Quickstart", href: "/developer", icon: "quickstart" },
-      { label: "API Keys", href: "/api-keys", icon: "keys" },
-      { label: "Events", href: "/events", icon: "events" },
-      { label: "Logs", href: "/logs", icon: "logs" },
-      { label: "Audit Log", href: "/audit", icon: "logs" },
+      { labelKey: "quickstart", href: "/developer", icon: "quickstart" },
+      { labelKey: "apiKeys", href: "/api-keys", icon: "keys" },
+      { labelKey: "events", href: "/events", icon: "events" },
+      { labelKey: "logs", href: "/logs", icon: "logs" },
+      { labelKey: "auditLog", href: "/audit", icon: "logs" },
     ],
   },
   {
-    label: "Workspace",
+    labelKey: "workspace",
     items: [
-      { label: "Projects", href: "/applications", icon: "settings" },
-      { label: "Team", href: "/team", icon: "team" },
+      { labelKey: "projects", href: "/applications", icon: "settings" },
+      { labelKey: "team", href: "/team", icon: "team" },
     ],
   },
 ];
@@ -146,6 +159,9 @@ type SidebarNavigationProps = {
   selectedApplicationId: string | null;
   environment: ConsoleEnvironment;
   canManageTeam: boolean;
+  /** Locale-resolved labels (client components receive dictionary slices). */
+  labels: Dictionary["nav"];
+  projectSwitcherLabels: Dictionary["projectSwitcher"];
 };
 
 export function SidebarNavigation({
@@ -153,6 +169,8 @@ export function SidebarNavigation({
   selectedApplicationId,
   environment,
   canManageTeam,
+  labels,
+  projectSwitcherLabels,
 }: SidebarNavigationProps) {
   const pathname = usePathname();
   const visibleSections = canManageTeam
@@ -170,35 +188,39 @@ export function SidebarNavigation({
         </div>
         <div>
           <div className="sidebar-brand">MonetPlane</div>
-          <div className="sidebar-brand-subtitle">Billing control plane</div>
+          <div className="sidebar-brand-subtitle">{labels.brandSubtitle}</div>
         </div>
       </div>
 
       <section
         className="sidebar-context-card"
-        aria-label="Application context"
+        aria-label={labels.aria.applicationContext}
       >
         <ProjectSwitcher
           applications={applications}
           selectedApplicationId={selectedApplicationId}
           environment={environment}
+          labels={projectSwitcherLabels}
         />
         <Link className="sidebar-manage-projects" href="/applications">
-          Manage projects
+          {labels.manageProjects}
         </Link>
       </section>
 
       <nav className="sidebar-nav sidebar-nav-p1">
         {visibleSections.map((section, sectionIndex) => (
           <div
-            key={section.label ?? `primary-${sectionIndex}`}
+            key={section.labelKey ?? `primary-${sectionIndex}`}
             className="sidebar-section"
           >
-            {section.label && (
-              <span className="sidebar-section-label">{section.label}</span>
+            {section.labelKey && (
+              <span className="sidebar-section-label">
+                {labels.sections[section.labelKey]}
+              </span>
             )}
             <div className="sidebar-section-items">
               {section.items.map((item) => {
+                const itemLabel = labels.items[item.labelKey];
                 const isActive =
                   Boolean(item.href) &&
                   (pathname === item.href ||
@@ -207,13 +229,13 @@ export function SidebarNavigation({
                 if (!item.href || item.comingSoon) {
                   return (
                     <div
-                      key={item.label}
+                      key={item.labelKey}
                       className="sidebar-link sidebar-link-disabled"
                       aria-disabled="true"
                     >
                       <NavIcon name={item.icon} />
-                      <span className="sidebar-link-label">{item.label}</span>
-                      <span className="sidebar-soon">Soon</span>
+                      <span className="sidebar-link-label">{itemLabel}</span>
+                      <span className="sidebar-soon">{labels.soon}</span>
                     </div>
                   );
                 }
@@ -225,7 +247,7 @@ export function SidebarNavigation({
                     className={`sidebar-link sidebar-link-p1${isActive ? " sidebar-link-active" : ""}`}
                   >
                     <NavIcon name={item.icon} />
-                    <span className="sidebar-link-label">{item.label}</span>
+                    <span className="sidebar-link-label">{itemLabel}</span>
                   </Link>
                 );
               })}
@@ -240,10 +262,10 @@ export function SidebarNavigation({
           aria-disabled="true"
         >
           <NavIcon name="settings" />
-          <span className="sidebar-link-label">Settings</span>
-          <span className="sidebar-soon">Soon</span>
+          <span className="sidebar-link-label">{labels.settings}</span>
+          <span className="sidebar-soon">{labels.soon}</span>
         </div>
-        <div className="sidebar-footer-note">P1 Console preview</div>
+        <div className="sidebar-footer-note">{labels.preview}</div>
       </div>
     </aside>
   );
