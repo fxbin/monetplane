@@ -1,6 +1,9 @@
 import { cookies } from "next/headers";
 import { type Dictionary, en } from "./dictionaries/en";
 import { zh } from "./dictionaries/zh";
+import { formatMessage } from "./format";
+
+export { formatMessage };
 
 /**
  * Cookie-based locale resolution (i18n decision, 2026-10-04).
@@ -28,16 +31,4 @@ export async function getLocale(): Promise<Locale> {
 
 export async function getDictionary(): Promise<Dictionary> {
   return (await getLocale()) === "zh" ? zh : en;
-}
-
-/** Replaces `{placeholder}` tokens — the only interpolation mechanism. */
-export function formatMessage(
-  template: string,
-  values: Record<string, string>,
-): string {
-  let result = template;
-  for (const [key, value] of Object.entries(values)) {
-    result = result.replaceAll(`{${key}}`, value);
-  }
-  return result;
 }

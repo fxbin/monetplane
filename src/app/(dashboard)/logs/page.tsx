@@ -1,6 +1,12 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import {
+  FilterActions,
+  FilterSelectField,
+  FilterTextField,
+} from "@/components/ui/forms";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getDeveloperLogs } from "@/server/control-plane/developer";
 
@@ -21,29 +27,29 @@ export default async function LogsPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.logs;
   const application = context.selectedApplication;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   if (!application) {
     return (
-      <PageContainer
-        title="Logs"
-        description="Operational logs will appear after you create a project."
-      >
+      <PageContainer title={t.title} description={t.noProjectDescription}>
         <div className="empty-state">
-          <h2 className="empty-state-title">No project selected</h2>
-          <p className="empty-state-desc">
-            Create a project to inspect billing operations and webhook delivery
-            health.
-          </p>
+          <h2 className="empty-state-title">
+            {dictionary.common.noProjectTitle}
+          </h2>
+          <p className="empty-state-desc">{t.emptyDesc}</p>
           <div className="empty-state-actions">
             <Link className="btn btn-primary" href="/applications/new">
-              Create project
+              {t.createProject}
             </Link>
           </div>
         </div>
@@ -66,59 +72,56 @@ export default async function LogsPage({
 
   return (
     <PageContainer
-      title="Logs"
-      description={`Operational ${environmentLabel} activity for ${application.name}.`}
+      title={t.title}
+      description={formatMessage(t.description, {
+        environment: environmentLabel,
+        application: application.name,
+      })}
     >
       <form className="developer-filter-bar" method="get">
-        <label>
-          <span>Provider</span>
-          <input
-            name="provider"
-            defaultValue={filters.provider}
-            placeholder="waffo or pc_…"
-          />
-        </label>
-        <label>
-          <span>Customer</span>
-          <input
-            name="customer"
-            defaultValue={filters.customer}
-            placeholder="user_123"
-          />
-        </label>
-        <label>
-          <span>Order</span>
-          <input
-            name="order"
-            defaultValue={filters.order}
-            placeholder="ord_…"
-          />
-        </label>
-        <label>
-          <span>Source</span>
-          <select name="type" defaultValue={filters.type ?? ""}>
-            <option value="">All</option>
-            <option value="provider_webhook">Provider webhook</option>
-            <option value="billing_operation">Billing operation</option>
-            <option value="developer_webhook">Developer webhook</option>
-          </select>
-        </label>
-        <label>
-          <span>Status</span>
-          <input
-            name="status"
-            defaultValue={filters.status}
-            placeholder="failed, completed…"
-          />
-        </label>
-        <div className="developer-filter-actions">
+        <FilterTextField
+          label={t.provider}
+          name="provider"
+          defaultValue={filters.provider}
+          placeholder="waffo or pc_…"
+        />
+        <FilterTextField
+          label={t.customer}
+          name="customer"
+          defaultValue={filters.customer}
+          placeholder="user_123"
+        />
+        <FilterTextField
+          label={t.order}
+          name="order"
+          defaultValue={filters.order}
+          placeholder="ord_…"
+        />
+        <FilterSelectField
+          label={t.source}
+          name="type"
+          defaultValue={filters.type ?? ""}
+          options={[
+            { value: "", label: t.all },
+            { value: "provider_webhook", label: t.sourceProviderWebhook },
+            { value: "billing_operation", label: t.sourceBillingOperation },
+            { value: "developer_webhook", label: t.sourceDeveloperWebhook },
+          ]}
+        />
+        <FilterTextField
+          label={t.status}
+          name="status"
+          defaultValue={filters.status}
+          placeholder="failed, completed…"
+        />
+        <FilterActions>
           <button className="btn btn-primary" type="submit">
-            Filter
+            {dictionary.common.filter}
           </button>
           <Link className="btn btn-secondary" href="/logs">
-            Reset
+            {dictionary.common.reset}
           </Link>
-        </div>
+        </FilterActions>
       </form>
 
       {logs.length ? (
@@ -165,7 +168,7 @@ export default async function LogsPage({
         </div>
       ) : (
         <div className="developer-empty developer-empty-large">
-          No operational logs match these filters in {environmentLabel}.
+          {formatMessage(t.empty, { environment: environmentLabel })}
         </div>
       )}
     </PageContainer>

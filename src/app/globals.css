@@ -664,3 +664,19 @@ a {
   background: var(--card, #1a1f29);
   color: var(--foreground, #e7ebf0);
 }
+
+/* Shared filter/form field primitives (forms.tsx, 2026-10-04) */
+.filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.filter-field-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+.filter-field .form-input {
+  min-height: 38px;
+}

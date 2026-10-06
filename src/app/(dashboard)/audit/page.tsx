@@ -1,5 +1,11 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState } from "@/components/ui/console";
+import {
+  FilterActions,
+  FilterSelectField,
+  FilterTextField,
+} from "@/components/ui/forms";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { listAuditEntries } from "@/server/control-plane/audit";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -20,24 +26,25 @@ export default async function AuditPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const [context, params] = await Promise.all([
+  const [context, params, dictionary] = await Promise.all([
     getConsoleContext(),
     searchParams,
+    getDictionary(),
   ]);
+  const t = dictionary.audit;
   const application = context.selectedApplication;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
   const scope = params.scope === "workspace" ? "workspace" : "project";
 
   if (!application && scope !== "workspace") {
     return (
-      <PageContainer
-        title="Audit log"
-        description="Select a project to review operator activity."
-      >
+      <PageContainer title={t.title} description={t.selectProjectDescription}>
         <EmptyState
-          title="No project selected"
-          description="Create or select a project first."
+          title={dictionary.common.noProjectTitle}
+          description={dictionary.common.noProjectDescription}
         />
       </PageContainer>
     );
@@ -60,91 +67,83 @@ export default async function AuditPage({
 
   return (
     <PageContainer
-      title="Audit log"
+      title={t.title}
       description={
         scope === "workspace"
-          ? "Workspace-level operator activity (team and membership changes). Secrets are never recorded."
-          : `Immutable operator activity for ${application?.name ?? ""} · ${environmentLabel}. Secrets are never recorded.`
+          ? t.workspaceDescription
+          : formatMessage(t.projectDescription, {
+              application: application?.name ?? "",
+              environment: environmentLabel,
+            })
       }
     >
       <form className="developer-filters audit-filters" method="get">
-        <label>
-          <span>Scope</span>
-          <select name="scope" defaultValue={scope}>
-            <option value="project">Project</option>
-            <option value="workspace">Workspace</option>
-          </select>
-        </label>
-        <label>
-          <span>Action</span>
-          <input
-            name="action"
-            defaultValue={value(params, "action") ?? ""}
-            placeholder="api_key.created"
-          />
-        </label>
-        <label>
-          <span>Actor</span>
-          <input
-            name="actor"
-            defaultValue={value(params, "actor") ?? ""}
-            placeholder="admin id or email"
-          />
-        </label>
-        <label>
-          <span>Resource type</span>
-          <input
-            name="resource"
-            defaultValue={value(params, "resource") ?? ""}
-            placeholder="provider_connection"
-          />
-        </label>
-        <label>
-          <span>From</span>
-          <input
-            type="date"
-            name="from"
-            defaultValue={value(params, "from") ?? ""}
-          />
-        </label>
-        <label>
-          <span>To</span>
-          <input
-            type="date"
-            name="to"
-            defaultValue={value(params, "to") ?? ""}
-          />
-        </label>
-        <div className="developer-filter-actions">
+        <FilterSelectField
+          label={t.scope}
+          name="scope"
+          defaultValue={scope}
+          options={[
+            { value: "project", label: t.scopeProject },
+            { value: "workspace", label: t.scopeWorkspace },
+          ]}
+        />
+        <FilterTextField
+          label={t.action}
+          name="action"
+          defaultValue={value(params, "action") ?? ""}
+          placeholder="api_key.created"
+        />
+        <FilterTextField
+          label={t.actor}
+          name="actor"
+          defaultValue={value(params, "actor") ?? ""}
+          placeholder="admin id or email"
+        />
+        <FilterTextField
+          label={t.resourceType}
+          name="resource"
+          defaultValue={value(params, "resource") ?? ""}
+          placeholder="provider_connection"
+        />
+        <FilterTextField
+          label={t.from}
+          name="from"
+          type="date"
+          defaultValue={value(params, "from") ?? ""}
+        />
+        <FilterTextField
+          label={t.to}
+          name="to"
+          type="date"
+          defaultValue={value(params, "to") ?? ""}
+        />
+        <FilterActions>
           <button className="btn btn-primary" type="submit">
-            Filter
+            {dictionary.common.filter}
           </button>
           <a
             className="btn btn-secondary"
             href={scope === "workspace" ? "/audit?scope=workspace" : "/audit"}
           >
-            Reset
+            {dictionary.common.reset}
           </a>
-        </div>
+        </FilterActions>
       </form>
 
       {entries.length === 0 ? (
-        <EmptyState
-          title="No audit entries match this view"
-          description="Sensitive console mutations are recorded here automatically."
-        />
+        <EmptyState title={t.emptyTitle} description={t.emptyDescription} />
       ) : (
         <div className="card">
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>When</th>
-                  <th>Action</th>
-                  <th>Actor</th>
-                  <th>Resource</th>
-                  <th>Correlation</th>
-                  <th>Metadata</th>
+                  <th>{t.thWhen}</th>
+                  <th>{t.thAction}</th>
+                  <th>{t.thActor}</th>
+                  <th>{t.thResource}</th>
+                  <th>{t.thCorrelation}</th>
+                  <th>{t.thMetadata}</th>
                 </tr>
               </thead>
               <tbody>
