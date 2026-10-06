@@ -90,9 +90,7 @@ export function WebhookManager({
       setUrl("");
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : labels.failedCreate,
-      );
+      setError(cause instanceof Error ? cause.message : labels.failedCreate);
     } finally {
       setBusy(null);
     }
@@ -113,16 +111,12 @@ export function WebhookManager({
         setRevealed({
           title: formatMessage(labels.rotatedTitle, { name: endpoint.name }),
           secret: endpoint.secret,
-          notice: String(
-            body.notice ?? labels.rotateNotice,
-          ),
+          notice: String(body.notice ?? labels.rotateNotice),
         });
       }
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error ? cause.message : labels.actionFailed,
-      );
+      setError(cause instanceof Error ? cause.message : labels.actionFailed);
     } finally {
       setBusy(null);
     }
@@ -134,7 +128,9 @@ export function WebhookManager({
         <div className="developer-panel-heading">
           <div>
             <h2>
-              {formatMessage(labels.addTitle, { environment: environmentLabel })}
+              {formatMessage(labels.addTitle, {
+                environment: environmentLabel,
+              })}
             </h2>
             <p>{labels.addDesc}</p>
           </div>

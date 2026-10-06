@@ -1044,7 +1044,8 @@ export const en = {
     copyOnce: "Copy once",
     stored: "I stored it",
     listTitle: "Server keys",
-    listDesc: "Only the prefix and usage metadata remain visible after creation.",
+    listDesc:
+      "Only the prefix and usage metadata remain visible after creation.",
     thName: "Name",
     thPrefix: "Prefix",
     thLastUsed: "Last used",

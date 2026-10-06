@@ -93,9 +93,7 @@ export function ApiKeyManager({
 
   async function revokeKey(key: ApiKey) {
     if (
-      !window.confirm(
-        formatMessage(labels.revokeConfirm, { name: key.name }),
-      )
+      !window.confirm(formatMessage(labels.revokeConfirm, { name: key.name }))
     ) {
       return;
     }

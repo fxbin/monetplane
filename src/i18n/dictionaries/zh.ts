@@ -1008,8 +1008,7 @@ export const zh: Dictionary = {
     copyOnce: "复制一次",
     stored: "我已保存",
     endpointsTitle: "端点",
-    endpointsDesc:
-      "签名密钥创建后只写。仅当接收方可立即更新时才轮换。",
+    endpointsDesc: "签名密钥创建后只写。仅当接收方可立即更新时才轮换。",
     sendTest: "发送测试",
     rotateSecret: "轮换密钥",
     disableConfirm: "确定停用 {name}?",
