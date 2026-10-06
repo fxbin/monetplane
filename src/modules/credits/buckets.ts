@@ -176,6 +176,117 @@ export async function consumeBuckets(
 }
 
 /**
+ * Account-scoped partial expiry (external review round-2 P0 fix):
+ * expires the AVAILABLE-backed portion of the account's due buckets,
+ * intended to run INSIDE a reserve/debit transaction right after the
+ * account row is locked — so "new spending" always evaluates against a
+ * clean available balance and cannot draw on expired credits through the
+ * reserve → capture path (capture deliberately settles pre-expiry
+ * reservations via allowExpired).
+ *
+ * Canonical lock order preserved: the caller holds the account row lock
+ * (its conditional UPDATE precedes this call); buckets lock after.
+ */
+export async function expireDueBucketsForAccount(
+  applicationId: string,
+  accountId: string,
+  environment: string,
+  tx: Pick<Database, "select" | "insert" | "update">,
+  now: Date = new Date(),
+): Promise<void> {
+  const due = await tx
+    .select()
+    .from(creditBuckets)
+    .where(
+      and(
+        eq(creditBuckets.creditAccountId, accountId),
+        eq(creditBuckets.applicationId, applicationId),
+        eq(creditBuckets.environment, environment),
+        eq(creditBuckets.status, "active"),
+        sql`${creditBuckets.expiresAt} IS NOT NULL`,
+        lte(creditBuckets.expiresAt, now),
+        sql`${creditBuckets.remainingAmount} > 0`,
+      ),
+    )
+    .orderBy(
+      sql`${creditBuckets.expiresAt} ASC NULLS LAST`,
+      asc(creditBuckets.createdAt),
+      asc(creditBuckets.id),
+    )
+    .for("update");
+
+  for (const bucket of due) {
+    const [account] = await tx
+      .select({
+        availableBalance: creditAccounts.availableBalance,
+      })
+      .from(creditAccounts)
+      .where(eq(creditAccounts.id, accountId))
+      .for("update");
+    if (!account) return;
+    const fresh = bucket; // rows were locked above in canonical order
+    const reversible = Math.min(
+      fresh.remainingAmount,
+      account.availableBalance,
+    );
+    if (reversible <= 0) continue;
+
+    await tx.insert(creditTransactions).values({
+      id: `ctx_${randomUUID()}`,
+      applicationId: fresh.applicationId,
+      applicationCustomerId: fresh.applicationCustomerId,
+      creditAccountId: fresh.creditAccountId,
+      type: "grant.expired",
+      amount: -reversible,
+      availableAfter: 0, // recomputed below
+      reservedAfter: 0,
+      sourceType: "expiration",
+      sourceId: fresh.id,
+      environment: fresh.environment,
+      idempotencyKey: `expire:${fresh.id}:before:${fresh.remainingAmount}`,
+      metadata: { bucketId: fresh.id, expiredAt: now.toISOString() },
+    });
+
+    const [updatedAccount] = await tx
+      .update(creditAccounts)
+      .set({
+        availableBalance: sql`greatest(${creditAccounts.availableBalance} - ${reversible}, 0)`,
+        version: sql`${creditAccounts.version} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(creditAccounts.id, accountId))
+      .returning();
+    if (updatedAccount) {
+      await tx
+        .update(creditTransactions)
+        .set({
+          availableAfter: updatedAccount.availableBalance,
+          reservedAfter: updatedAccount.reservedBalance,
+        })
+        .where(
+          and(
+            eq(creditTransactions.creditAccountId, accountId),
+            eq(
+              creditTransactions.idempotencyKey,
+              `expire:${fresh.id}:before:${fresh.remainingAmount}`,
+            ),
+          ),
+        );
+    }
+
+    const nextRemaining = fresh.remainingAmount - reversible;
+    await tx
+      .update(creditBuckets)
+      .set({
+        status: nextRemaining === 0 ? "expired" : "active",
+        remainingAmount: nextRemaining,
+        updatedAt: now,
+      })
+      .where(eq(creditBuckets.id, fresh.id));
+  }
+}
+
+/**
  * Expire due buckets. Every expiry produces a traceable 'grant.expired'
  * reversal ledger entry and decrements the account balance — never a
  * silent mutation. Returns the expired buckets.

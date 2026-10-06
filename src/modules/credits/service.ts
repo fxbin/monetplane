@@ -7,6 +7,7 @@ import {
   bucketSourceForTransactionType,
   consumeBuckets,
   createBucketForGrant,
+  expireDueBucketsForAccount,
 } from "./buckets";
 import {
   creditAccounts,
@@ -380,6 +381,21 @@ export async function grantCreditsInTransaction(
       sourceType,
       sourceId,
     });
+    // Round-2 fix (external review P2): expiresAt decides when the asset
+    // disappears — it is ledger semantics, not metadata. A duplicate
+    // grant carrying a DIFFERENT expiry (e.g. a provider corrected the
+    // period end) must conflict loudly instead of silently keeping the
+    // first bucket's expiry. Grant writes stamp metadata.expiresAt (via
+    // grantConfiguredCreditsInTransaction / the grant metadata below).
+    const requestedExpiry =
+      (input.metadata?.expiresAt as string | undefined) ??
+      input.expiresAt?.toISOString() ??
+      null;
+    const existingExpiry =
+      (existing.metadata?.expiresAt as string | undefined) ?? null;
+    if (existingExpiry !== requestedExpiry) {
+      throw new CreditIdempotencyConflictError();
+    }
     return { transaction: existing, duplicate: true };
   }
 
@@ -414,7 +430,12 @@ export async function grantCreditsInTransaction(
       sourceId,
       environment,
       idempotencyKey,
-      metadata: input.metadata,
+      metadata: {
+        ...(input.expiresAt
+          ? { expiresAt: input.expiresAt.toISOString() }
+          : {}),
+        ...(input.metadata ?? {}),
+      },
     },
     db,
   );
@@ -612,6 +633,40 @@ export async function reserveCredits(
   },
   db: Database = getDb(),
 ) {
+  // Round-2 P0 fix (external review): expire due buckets on the target
+  // account BEFORE the reservation transaction, so the conditional
+  // available-balance check evaluates a CLEAN balance and a reservation
+  // can never draw on expired credits (the reserve → capture bypass).
+  // This runs in its OWN transaction on purpose: when the reservation is
+  // subsequently rejected for insufficient (post-expiry) balance, the
+  // expiry still commits — rolling it back with the failed reservation
+  // would leave the expired credits spendable to the next caller.
+  {
+    const environment = resolveCreditEnvironment(input.environment);
+    const applicationCustomerId = await resolveApplicationCustomerId(
+      input.applicationId,
+      input.externalCustomerId,
+      db,
+    );
+    const account = await findAccount(
+      input.applicationId,
+      applicationCustomerId,
+      normalizeCreditType(input.creditType),
+      db,
+      environment,
+    );
+    if (account) {
+      await db.transaction((tx) =>
+        expireDueBucketsForAccount(
+          input.applicationId,
+          account.id,
+          environment,
+          tx,
+        ),
+      );
+    }
+  }
+
   return db.transaction(async (tx) => {
     const creditType = normalizeCreditType(input.creditType);
     assertPositiveAmount(input.amount, "Reservation amount");

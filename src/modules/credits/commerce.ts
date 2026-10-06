@@ -26,6 +26,13 @@ export async function grantConfiguredCreditsInTransaction(
      * this unset (credits persist).
      */
     expiresAt?: Date | null;
+    /**
+     * Round-2 fail-closed (external review): when true, grants without a
+     * real expiresAt throw instead of creating permanent buckets — used
+     * by subscription renewals whose period boundary is the balance's
+     * lifecycle. One-time purchases leave this unset.
+     */
+    requireExpiry?: boolean;
   },
   db: CommerceCreditDb,
 ) {
@@ -76,6 +83,12 @@ export async function grantConfiguredCreditsInTransaction(
       throw new Error("Configured credit grant exceeds safe integer range");
     }
     amountByCreditType.set(config.creditType, next);
+  }
+
+  if (input.requireExpiry && !input.expiresAt) {
+    throw new Error(
+      "Period-reset credit grants require an expiry boundary (subscription period end missing)",
+    );
   }
 
   const results = [];

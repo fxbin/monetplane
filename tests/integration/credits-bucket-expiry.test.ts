@@ -82,9 +82,10 @@ async function invariantHolds(appId: string, creditType: string) {
 }
 
 describe("partial expiry with open reservations (external review P0 fix)", () => {
-  it("expires the available portion immediately; expired credits are NOT spendable; residual settles after release", async () => {
-    const { app, customer } = await seed("exp-reserve");
-    const past = new Date(Date.now() - 1000);
+  it("grandfathers a reservation made BEFORE expiry: sweep takes only the available portion, capture settles the residual (round-2 A)", async () => {
+    const { app, customer } = await seed("exp-predate");
+    // Future expiry so the reservation genuinely predates it.
+    const expiry = new Date(Date.now() + 2000);
     await grantCredits(
       {
         applicationId: app.id,
@@ -95,12 +96,12 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
         sourceType: "test",
         sourceId: "seed",
         idempotencyKey: "g1",
-        expiresAt: past,
+        expiresAt: expiry,
       },
       db,
     );
 
-    // Reserve 30: available=70, reserved=30; the bucket backs both.
+    // Reserve 30 while the bucket is live: available=70, reserved=30.
     const { reservation } = await reserveCredits(
       {
         applicationId: app.id,
@@ -114,8 +115,9 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
       db,
     );
 
-    // Sweep: the AVAILABLE 70 expires now (partial expiry), the
+    // Wait past expiry, then sweep: the AVAILABLE 70 expires, the
     // reserved-backed 30 stays as an active residual.
+    await new Promise((resolve) => setTimeout(resolve, 2100));
     const result = await expireDueCreditBuckets(db, new Date());
     expect(result).toHaveLength(1);
     expect(result[0]?.reversedAmount).toBe(70);
@@ -125,9 +127,7 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
     expect(account?.reservedBalance).toBe(30);
     expect(await invariantHolds(app.id, "tokens")).toBe(true);
 
-    // P0 discriminator: the expired 70 must NOT be spendable — even a
-    // 1-credit debit fails now (this was the hole the whole-account skip
-    // left open).
+    // Expired 70 not spendable via debit.
     await expect(
       debitCredits(
         {
@@ -143,7 +143,7 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
       ),
     ).rejects.toThrow();
 
-    // The reservation still settles normally against the residual...
+    // Pre-expiry reservation settles against the residual (grandfather).
     await captureReservation(
       {
         applicationId: app.id,
@@ -157,17 +157,54 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
     expect(account?.availableBalance).toBe(0);
     expect(account?.reservedBalance).toBe(0);
     expect(await invariantHolds(app.id, "tokens")).toBe(true);
+  });
 
-    // ...and a final sweep retires whatever remains.
-    await expireDueCreditBuckets(db, new Date());
-    account = await accountOf(app.id, "tokens");
+  it("refuses a reservation made AFTER expiry — the reserve→capture bypass is closed (round-2 B / P0)", async () => {
+    const { app, customer } = await seed("exp-postdate");
+    const past = new Date(Date.now() - 5000);
+    await grantCredits(
+      {
+        applicationId: app.id,
+        applicationCustomerId: customer.id,
+        creditType: "tokens",
+        amount: 100,
+        transactionType: "grant.promotion",
+        sourceType: "test",
+        sourceId: "seed",
+        idempotencyKey: "g1",
+        expiresAt: past,
+      },
+      db,
+    );
+    // No sweep yet: the bucket is overdue but the account balance still
+    // nominally shows 100. The round-2 fix runs an account-scoped
+    // partial expiry INSIDE reserve, so the reservation must fail.
+    await expect(
+      reserveCredits(
+        {
+          applicationId: app.id,
+          externalCustomerId: "user-1",
+          creditType: "tokens",
+          amount: 100,
+          referenceType: "job",
+          referenceId: "j-bypass",
+          idempotencyKey: "r-bypass",
+        },
+        db,
+      ),
+    ).rejects.toThrow();
+
+    const account = await accountOf(app.id, "tokens");
+    // The in-reserve expiry cleaned the available side.
     expect(account?.availableBalance).toBe(0);
+    expect(account?.reservedBalance).toBe(0);
     expect(await invariantHolds(app.id, "tokens")).toBe(true);
   });
 
   it("released-back credits on an expired bucket are refused by consumption and retired by the next sweep", async () => {
     const { app, customer } = await seed("exp-release");
-    const past = new Date(Date.now() - 1000);
+    // Future expiry so the reservation predates it (round-2 semantics).
+    const expiry = new Date(Date.now() + 2000);
     await grantCredits(
       {
         applicationId: app.id,
@@ -178,7 +215,7 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
         sourceType: "test",
         sourceId: "seed",
         idempotencyKey: "g1",
-        expiresAt: past,
+        expiresAt: expiry,
       },
       db,
     );
@@ -195,10 +232,12 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
       db,
     );
 
-    // Partial expiry takes the available 30.
+    // Cross the expiry, then sweep: partial expiry takes the available 30.
+    await new Promise((resolve) => setTimeout(resolve, 2100));
     await expireDueCreditBuckets(db, new Date());
 
-    // Release the reservation: the 20 lands on an already-expired bucket.
+    // Release the pre-expiry reservation: the 20 lands back on an
+    // already-expired bucket (available restored, bucket overdue).
     await releaseReservation(
       {
         applicationId: app.id,
@@ -207,8 +246,7 @@ describe("partial expiry with open reservations (external review P0 fix)", () =>
       },
       db,
     );
-    // The release itself restored available (account mechanics), but the
-    // money sits on an expired bucket: consumption must refuse it...
+    // Consumption must refuse the released-back expired credits...
     await expect(
       debitCredits(
         {

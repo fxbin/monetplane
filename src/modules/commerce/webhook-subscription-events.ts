@@ -216,14 +216,19 @@ export async function applySubscriptionEvent(
           sourceEventId: event.providerEventId,
           periodKey: grantPeriodKey,
           // Period-reset quota semantics (roundtable 2026-10-06, PR-B):
-          // each cycle's grant expires with its cycle. A renewal WITHOUT
-          // its own period boundary must NOT fall back to the stored
-          // (stale) period end — the new cycle's credits would be born
-          // already-expired. Boundary-less renewals grant into a
-          // non-expiring bucket instead (external review 2026-10-06,
-          // P1-151-04); a later provider event carrying the true boundary
-          // lands in a fresh bucket with proper expiry.
-          expiresAt: eventPeriodEnd,
+          // each cycle's grant expires with its cycle, so expiresAt is
+          // the event's own period end. Round-2 fix (external review):
+          // a RENEWAL that grants credits without its own period
+          // boundary now fails closed — expiresAt NULL means "permanent
+          // asset" in this ledger, and permanent credits from a
+          // period-reset subscription model are a contract violation.
+          // The inbox marks the event failed and the provider redelivers
+          // (with boundaries) rather than us guessing or silently
+          // accumulating permanent grants. Activations without boundaries
+          // still grant (periodEnd may be learned later; the first-cycle
+          // grant keeps entitlement delivery on the happy path).
+          expiresAt: eventPeriodEnd ?? undefined,
+          requireExpiry: event.type === "subscription.renewed",
         },
         tx,
       );

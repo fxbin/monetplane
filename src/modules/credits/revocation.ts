@@ -79,10 +79,14 @@ export async function revokeSubscriptionCreditsInTransaction(
   const accountIds = [
     ...new Set(discovered.map((b) => b.creditAccountId)),
   ].sort();
+  // orderBy makes the lock acquisition order deterministic at the SQL
+  // level (external review round-2 P2): IN-list ordering alone does not
+  // constrain PostgreSQL's row-lock order.
   const accountRows = await db
     .select()
     .from(creditAccounts)
     .where(inArray(creditAccounts.id, accountIds))
+    .orderBy(creditAccounts.id)
     .for("update");
   const availableByAccount = new Map(
     accountRows.map((row) => [row.id, row.availableBalance]),
