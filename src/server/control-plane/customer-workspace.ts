@@ -453,6 +453,12 @@ export async function grantCustomerCredits(
      * entry. Scoped per customer inside the composed key.
      */
     idempotencyKey?: string;
+    /**
+     * Optional bucket expiry (roundtable 2026-10-06, PR4): the credits
+     * service has supported expiresAt since the bucket model landed, but
+     * the admin route never parsed it — the expiry cron had no UI entry.
+     */
+    expiresAt?: Date | null;
   },
   environment: "test" | "live" = "test",
   audit?: {
@@ -490,6 +496,7 @@ export async function grantCustomerCredits(
         environment,
         idempotencyKey: `admin-credit:${applicationCustomerId}:${sourceId}`,
         metadata: { note: input.note?.trim() || undefined },
+        expiresAt: input.expiresAt ?? null,
       },
       tx,
     );

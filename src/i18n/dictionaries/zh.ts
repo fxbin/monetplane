@@ -668,6 +668,10 @@ export const zh: Dictionary = {
     creditType: "积分类型",
     amount: "数量",
     operatorNote: "操作备注",
+    expiresInDays: "有效期(天,可选)",
+    expiresInDaysPlaceholder: "如 30",
+    expiresInDaysHelp:
+      "留空 = 不过期。发放的积分进入积分桶,由过期 cron 定期清扫。",
     operatorNotePlaceholder: "这笔调整的原因是什么?",
     cancelTitle: "取消订阅",
     cancelDesc:

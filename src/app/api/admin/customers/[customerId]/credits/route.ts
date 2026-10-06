@@ -23,6 +23,8 @@ export async function POST(request: Request, { params }: RouteContext) {
         amount?: unknown;
         note?: unknown;
         idempotencyKey?: unknown;
+        expiresAt?: unknown;
+        expiresInDays?: unknown;
       }>,
     ]);
     if (!context.selectedApplication) {
@@ -64,12 +66,29 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
+    // Optional expiry: either an ISO 8601 timestamp or a whole number of
+    // days from now (roundtable 2026-10-06, PR4). The credits service has
+    // supported bucket expiresAt all along; the route now surfaces it.
+    let expiresAt: Date | null | undefined;
+    if (typeof body.expiresAt === "string" && body.expiresAt.trim()) {
+      const parsed = new Date(body.expiresAt.trim());
+      if (!Number.isNaN(parsed.getTime())) {
+        expiresAt = parsed;
+      }
+    } else if (
+      typeof body.expiresInDays === "number" &&
+      Number.isSafeInteger(body.expiresInDays) &&
+      body.expiresInDays > 0
+    ) {
+      expiresAt = new Date(Date.now() + body.expiresInDays * 24 * 3600 * 1000);
+    }
+
     // The audit row is written inside the grant's transaction
     // (roundtable batch 1) — actor comes from the permission guard.
     const result = await grantCustomerCredits(
       context.selectedApplication.id,
       customerId,
-      { creditType, amount, note, idempotencyKey },
+      { creditType, amount, note, idempotencyKey, expiresAt },
       context.environment,
       {
         request,

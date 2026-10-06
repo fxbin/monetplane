@@ -715,6 +715,10 @@ export const en = {
     creditType: "Credit type",
     amount: "Amount",
     operatorNote: "Operator note",
+    expiresInDays: "Expires in (days, optional)",
+    expiresInDaysPlaceholder: "e.g. 30",
+    expiresInDaysHelp:
+      "Empty = no expiry. Granted credits land in a bucket that the expiry cron sweeps.",
     operatorNotePlaceholder: "Why is this adjustment being made?",
     cancelTitle: "Cancel subscription",
     cancelDesc:
