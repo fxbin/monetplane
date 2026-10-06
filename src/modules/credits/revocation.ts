@@ -26,6 +26,12 @@ type CreditRevocationStore = Pick<
   "select" | "insert" | "update"
 >;
 
+/**
+ * NOTE: operates on the caller's client — production callers invoke this
+ * INSIDE their transaction (the webhook's cancel branch) so the clawback
+ * is atomic with the subscription state change. Standalone (test) callers
+ * get no wrapping transaction.
+ */
 export async function revokeSubscriptionCredits(
   input: {
     applicationId: string;

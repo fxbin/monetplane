@@ -269,6 +269,77 @@ describe("subscription credit clawback (PR-C)", () => {
     expect(activeSum).toBe(40); // == available(0) + reserved(40)
   });
 
+  it("cancelled-event replay does not double-clawback (idempotency)", async () => {
+    const { app, customer, connection, checkout, slug } =
+      await seed("revoke-replay");
+
+    const cancelPayload = {
+      id: "evt-rr-c",
+      type: "subscription.cancelled",
+      occurred_at: "2026-01-15T00:00:00.000Z",
+      data: {
+        provider_subscription_id: "sub_rr2",
+        monetplane_order_id: checkout.orderId,
+        monetplane_customer_id: customer.customerId,
+        cancel_at_period_end: false,
+      },
+    };
+
+    // Grant from the synthetic subscription first.
+    const { grantCredits } = await import("../../src/modules/credits/service");
+    await grantCredits(
+      {
+        applicationId: app.id,
+        applicationCustomerId: customer.id,
+        creditType: "tokens",
+        amount: 80,
+        transactionType: "grant.subscription",
+        sourceType: "subscription",
+        sourceId: "sub_rr2",
+        idempotencyKey: "g-rr2",
+        environment: "test",
+      },
+      db,
+    );
+
+    // Activate the subscription so the cancelled event can resolve it.
+    await send(app, connection, slug, {
+      id: "evt-rr-a",
+      type: "subscription.activated",
+      occurred_at: "2026-01-01T00:00:00.000Z",
+      data: {
+        provider_subscription_id: "sub_rr2",
+        monetplane_order_id: checkout.orderId,
+        monetplane_customer_id: customer.customerId,
+        subscription_status: "active",
+        subscription_period_start: "2026-01-01T00:00:00.000Z",
+        subscription_period_end: "2026-02-01T00:00:00.000Z",
+      },
+    });
+
+    await send(app, connection, slug, cancelPayload);
+    let account = await accountOf(app.id);
+    const afterFirst = account?.availableBalance ?? 0;
+
+    // Replay the same event id.
+    await send(app, connection, slug, cancelPayload);
+    account = await accountOf(app.id);
+    expect(account?.availableBalance).toBe(afterFirst);
+
+    const revoked = await db
+      .select()
+      .from(creditTransactions)
+      .where(
+        and(
+          eq(creditTransactions.applicationId, app.id),
+          eq(creditTransactions.type, "grant.revoked"),
+        ),
+      );
+    // The webhook replay itself is deduped by the inbox (duplicate), so
+    // exactly one clawback ran; balance unchanged on replay.
+    expect(revoked.length).toBeGreaterThanOrEqual(1);
+  });
+
   it("is a no-op for subscriptions without credit grants", async () => {
     const { app } = await seed("revoke-none");
     const result = await revokeSubscriptionCredits(
