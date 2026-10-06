@@ -61,7 +61,7 @@ describe("grant expiry + normalize guardrail", () => {
   it("stores expiresAt on the bucket when provided", async () => {
     const { app, customer } = await seed("exp-grant");
     const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000);
-    const result = await grantCustomerCredits(
+    await grantCustomerCredits(
       app.id,
       customer.id,
       {
@@ -78,7 +78,7 @@ describe("grant expiry + normalize guardrail", () => {
 
   it("normalizes a credit type with spaces and uppercase", async () => {
     const { app, customer } = await seed("norm-grant");
-    const result = await grantCustomerCredits(
+    await grantCustomerCredits(
       app.id,
       customer.id,
       { creditType: "  Photo.Credits  ", amount: 10, idempotencyKey: "norm-1" },
@@ -93,7 +93,7 @@ describe("grant expiry + normalize guardrail", () => {
 
   it("leaves expiresAt null when not provided", async () => {
     const { app, customer } = await seed("noexp-grant");
-    const result = await grantCustomerCredits(
+    await grantCustomerCredits(
       app.id,
       customer.id,
       { creditType: "plain", amount: 10, idempotencyKey: "noexp-1" },
