@@ -3,6 +3,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { ProviderConnectionActions } from "@/components/providers/ProviderConnectionActions";
 import { ProviderDiagnostics } from "@/components/providers/ProviderDiagnostics";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import type { ProviderCapability } from "@/modules/providers/contract";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getConsoleProviderConnectionDetail } from "@/server/control-plane/providers";
@@ -13,27 +14,22 @@ type ProviderDetailPageProps = {
   params: Promise<{ connectionId: string }>;
 };
 
-const CAPABILITY_LABELS: Record<ProviderCapability, string> = {
-  one_time_checkout: "One-time checkout",
-  recurring_subscription: "Recurring subscriptions",
-  monthly_interval: "Monthly interval",
-  annual_interval: "Annual interval",
-  weekly_interval: "Weekly interval",
-  trial_periods: "Trial periods",
-  refund: "Refunds",
-  subscription_cancel: "Subscription cancellation",
-  subscription_update: "Subscription updates",
-  customer_portal: "Customer portal",
-  provider_hosted_checkout: "Provider-hosted checkout",
-};
+function capabilityLabelsOf(t: {
+  capabilities: Record<ProviderCapability, string>;
+}): Record<ProviderCapability, string> {
+  return t.capabilities;
+}
 
 export default async function ProviderDetailPage({
   params,
 }: ProviderDetailPageProps) {
-  const [{ connectionId }, context] = await Promise.all([
+  const [{ connectionId }, context, dictionary] = await Promise.all([
     params,
     getConsoleContext(),
+    getDictionary(),
   ]);
+  const t = dictionary.providersDetail;
+  const CAPABILITY_LABELS = capabilityLabelsOf(t);
   const application = context.selectedApplication;
   if (!application) notFound();
 
@@ -47,25 +43,27 @@ export default async function ProviderDetailPage({
   const { connection, setup } = detail;
   const providerLabel = setup?.label ?? connection.provider;
   const environmentLabel =
-    connection.mode === "test" ? "Sandbox" : "Production";
+    connection.mode === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   return (
     <PageContainer
       title={connection.name}
-      description={`${providerLabel} connection for ${application.name} · ${environmentLabel}`}
-      primaryAction={{ label: "Back to providers", href: "/providers" }}
+      description={formatMessage(t.description, {
+        provider: providerLabel,
+        application: application.name,
+        environment: environmentLabel,
+      })}
+      primaryAction={{ label: t.back, href: "/providers" }}
     >
       <div className="provider-detail-grid">
         <section className="card provider-detail-summary">
           <div className="provider-detail-heading">
             <div>
-              <span className="provider-detail-kicker">
-                Provider connection
-              </span>
+              <span className="provider-detail-kicker">{t.kicker}</span>
               <h2>{providerLabel}</h2>
-              <p>
-                {setup?.description ?? "Provider-managed payment connection."}
-              </p>
+              <p>{setup?.description ?? t.defaultDescription}</p>
             </div>
             <div className="provider-detail-badges">
               <StatusBadge status={connection.mode} label={environmentLabel} />
@@ -75,24 +73,24 @@ export default async function ProviderDetailPage({
 
           <dl className="provider-summary-list">
             <div>
-              <dt>Connection ID</dt>
+              <dt>{t.connectionId}</dt>
               <dd className="cell-mono">{connection.id}</dd>
             </div>
             <div>
-              <dt>Provider</dt>
+              <dt>{t.provider}</dt>
               <dd className="cell-mono">{connection.provider}</dd>
             </div>
             <div>
-              <dt>Created</dt>
+              <dt>{t.created}</dt>
               <dd>{new Date(connection.createdAt).toLocaleString()}</dd>
             </div>
             <div>
-              <dt>Last updated</dt>
+              <dt>{t.lastUpdated}</dt>
               <dd>{new Date(connection.updatedAt).toLocaleString()}</dd>
             </div>
             {connection.revokedAt && (
               <div>
-                <dt>Revoked</dt>
+                <dt>{t.revoked}</dt>
                 <dd>{new Date(connection.revokedAt).toLocaleString()}</dd>
               </div>
             )}
@@ -110,10 +108,10 @@ export default async function ProviderDetailPage({
         <section className="card provider-credentials-card">
           <div className="card-heading-row">
             <div>
-              <span className="provider-detail-kicker">Security</span>
-              <h2 className="card-title">Credentials</h2>
+              <span className="provider-detail-kicker">{t.securityKicker}</span>
+              <h2 className="card-title">{t.credentialsTitle}</h2>
             </div>
-            <StatusBadge status="active" label="Write-only" />
+            <StatusBadge status="active" label={t.writeOnly} />
           </div>
 
           {setup && setup.credentialFields.length > 0 ? (
@@ -132,29 +130,26 @@ export default async function ProviderDetailPage({
               ))}
             </div>
           ) : (
-            <p className="card-empty-copy">
-              Credential field metadata is unavailable for this provider.
-            </p>
+            <p className="card-empty-copy">{t.noCredentialMeta}</p>
           )}
 
-          <div className="provider-secret-note">
-            Plaintext credentials are never returned by the console API.
-            Reconfigure replaces the complete encrypted credential set instead
-            of revealing the existing values.
-          </div>
+          <div className="provider-secret-note">{t.secretNote}</div>
         </section>
       </div>
 
       <section className="card provider-capability-card">
         <div className="card-heading-row">
           <div>
-            <span className="provider-detail-kicker">Runtime contract</span>
-            <h2 className="card-title">Capabilities</h2>
+            <span className="provider-detail-kicker">{t.runtimeKicker}</span>
+            <h2 className="card-title">{t.capabilitiesTitle}</h2>
           </div>
           {detail.capabilityRows.length > 0 && (
             <span className="provider-capability-count">
-              {detail.capabilityRows.filter((item) => item.supported).length}{" "}
-              supported
+              {formatMessage(t.supportedCount, {
+                count: String(
+                  detail.capabilityRows.filter((item) => item.supported).length,
+                ),
+              })}
             </span>
           )}
         </div>
@@ -178,11 +173,8 @@ export default async function ProviderDetailPage({
           </div>
         ) : (
           <div className="provider-runtime-warning">
-            <strong>Capabilities unavailable</strong>
-            <span>
-              {detail.capabilityError ??
-                "The provider runtime could not resolve this connection."}
-            </span>
+            <strong>{t.capabilitiesUnavailable}</strong>
+            <span>{detail.capabilityError ?? t.capabilitiesError}</span>
           </div>
         )}
       </section>
@@ -196,15 +188,12 @@ export default async function ProviderDetailPage({
 
       <section className="card provider-environment-boundary-card">
         <div>
-          <span className="provider-detail-kicker">Isolation boundary</span>
-          <h2 className="card-title">{environmentLabel} only</h2>
+          <span className="provider-detail-kicker">{t.isolationKicker}</span>
+          <h2 className="card-title">
+            {formatMessage(t.isolationTitle, { environment: environmentLabel })}
+          </h2>
         </div>
-        <p>
-          This detail page and its management API are scoped to the selected
-          project and current console environment. Switching Sandbox /
-          Production makes a connection from the other mode resolve as not found
-          rather than silently crossing credential boundaries.
-        </p>
+        <p>{t.isolationBody}</p>
       </section>
     </PageContainer>
   );

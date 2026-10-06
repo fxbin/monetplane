@@ -3,11 +3,15 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
+import type { Dictionary } from "@/i18n/dictionaries/en";
+import { formatMessage } from "@/i18n/format";
 import { SUPPORTED_PROVIDER_SETUPS } from "@/modules/providers/setup";
 
 type ProviderConnectFormProps = {
   projectName: string;
   environment: "test" | "live";
+  /** Locale-resolved labels. */
+  labels: Dictionary["providersNew"];
 };
 
 type CreateProviderResponse = {
@@ -23,9 +27,11 @@ type CreateProviderResponse = {
 export function ProviderConnectForm({
   projectName,
   environment,
+  labels,
 }: ProviderConnectFormProps) {
   const router = useRouter();
-  const environmentLabel = environment === "test" ? "Sandbox" : "Production";
+  const environmentLabel =
+    environment === "test" ? labels.sandboxFallback : labels.productionFallback;
   const [provider, setProvider] = useState("creem");
   const [name, setName] = useState(`Creem ${environmentLabel}`);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
@@ -63,17 +69,13 @@ export function ProviderConnectForm({
       });
       const result = (await response.json()) as CreateProviderResponse;
       if (!response.ok || !result.connection) {
-        throw new Error(result.error ?? "Failed to connect payment provider");
+        throw new Error(result.error ?? labels.failed);
       }
 
       router.push("/providers");
       router.refresh();
     } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Failed to connect payment provider",
-      );
+      setError(cause instanceof Error ? cause.message : labels.failed);
     } finally {
       setPending(false);
     }
@@ -215,7 +217,9 @@ export function ProviderConnectForm({
           Cancel
         </Link>
         <button className="btn btn-primary" type="submit" disabled={pending}>
-          {pending ? "Connecting…" : `Connect ${setup.label}`}
+          {pending
+            ? labels.connecting
+            : formatMessage(labels.connectAction, { provider: setup.label })}
         </button>
       </div>
     </form>

@@ -1,45 +1,49 @@
 import Link from "next/link";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
+import { formatMessage, getDictionary } from "@/i18n/server";
 import { getProviderList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProvidersPage() {
-  const context = await getConsoleContext();
+  const [context, dictionary] = await Promise.all([
+    getConsoleContext(),
+    getDictionary(),
+  ]);
+  const t = dictionary.providers;
   const providers = await getProviderList(
     context.selectedApplication?.id,
     context.environment,
   );
   const projectName = context.selectedApplication?.name;
   const environmentLabel =
-    context.environment === "test" ? "Sandbox" : "Production";
+    context.environment === "test"
+      ? dictionary.common.sandbox
+      : dictionary.common.production;
 
   return (
     <PageContainer
-      title="Payment Providers"
+      title={t.title}
       description={
         projectName
-          ? `Manage ${environmentLabel} payment providers for ${projectName}.`
-          : "Create a project before connecting a payment provider."
+          ? formatMessage(t.descriptionWithProject, {
+              environment: environmentLabel,
+              application: projectName,
+            })
+          : t.descriptionNoProject
       }
       primaryAction={
         context.selectedApplication
-          ? { label: "Connect provider", href: "/providers/new" }
-          : { label: "Create project", href: "/applications/new" }
+          ? { label: t.connectProvider, href: "/providers/new" }
+          : { label: t.createProject, href: "/applications/new" }
       }
     >
       <div className="context-notice">
-        <span className="context-notice-label">
-          Current provider environment
-        </span>
+        <span className="context-notice-label">{t.noticeLabel}</span>
         <strong>{environmentLabel}</strong>
-        <span>
-          Provider credentials and checkout mode follow this environment.
-          Catalog, customer, and credit state are currently shared within the
-          selected project.
-        </span>
+        <span>{t.noticeBody}</span>
       </div>
 
       {providers.length > 0 ? (
@@ -48,12 +52,12 @@ export default async function ProvidersPage() {
             <table className="data-table">
               <thead>
                 <tr>
-                  <th>Provider</th>
-                  <th>Name</th>
-                  <th>Mode</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  <th aria-label="Actions" />
+                  <th>{t.thProvider}</th>
+                  <th>{t.thName}</th>
+                  <th>{t.thMode}</th>
+                  <th>{t.thStatus}</th>
+                  <th>{t.thCreated}</th>
+                  <th aria-label={t.thActions} />
                 </tr>
               </thead>
               <tbody>
@@ -82,7 +86,7 @@ export default async function ProvidersPage() {
                         className="btn btn-secondary"
                         href={`/providers/${conn.id}`}
                       >
-                        Manage
+                        {t.manage}
                       </Link>
                     </td>
                   </tr>
@@ -95,13 +99,16 @@ export default async function ProvidersPage() {
         <div className="empty-state">
           <h2 className="empty-state-title">
             {context.selectedApplication
-              ? `No ${environmentLabel} provider connected`
-              : "No project selected"}
+              ? formatMessage(t.emptyTitle, { environment: environmentLabel })
+              : dictionary.common.noProjectTitle}
           </h2>
           <p className="empty-state-desc">
             {context.selectedApplication
-              ? `Connect a provider for ${projectName} in ${environmentLabel}. MonetPlane keeps provider-specific behavior behind one shared billing contract.`
-              : "Create a project first, then connect its Sandbox provider before moving to Production."}
+              ? formatMessage(t.emptyDesc, {
+                  application: projectName ?? "",
+                  environment: environmentLabel,
+                })
+              : t.emptyNoProjectDesc}
           </p>
           <div className="empty-state-actions">
             <a
@@ -113,8 +120,8 @@ export default async function ProvidersPage() {
               }
             >
               {context.selectedApplication
-                ? "Connect provider"
-                : "Create project"}
+                ? t.connectProvider
+                : t.createProject}
             </a>
           </div>
         </div>

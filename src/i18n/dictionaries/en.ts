@@ -769,6 +769,105 @@ export const en = {
     noEvents: "No customer-linked provider events found.",
     backToList: "← Back to customer list",
   },
+  providers: {
+    title: "Payment Providers",
+    descriptionWithProject:
+      "Manage {environment} payment providers for {application}.",
+    descriptionNoProject:
+      "Create a project before connecting a payment provider.",
+    connectProvider: "Connect provider",
+    createProject: "Create project",
+    noticeLabel: "Current provider environment",
+    noticeBody:
+      "Provider credentials and checkout mode follow this environment. Catalog, customer, and credit state are currently shared within the selected project.",
+    thProvider: "Provider",
+    thName: "Name",
+    thMode: "Mode",
+    thStatus: "Status",
+    thCreated: "Created",
+    thActions: "Actions",
+    manage: "Manage",
+    emptyTitle: "No {environment} provider connected",
+    emptyDesc:
+      "Connect a provider for {application} in {environment}. MonetPlane keeps provider-specific behavior behind one shared billing contract.",
+    emptyNoProjectDesc:
+      "Create a project first, then connect its Sandbox provider before moving to Production.",
+  },
+  webhooks: {
+    title: "Webhooks",
+    descriptionWithProject:
+      "Configure {environment} event delivery for {application}.",
+    descriptionNoProject:
+      "Create a project before configuring developer webhooks.",
+    createProject: "Create project",
+    emptyDesc:
+      "Developer webhook endpoints are configured per provider environment.",
+    noticeLabel: "Current webhook environment",
+    noticeBody:
+      "Endpoints and delivery history on this page are environment-scoped. API keys are project-wide by design.",
+  },
+  apiKeys: {
+    title: "API Keys",
+    descriptionWithProject: "Manage server credentials for {application}.",
+    descriptionNoProject: "Create a project before issuing server credentials.",
+    createProject: "Create project",
+    emptyDesc:
+      "API keys authenticate the MonetPlane server SDK. Create a project first.",
+  },
+  providersNew: {
+    sandboxFallback: "Sandbox",
+    productionFallback: "Production",
+    title: "Connect payment provider",
+    description: "Add a {environment} payment connection to {application}.",
+    back: "Back to providers",
+    noticeLabel: "Connection scope",
+    noticeBody:
+      "Provider mode is locked to the current console environment so secrets cannot accidentally cross Sandbox and Production.",
+    connecting: "Connecting…",
+    connectAction: "Connect {provider}",
+    failed: "Failed to connect payment provider",
+  },
+  providersDetail: {
+    description: "{provider} connection for {application} · {environment}",
+    back: "Back to providers",
+    kicker: "Provider connection",
+    defaultDescription: "Provider-managed payment connection.",
+    connectionId: "Connection ID",
+    provider: "Provider",
+    created: "Created",
+    lastUpdated: "Last updated",
+    revoked: "Revoked",
+    securityKicker: "Security",
+    credentialsTitle: "Credentials",
+    writeOnly: "Write-only",
+    noCredentialMeta:
+      "Credential field metadata is unavailable for this provider.",
+    secretNote:
+      "Plaintext credentials are never returned by the console API. Reconfigure replaces the complete encrypted credential set instead of revealing the existing values.",
+    runtimeKicker: "Runtime contract",
+    capabilitiesTitle: "Capabilities",
+    supportedCount: "{count} supported",
+    capabilitiesUnavailable: "Capabilities unavailable",
+    capabilitiesError:
+      "The provider runtime could not resolve this connection.",
+    isolationKicker: "Isolation boundary",
+    isolationTitle: "{environment} only",
+    isolationBody:
+      "This detail page and its management API are scoped to the selected project and current console environment. Switching Sandbox / Production makes a connection from the other mode resolve as not found rather than silently crossing credential boundaries.",
+    capabilities: {
+      one_time_checkout: "One-time checkout",
+      recurring_subscription: "Recurring subscriptions",
+      monthly_interval: "Monthly interval",
+      annual_interval: "Annual interval",
+      weekly_interval: "Weekly interval",
+      trial_periods: "Trial periods",
+      refund: "Refunds",
+      subscription_cancel: "Subscription cancellation",
+      subscription_update: "Subscription updates",
+      customer_portal: "Customer portal",
+      provider_hosted_checkout: "Provider-hosted checkout",
+    },
+  },
   login: {
     subtitle: "Operator console",
     email: "Email",
