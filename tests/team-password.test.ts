@@ -27,7 +27,13 @@ describe("operator password hashing (#70)", () => {
     expect(await verifyPassword("x", "scrypt$bad$8$1$zz$zz")).toBe(false);
 
     const stored = await hashPassword("hunter2");
-    const tampered = `${stored.slice(0, -2)}ff`;
+    // Pick a suffix guaranteed to differ from the original: a random hash
+    // ends in "ff" 1/256 of the time, which would make the "tampered"
+    // string identical to the stored one and verify correctly (observed
+    // as a CI flake).
+    const suffix = stored.endsWith("ff") ? "00" : "ff";
+    const tampered = `${stored.slice(0, -2)}${suffix}`;
+    expect(tampered).not.toBe(stored);
     expect(await verifyPassword("hunter2", tampered)).toBe(false);
   });
 

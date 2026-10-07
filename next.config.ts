@@ -16,6 +16,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Docker runtime uses .next/standalone (traced minimal server bundle);
+  // additive only — `next start` / Vercel deployments are unaffected.
+  output: "standalone",
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

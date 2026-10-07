@@ -1,0 +1,16 @@
+# Build context: keep the image minimal and secrets out of every layer.
+node_modules
+.next
+.git
+.gitignore
+.vidt
+.env
+.env.*
+!.env.example
+tests
+docs
+.agents
+coverage
+evals
+.DS_Store
+*.log
