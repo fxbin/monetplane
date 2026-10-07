@@ -1,7 +1,7 @@
 # AGENTS.md — AI agent 入口(知识地图与硬约束)
 
 > 本文件是给 AI agent / 新贡献者的**入口地图**,只放指针与硬约束,不复制正文——
-> 正文只在一处维护,避免第二份拷贝漂移。最后更新:2026-09-27(post-remediation)。
+> 正文只在一处维护,避免第二份拷贝漂移。最后更新:2026-10-07(docker 部署 + 计数刷新)。
 
 ## 这个仓库是什么
 
@@ -20,14 +20,15 @@ pnpm,biome,TS strict)。当前状态:P0/P1 完成,P2 已实现(见 `README.md` S
 | `docs/sdk-quickstart.md` | 集成方接入(SDK 方法表、凭证要求、错误处理) | 接口契约的用户视角 |
 | `docs/provider-adapter-guide.md` | 新增支付适配器的步骤与共享层 | 先读 §"Shared adapter kit" |
 | `docs/credits-ledger.md` | 积分账本语义 + 过期 cron 运维 | 含调度与密钥说明 |
+| `docs/docker-deployment.md` | 容器化部署双模式(外部 PG / compose 集成)、迁移显式性与升级 runbook | 部署参考;镜像入口 `serve`/`migrate` 两态 |
 
 ## 常用命令
 
 ```bash
-pnpm lint            # biome(0 错误基线;警告 ~17 条为已知)
+pnpm lint            # biome(0 错误基线;警告 ~9 条为已知)
 pnpm typecheck       # tsc --noEmit
-pnpm test            # 单元(148)
-pnpm test:integration  # 集成(179);需 DB:先 `set -a && source .env && set +a`
+pnpm test            # 单元(176)
+pnpm test:integration  # 集成(281);需 DB:先 `set -a && source .env && set +a`
 pnpm build           # 需要 AUTH_SECRET(CI 用 build-only 值)
 node --experimental-strip-types --env-file=.env scripts/reconcile-currency-decimals.mts
                      # 只读货币对账报告(永不写库)

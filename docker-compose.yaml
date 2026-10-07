@@ -1,0 +1,70 @@
+# MonetPlane self-host stack (mode 2): app + bundled PostgreSQL 17 (CI parity).
+#
+# Secrets are interpolated from the environment / .env at stack-up time and
+# never baked into the image. Required vars fail the composition with a clear
+# message when missing (fail-closed, matching src/config/env.ts semantics).
+#
+#   docker compose up -d          # pg healthy -> one-shot migrate -> app
+#   docker compose logs migrate   # audit what was applied
+#
+# For mode 1 (external PostgreSQL) see docs/docker-deployment.md.
+name: monetplane
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-monetplane}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-monetplane}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  # One-shot migration step: deliberate, logged, and ordered before `app`.
+  # Idempotent — re-running `docker compose up` applies nothing new.
+  migrate:
+    build:
+      context: .
+      args:
+        # Override in .env on networks where registry.npmjs.org is unreliable
+        # (e.g. NPM_REGISTRY=https://registry.npmmirror.com). Lockfile sha512
+        # integrity is verified regardless.
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    command: ["migrate"]
+    environment: &app-env
+      DATABASE_URL: postgresql://${POSTGRES_USER:-monetplane}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-monetplane}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      MONETPLANE_ENCRYPTION_KEY: ${MONETPLANE_ENCRYPTION_KEY:?set MONETPLANE_ENCRYPTION_KEY in .env}
+      # Optional — unset/empty disables the corresponding behavior (fail-closed):
+      # CRON_SECRET: cron endpoints answer 401; ADMIN_PASSWORD: first-login
+      # operator bootstrap is disabled.
+      CRON_SECRET: ${CRON_SECRET:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
