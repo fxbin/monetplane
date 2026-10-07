@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -29,6 +30,11 @@ export const operators = pgTable(
     email: text("email").notNull(),
     name: text("name").notNull(),
     passwordHash: text("password_hash").notNull(),
+    // Bumped on every credential rotation (external review 2026-10-06,
+    // P1-150-03): the JWT captures the version at sign-in and the admin
+    // guard rejects stale versions, so a password change immediately
+    // invalidates pre-existing sessions.
+    credentialVersion: integer("credential_version").default(0).notNull(),
     status: text("status").notNull().default("active"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

@@ -124,6 +124,7 @@ export function GrantCreditsAction({
   const [creditType, setCreditType] = useState("credits");
   const [amount, setAmount] = useState("100");
   const [note, setNote] = useState("");
+  const [expiresInDays, setExpiresInDays] = useState("");
 
   return (
     <ActionDialog
@@ -137,13 +138,29 @@ export function GrantCreditsAction({
         if (!Number.isSafeInteger(parsedAmount) || parsedAmount <= 0) {
           throw new Error(labels.grantAmountInvalid);
         }
+        // The server is the single truth for expiry semantics (external
+        // review P1-150-04): the dialog sends the raw whole-day number
+        // and blocks submission for anything that is not a positive
+        // integer — it never synthesizes an ISO timestamp client-side.
+        const parsedDays = Number(expiresInDays.trim());
+        if (
+          expiresInDays.trim() &&
+          (!Number.isSafeInteger(parsedDays) || parsedDays <= 0)
+        ) {
+          throw new Error(labels.expiryInvalid);
+        }
         await requestAction(
           `/api/admin/customers/${encodeURIComponent(customerId)}/credits`,
           labels.failed,
           {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ creditType, amount: parsedAmount, note }),
+            body: JSON.stringify({
+              creditType,
+              amount: parsedAmount,
+              note,
+              ...(expiresInDays.trim() ? { expiresInDays: parsedDays } : {}),
+            }),
           },
         );
         router.refresh();
@@ -166,6 +183,16 @@ export function GrantCreditsAction({
             inputMode="numeric"
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
+          />
+        </label>
+        <label className="field-group">
+          <span>{labels.expiresInDays}</span>
+          <input
+            inputMode="numeric"
+            value={expiresInDays}
+            onChange={(event) => setExpiresInDays(event.target.value)}
+            placeholder={labels.expiresInDaysPlaceholder}
+            title={labels.expiresInDaysHelp}
           />
         </label>
         <label className="field-group span-two">

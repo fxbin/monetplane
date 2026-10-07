@@ -72,6 +72,23 @@ async function loadActor(): Promise<AdminActor | null> {
   const membership = await findMembershipByOperatorId(operatorId);
   if (!membership) return null;
   if (membership.operatorStatus !== "active") return null;
+  // Credential-version gate (external review 2026-10-06, P1-150-03):
+  // the JWT captured credentialVersion at sign-in; a password rotation
+  // bumps the operator's version, so any pre-existing session is rejected
+  // here on its next request instead of riding out the 12h maxAge.
+  // Round-2 fail-closed: a token WITHOUT a version is a
+  // pre-credentialVersion JWT — treat it as stale, not legacy-valid.
+  // Cost: every console session issued before this deploy re-authenticates
+  // once, which is the correct migration when introducing version
+  // invalidation (external review round-2, P1).
+  const sessionVersion = (session.user as { credentialVersion?: number })
+    .credentialVersion;
+  if (
+    !Number.isSafeInteger(sessionVersion) ||
+    sessionVersion !== membership.operatorCredentialVersion
+  ) {
+    return null;
+  }
 
   return {
     operatorId: membership.operatorId,

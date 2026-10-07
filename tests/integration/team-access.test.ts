@@ -63,7 +63,7 @@ function uniqueEmail(prefix: string) {
 
 function sessionFor(operatorId: string) {
   mockAuth.mockResolvedValue({
-    user: { id: operatorId, role: "owner" },
+    user: { id: operatorId, role: "owner", credentialVersion: 0 },
     expires: new Date(Date.now() + 3600_000).toISOString(),
   } as never);
 }

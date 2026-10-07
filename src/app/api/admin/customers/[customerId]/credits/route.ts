@@ -4,6 +4,7 @@ import {
   requirePermission,
 } from "@/modules/admin/guard";
 import { getConsoleContext } from "@/server/control-plane/context";
+import { parseGrantExpiry } from "@/server/control-plane/credit-grant-expiry";
 import { grantCustomerCredits } from "@/server/control-plane/customer-workspace";
 
 type RouteContext = {
@@ -23,6 +24,8 @@ export async function POST(request: Request, { params }: RouteContext) {
         amount?: unknown;
         note?: unknown;
         idempotencyKey?: unknown;
+        expiresAt?: unknown;
+        expiresInDays?: unknown;
       }>,
     ]);
     if (!context.selectedApplication) {
@@ -64,12 +67,16 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
 
+    const expiry = parseGrantExpiry(body);
+    if (expiry.error) return expiry.error;
+    const { expiresAt } = expiry;
+
     // The audit row is written inside the grant's transaction
     // (roundtable batch 1) — actor comes from the permission guard.
     const result = await grantCustomerCredits(
       context.selectedApplication.id,
       customerId,
-      { creditType, amount, note, idempotencyKey },
+      { creditType, amount, note, idempotencyKey, expiresAt },
       context.environment,
       {
         request,

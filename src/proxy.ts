@@ -39,6 +39,8 @@ const PROTECTED_PATHS = [
   "/developer",
   "/audit",
   "/team",
+  "/settings",
+  "/credits",
 ];
 
 const PUBLIC_PATHS = [

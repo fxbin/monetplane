@@ -55,7 +55,7 @@ const navSections: Array<{
     labelKey: "products",
     items: [
       { labelKey: "products", href: "/products", icon: "box" },
-      { labelKey: "credits", icon: "credits", comingSoon: true },
+      { labelKey: "credits", href: "/credits", icon: "credits" },
       { labelKey: "features", icon: "features", comingSoon: true },
     ],
   },
@@ -101,6 +101,7 @@ const navSections: Array<{
     items: [
       { labelKey: "projects", href: "/applications", icon: "settings" },
       { labelKey: "team", href: "/team", icon: "team" },
+      { labelKey: "settings", href: "/settings", icon: "settings" },
     ],
   },
 ];
@@ -257,14 +258,6 @@ export function SidebarNavigation({
       </nav>
 
       <div className="sidebar-footer">
-        <div
-          className="sidebar-link sidebar-link-disabled"
-          aria-disabled="true"
-        >
-          <NavIcon name="settings" />
-          <span className="sidebar-link-label">{labels.settings}</span>
-          <span className="sidebar-soon">{labels.soon}</span>
-        </div>
         <div className="sidebar-footer-note">{labels.preview}</div>
       </div>
     </aside>
