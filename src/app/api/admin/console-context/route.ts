@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requireAdmin } from "@/modules/admin/guard";
 import { getActiveConsoleApplication } from "@/server/control-plane/console-queries";
 import {
@@ -12,6 +13,7 @@ function isEnvironment(value: unknown): value is ConsoleEnvironment {
 }
 
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -19,12 +21,15 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { error: adminErrors.invalidJsonBody },
+      { status: 400 },
+    );
   }
 
   if (!body || typeof body !== "object") {
     return NextResponse.json(
-      { error: "Invalid request body" },
+      { error: adminErrors.invalidRequestBody },
       { status: 400 },
     );
   }
@@ -36,7 +41,7 @@ export async function POST(request: Request) {
 
   if (!applicationId || !isEnvironment(environment)) {
     return NextResponse.json(
-      { error: "applicationId and environment are required" },
+      { error: adminErrors.applicationidAndEnvironmentAreRequired },
       { status: 400 },
     );
   }
@@ -45,7 +50,7 @@ export async function POST(request: Request) {
 
   if (!application) {
     return NextResponse.json(
-      { error: "Application not found" },
+      { error: adminErrors.applicationNotFound },
       { status: 404 },
     );
   }
@@ -58,7 +63,7 @@ export async function POST(request: Request) {
     !guard.applicationIds.includes(applicationId)
   ) {
     return NextResponse.json(
-      { error: "Application not found" },
+      { error: adminErrors.applicationNotFound },
       { status: 404 },
     );
   }

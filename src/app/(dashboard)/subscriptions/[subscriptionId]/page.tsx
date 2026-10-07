@@ -7,8 +7,8 @@ import {
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
-import { formatMessage, getDictionary } from "@/i18n/server";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { getSubscriptionDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -26,6 +26,9 @@ export default async function SubscriptionPage({
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.subscriptionDetail;
   if (!context.selectedApplication) notFound();
 
@@ -65,7 +68,7 @@ export default async function SubscriptionPage({
             <span>{subscription.providerSubscriptionId}</span>
             <span>
               {formatMessage(t.updated, {
-                date: formatDateTime(subscription.updatedAt),
+                date: fmtDateTime(subscription.updatedAt),
               })}
             </span>
           </div>
@@ -97,7 +100,7 @@ export default async function SubscriptionPage({
           <span>{t.currentPeriod}</span>
           <strong>
             {subscription.currentPeriodEnd
-              ? formatDateTime(subscription.currentPeriodEnd)
+              ? fmtDateTime(subscription.currentPeriodEnd)
               : t.noPeriodEnd}
           </strong>
           <small>
@@ -173,7 +176,7 @@ export default async function SubscriptionPage({
                   {item.amountMinor !== null &&
                   item.amountMinor !== undefined &&
                   item.currency
-                    ? `${formatAmount(item.amountMinor, item.currency)}/${item.recurringInterval ?? "period"}`
+                    ? `${formatAmount(item.amountMinor, item.currency)}/${item.recurringInterval ?? t.intervalPeriod}`
                     : formatMessage(t.quantityTimes, {
                         count: String(item.quantity),
                         amount: "",
@@ -208,7 +211,7 @@ export default async function SubscriptionPage({
                       })}
                       {operation.retryOfOperationId ? t.retrySuffix : ""}
                       {" · "}
-                      {formatDateTime(operation.createdAt)}
+                      {fmtDateTime(operation.createdAt)}
                     </span>
                     {operation.failureKind && (
                       <small>
@@ -265,7 +268,7 @@ export default async function SubscriptionPage({
                   <div>
                     <strong>{event.normalizedType}</strong>
                     <span>{event.providerEventName}</span>
-                    <small>{formatDateTime(event.occurredAt)}</small>
+                    <small>{fmtDateTime(event.occurredAt)}</small>
                   </div>
                   <StatusBadge status={event.status} />
                 </div>

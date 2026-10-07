@@ -6,7 +6,83 @@ import type { Dictionary } from "./en";
  * compile error, not a runtime blank.
  */
 export const zh: Dictionary = {
+  adminErrors: {
+    apiKeyNameIsRequired: "API 密钥名称为必填项",
+    amountMustBeAPositiveWholeNumber: "金额必须为正整数",
+    applicationNotFound: "应用不存在",
+    chooseASupportedPaymentProvider: "请选择受支持的支付提供商",
+    chooseAValidRole: "请选择有效的角色",
+    chooseConfigurationPaymentOrSubscriptionDiagnostic:
+      "请选择配置、支付或订阅诊断",
+    connectionNameIsRequired: "连接名称为必填项",
+    createOrSelectAProjectBeforeAddingAWebhook:
+      "添加 webhook 前请先创建或选择项目",
+    createOrSelectAProjectBeforeConnectingAProvider:
+      "连接提供商前请先创建或选择项目",
+    createOrSelectAProjectBeforeCreatingAProduct:
+      "创建产品前请先创建或选择项目",
+    createOrSelectAProjectBeforeCreatingAnApiKey:
+      "创建 API 密钥前请先创建或选择项目",
+    creditTypeIsRequired: "积分类型为必填项",
+    failedToCancelSubscription: "取消订阅失败",
+    failedToChangePassword: "修改密码失败",
+    failedToConnectProvider: "连接提供商失败",
+    failedToCreateApiKey: "创建 API 密钥失败",
+    failedToCreateInvitation: "创建邀请失败",
+    failedToCreateProduct: "创建产品失败",
+    failedToCreateProject: "创建项目失败",
+    failedToCreateWebhook: "创建 webhook 失败",
+    failedToDisableWebhook: "停用 webhook 失败",
+    failedToFetchCustomers: "获取客户列表失败",
+    failedToFetchOverviewData: "获取概览数据失败",
+    failedToFetchProducts: "获取产品列表失败",
+    failedToFetchProviders: "获取提供商列表失败",
+    failedToGrantCredits: "发放积分失败",
+    failedToLoadTeam: "加载团队失败",
+    failedToReconcileBillingOperation: "对账账务操作失败",
+    failedToRefundPayment: "退款失败",
+    failedToRetryWebhook: "重试 webhook 失败",
+    failedToRevokeApiKey: "吊销 API 密钥失败",
+    failedToRotateApiKey: "轮换 API 密钥失败",
+    failedToRotateWebhookSecret: "轮换 webhook 密钥失败",
+    failedToTestWebhook: "测试 webhook 失败",
+    failedToUpdateProductProviderRouting: "更新产品提供商路由失败",
+    failedToUpdateProviderConnection: "更新提供商连接失败",
+    invalidJsonBody: "JSON 请求体无效",
+    invalidApplicationScope: "应用范围无效",
+    invalidRequestBody: "请求体无效",
+    invalidRole: "角色无效",
+    noProjectSelected: "未选择项目",
+    projectNameAndSlugAreRequired: "项目名称与 slug 为必填项",
+    providerConnectionCouldNotBeRevoked: "无法吊销该提供商连接",
+    providerConnectionIsNoLongerActive: "该提供商连接已不再处于活跃状态",
+    providerConnectionNotFound: "找不到提供商连接",
+    providerDiagnosticFailed: "提供商诊断失败",
+    revokedProviderConnectionsCannotBeReconfigured:
+      "已吊销的提供商连接无法重新配置",
+    selectAProjectBeforeChangingProductRouting: "更改产品路由前请先选择项目",
+    selectAProjectFirst: "请先选择项目",
+    thisProviderCannotBeReconfiguredFromTheConsole:
+      "该提供商无法从控制台重新配置",
+    unauthorized: "未授权",
+    applicationidAndEnvironmentAreRequired:
+      "applicationId 与 environment 为必填项",
+    currentpasswordAndNewpasswordAreRequired:
+      "currentPassword 与 newPassword 为必填项",
+    failedToUpdateMember: "更新成员失败",
+    failedToRemoveMember: "移除成员失败",
+    failedToRevokeInvitation: "撤销邀请失败",
+  },
+  notFound: {
+    title: "页面不存在",
+    description: "你访问的页面不存在或已被移动。",
+    back: "返回控制台",
+  },
+  metadata: {
+    description: "面向多产品构建者的开源货币化控制平面。",
+  },
   common: {
+    environment: "计费环境",
     sandbox: "沙箱",
     production: "生产",
     noProjectTitle: "未选择项目",
@@ -58,6 +134,12 @@ export const zh: Dictionary = {
     },
   },
   topbar: {
+    roles: {
+      owner: "所有者",
+      admin: "管理员",
+      operator: "操作员",
+      viewer: "查看者",
+    },
     environment: "环境",
     noProject: "未选择项目",
     operator: "操作员",
@@ -68,6 +150,7 @@ export const zh: Dictionary = {
     createProject: "创建项目",
     scopedData: "按项目隔离的控制台数据",
     ariaCurrentProject: "当前项目",
+    projectLabel: "项目",
   },
   audit: {
     title: "审计日志",
@@ -100,6 +183,7 @@ export const zh: Dictionary = {
     createProject: "创建项目",
     description: "{application} 的 {environment} 归一化渠道事件。",
     privacyLabel: "隐私边界",
+    providerPlaceholder: "waffo 或 pc_…",
     privacyStrong: "仅展示归一化事件",
     privacyBody:
       "渠道原始 webhook 报文仅用于内部处理,不会在此开发者控制台中暴露。",
@@ -134,6 +218,8 @@ export const zh: Dictionary = {
     all: "全部",
     status: "状态",
     empty: "该 {environment} 环境下没有匹配这些筛选的运营日志。",
+    providerPlaceholder: "waffo 或 pc_…",
+    statusPlaceholder: "failed、completed…",
   },
   team: {
     title: "团队",
@@ -269,6 +355,7 @@ export const zh: Dictionary = {
     createPriceFirst: "请先创建生效价格,再发起结账。",
   },
   routeEditor: {
+    updated: "{environment} 提供方已更新。",
     sandboxFallback: "沙箱",
     productionFallback: "生产",
     noProvider: "该项目尚未连接任何生效的 {environment} 渠道。",
@@ -617,6 +704,7 @@ export const zh: Dictionary = {
     retryConfirm: "创建重试尝试",
   },
   subscriptionDetail: {
+    intervalPeriod: "周期",
     title: "订阅详情",
     description: "周期账务状态、客户访问、取消资格与操作恢复。",
     back: "返回订阅列表",
@@ -690,6 +778,7 @@ export const zh: Dictionary = {
     refundConfirm: "确认全额退款",
   },
   customerDetail: {
+    intervalPeriod: "周期",
     workspaceFallback: "{application} 的账务工作区",
     back: "返回客户列表",
     kicker: "客户账务工作区",
@@ -975,6 +1064,9 @@ export const zh: Dictionary = {
     createProduct: "创建商品",
   },
   apiKeyManager: {
+    rotateLongNotice:
+      "替换密钥仅显示一次。旧密钥在你部署后手动吊销前保持有效。",
+    createNotice: "该密钥仅显示一次。请将其存入服务端密钥管理器。",
     requestFailed: "请求失败",
     createdTitle: "已创建 {name}",
     storeNow: "请立即保存该密钥。",
@@ -1006,6 +1098,10 @@ export const zh: Dictionary = {
     empty: "还没有 API 密钥。为你的后端创建一个。",
   },
   webhookManager: {
+    rotateLongNotice: "新签名密钥仅显示一次,并立即替换旧密钥。",
+    createNotice:
+      "签名密钥仅显示一次。请与接收服务一起保存,并在每次投递时校验 x-monetplane-signature。",
+    signingSecretTitle: "{name} 签名密钥",
     requestFailed: "请求失败",
     storeNow: "请立即保存该密钥。",
     failedCreate: "创建 Webhook 失败",
@@ -1220,6 +1316,7 @@ export const zh: Dictionary = {
     cancel: "取消",
   },
   settings: {
+    passwordFailed: "密码修改失败",
     title: "设置",
     workspaceTab: "工作区",
     profileTab: "个人资料",

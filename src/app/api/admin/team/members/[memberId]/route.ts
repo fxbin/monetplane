@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requirePermission } from "@/modules/admin/guard";
 import {
   isMemberApplicationScope,
@@ -20,6 +21,7 @@ type RouteContext = {
  * managed by an owner; enforced in the service, not the UI.
  */
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("team:manage");
   if (guard instanceof NextResponse) return guard;
 
@@ -36,14 +38,17 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       : undefined;
 
     if (role !== undefined && !isWorkspaceRole(role)) {
-      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+      return NextResponse.json(
+        { error: adminErrors.invalidRole },
+        { status: 400 },
+      );
     }
     if (
       applicationScope !== undefined &&
       !isMemberApplicationScope(applicationScope)
     ) {
       return NextResponse.json(
-        { error: "Invalid application scope" },
+        { error: adminErrors.invalidApplicationScope },
         { status: 400 },
       );
     }
@@ -69,7 +74,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     }
     console.error("[admin/team/members] Patch error:", error);
     return NextResponse.json(
-      { error: "Failed to update member" },
+      { error: adminErrors.failedToUpdateMember },
       { status: 500 },
     );
   }
@@ -77,6 +82,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
 /** DELETE /api/admin/team/members/[memberId] — remove a member from the workspace. */
 export async function DELETE(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("team:manage");
   if (guard instanceof NextResponse) return guard;
 
@@ -100,7 +106,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     }
     console.error("[admin/team/members] Delete error:", error);
     return NextResponse.json(
-      { error: "Failed to remove member" },
+      { error: adminErrors.failedToRemoveMember },
       { status: 500 },
     );
   }

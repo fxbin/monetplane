@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requirePermission } from "@/modules/admin/guard";
 import {
   createApplication,
@@ -16,6 +17,7 @@ function optionalString(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("applications:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -23,12 +25,15 @@ export async function POST(request: Request) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { error: adminErrors.invalidJsonBody },
+      { status: 400 },
+    );
   }
 
   if (!body || typeof body !== "object") {
     return NextResponse.json(
-      { error: "Invalid request body" },
+      { error: adminErrors.invalidRequestBody },
       { status: 400 },
     );
   }
@@ -41,7 +46,7 @@ export async function POST(request: Request) {
 
   if (!name || !slug) {
     return NextResponse.json(
-      { error: "Project name and slug are required" },
+      { error: adminErrors.projectNameAndSlugAreRequired },
       { status: 400 },
     );
   }
@@ -95,7 +100,9 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create project";
+      error instanceof Error
+        ? error.message
+        : adminErrors.failedToCreateProject;
     const status = message.toLowerCase().includes("unique") ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }

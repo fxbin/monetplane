@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireAdmin,
   requireApplicationAccess,
@@ -25,6 +26,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("credentials:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -33,7 +35,7 @@ export async function POST(request: Request) {
     const application = context.selectedApplication;
     if (!application) {
       return NextResponse.json(
-        { error: "Create or select a project before creating an API key" },
+        { error: adminErrors.createOrSelectAProjectBeforeCreatingAnApiKey },
         { status: 400 },
       );
     }
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
       return NextResponse.json(
-        { error: "API key name is required" },
+        { error: adminErrors.apiKeyNameIsRequired },
         { status: 400 },
       );
     }
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create API key";
+      error instanceof Error ? error.message : adminErrors.failedToCreateApiKey;
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

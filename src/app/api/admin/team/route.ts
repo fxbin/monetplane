@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requirePermission } from "@/modules/admin/guard";
 import { permissionMatrix } from "@/modules/team/permissions";
 import { listTeamOverview } from "@/modules/team/service";
@@ -8,6 +9,7 @@ import { listTeamOverview } from "@/modules/team/service";
  * Gated by team:manage: the listing exists to manage the workspace.
  */
 export async function GET() {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("team:manage");
   if (guard instanceof NextResponse) return guard;
 
@@ -24,6 +26,9 @@ export async function GET() {
     });
   } catch (error) {
     console.error("[admin/team] Error:", error);
-    return NextResponse.json({ error: "Failed to load team" }, { status: 500 });
+    return NextResponse.json(
+      { error: adminErrors.failedToLoadTeam },
+      { status: 500 },
+    );
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireApplicationAccess,
   requirePermission,
@@ -15,6 +16,7 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -30,7 +32,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     const application = context.selectedApplication;
     if (!application) {
       return NextResponse.json(
-        { error: "Select a project first" },
+        { error: adminErrors.selectAProjectFirst },
         { status: 400 },
       );
     }
@@ -46,7 +48,9 @@ export async function POST(request: Request, { params }: RouteContext) {
         : null;
     if (!kind) {
       return NextResponse.json(
-        { error: "Choose configuration, payment, or subscription diagnostic" },
+        {
+          error: adminErrors.chooseConfigurationPaymentOrSubscriptionDiagnostic,
+        },
         { status: 400 },
       );
     }
@@ -81,7 +85,7 @@ export async function POST(request: Request, { params }: RouteContext) {
       );
     }
     return NextResponse.json(
-      { error: "Provider diagnostic failed" },
+      { error: adminErrors.providerDiagnosticFailed },
       { status: 500 },
     );
   }

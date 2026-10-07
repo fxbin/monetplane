@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requirePermission } from "@/modules/admin/guard";
 import { revokeInvitation, TeamServiceError } from "@/modules/team/service";
 
@@ -8,6 +9,7 @@ type RouteContext = {
 
 /** DELETE /api/admin/team/invitations/[invitationId] — revoke a pending invitation. */
 export async function DELETE(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("team:manage");
   if (guard instanceof NextResponse) return guard;
 
@@ -31,7 +33,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
     }
     console.error("[admin/team/invitations] Delete error:", error);
     return NextResponse.json(
-      { error: "Failed to revoke invitation" },
+      { error: adminErrors.failedToRevokeInvitation },
       { status: 500 },
     );
   }

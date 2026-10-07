@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { getSessionActor } from "@/modules/admin/guard";
 import {
   changeOperatorPasswordWithAudit,
@@ -13,6 +14,7 @@ import {
  * audit entry records the actor and never the credential material.
  */
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   // Workspace-level (not project-scoped) and — per the self-service
   // semantics (external review 2026-10-06, P1-150-01) — available to
   // EVERY authenticated operator: team:manage governs managing OTHER
@@ -20,14 +22,20 @@ export async function POST(request: Request) {
   // leaked low-privilege credential could never be rotated by its owner.
   const actor = await getSessionActor();
   if (!actor) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json(
+      { error: adminErrors.unauthorized },
+      { status: 401 },
+    );
   }
 
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return NextResponse.json(
+      { error: adminErrors.invalidJsonBody },
+      { status: 400 },
+    );
   }
 
   const currentPassword =
@@ -37,7 +45,7 @@ export async function POST(request: Request) {
 
   if (!currentPassword || !newPassword) {
     return NextResponse.json(
-      { error: "currentPassword and newPassword are required" },
+      { error: adminErrors.currentpasswordAndNewpasswordAreRequired },
       { status: 400 },
     );
   }
@@ -67,7 +75,7 @@ export async function POST(request: Request) {
     }
     console.error("[admin/session/password] Error:", error);
     return NextResponse.json(
-      { error: "Failed to change password" },
+      { error: adminErrors.failedToChangePassword },
       { status: 500 },
     );
   }

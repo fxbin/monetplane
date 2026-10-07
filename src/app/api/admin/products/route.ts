@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireAdmin,
   requireApplicationAccess,
@@ -12,6 +13,7 @@ import {
 } from "@/server/control-plane/products";
 
 export async function GET() {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -28,13 +30,14 @@ export async function GET() {
   } catch (error) {
     console.error("[admin/products] Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch products" },
+      { error: adminErrors.failedToFetchProducts },
       { status: 500 },
     );
   }
 }
 
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("catalog:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -43,7 +46,7 @@ export async function POST(request: Request) {
     if (!context.selectedApplication) {
       return NextResponse.json(
         {
-          error: "Create or select a project before creating a product",
+          error: adminErrors.createOrSelectAProjectBeforeCreatingAProduct,
           code: "project_required",
         },
         { status: 400 },
@@ -122,7 +125,9 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[admin/products] Create error:", error);
     const message =
-      error instanceof Error ? error.message : "Failed to create product";
+      error instanceof Error
+        ? error.message
+        : adminErrors.failedToCreateProduct;
     const isConflict = /unique|duplicate/i.test(message);
 
     return NextResponse.json(

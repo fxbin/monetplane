@@ -2,8 +2,8 @@ import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
-import { getDictionary } from "@/i18n/server";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
   getProviderFilterOptions,
@@ -40,6 +40,9 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
     searchParams,
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.refunds;
   const filter = readFilter(params);
   const applicationId = context.selectedApplication?.id;
@@ -102,7 +105,7 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                           {refund.externalCustomerId ?? t.customerFallback}
                         </Link>
                       ) : (
-                        <span className="cell-muted">Unknown</span>
+                        <span className="cell-muted">{t.customerFallback}</span>
                       )}
                       {refund.customerEmail && (
                         <div className="cell-muted">{refund.customerEmail}</div>
@@ -133,7 +136,7 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
                     </td>
                     <td>{refund.providerName ?? refund.provider ?? "—"}</td>
                     <td className="cell-muted">
-                      {formatDateTime(refund.createdAt)}
+                      {fmtDateTime(refund.createdAt)}
                     </td>
                     <td>
                       <Link

@@ -89,7 +89,7 @@ export default async function EventsPage({
           label={t.provider}
           name="provider"
           defaultValue={filters.provider}
-          placeholder="waffo or pc_…"
+          placeholder={t.providerPlaceholder}
         />
         <FilterTextField
           label={t.customer}

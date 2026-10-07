@@ -10,7 +10,88 @@
  *    page; remaining pages migrate on the touch rule (see the agent note).
  */
 export const en = {
+  adminErrors: {
+    apiKeyNameIsRequired: "API key name is required",
+    amountMustBeAPositiveWholeNumber: "Amount must be a positive whole number",
+    applicationNotFound: "Application not found",
+    chooseASupportedPaymentProvider: "Choose a supported payment provider",
+    chooseAValidRole: "Choose a valid role",
+    chooseConfigurationPaymentOrSubscriptionDiagnostic:
+      "Choose configuration, payment, or subscription diagnostic",
+    connectionNameIsRequired: "Connection name is required",
+    createOrSelectAProjectBeforeAddingAWebhook:
+      "Create or select a project before adding a webhook",
+    createOrSelectAProjectBeforeConnectingAProvider:
+      "Create or select a project before connecting a provider",
+    createOrSelectAProjectBeforeCreatingAProduct:
+      "Create or select a project before creating a product",
+    createOrSelectAProjectBeforeCreatingAnApiKey:
+      "Create or select a project before creating an API key",
+    creditTypeIsRequired: "Credit type is required",
+    failedToCancelSubscription: "Failed to cancel subscription",
+    failedToChangePassword: "Failed to change password",
+    failedToConnectProvider: "Failed to connect provider",
+    failedToCreateApiKey: "Failed to create API key",
+    failedToCreateInvitation: "Failed to create invitation",
+    failedToCreateProduct: "Failed to create product",
+    failedToCreateProject: "Failed to create project",
+    failedToCreateWebhook: "Failed to create webhook",
+    failedToDisableWebhook: "Failed to disable webhook",
+    failedToFetchCustomers: "Failed to fetch customers",
+    failedToFetchOverviewData: "Failed to fetch overview data",
+    failedToFetchProducts: "Failed to fetch products",
+    failedToFetchProviders: "Failed to fetch providers",
+    failedToGrantCredits: "Failed to grant credits",
+    failedToLoadTeam: "Failed to load team",
+    failedToReconcileBillingOperation: "Failed to reconcile billing operation",
+    failedToRefundPayment: "Failed to refund payment",
+    failedToRetryWebhook: "Failed to retry webhook",
+    failedToRevokeApiKey: "Failed to revoke API key",
+    failedToRotateApiKey: "Failed to rotate API key",
+    failedToRotateWebhookSecret: "Failed to rotate webhook secret",
+    failedToTestWebhook: "Failed to test webhook",
+    failedToUpdateProductProviderRouting:
+      "Failed to update product provider routing",
+    failedToUpdateProviderConnection: "Failed to update provider connection",
+    invalidJsonBody: "Invalid JSON body",
+    invalidApplicationScope: "Invalid application scope",
+    invalidRequestBody: "Invalid request body",
+    invalidRole: "Invalid role",
+    noProjectSelected: "No project selected",
+    projectNameAndSlugAreRequired: "Project name and slug are required",
+    providerConnectionCouldNotBeRevoked:
+      "Provider connection could not be revoked",
+    providerConnectionIsNoLongerActive:
+      "Provider connection is no longer active",
+    providerConnectionNotFound: "Provider connection not found",
+    providerDiagnosticFailed: "Provider diagnostic failed",
+    revokedProviderConnectionsCannotBeReconfigured:
+      "Revoked provider connections cannot be reconfigured",
+    selectAProjectBeforeChangingProductRouting:
+      "Select a project before changing product routing",
+    selectAProjectFirst: "Select a project first",
+    thisProviderCannotBeReconfiguredFromTheConsole:
+      "This provider cannot be reconfigured from the console",
+    unauthorized: "Unauthorized",
+    applicationidAndEnvironmentAreRequired:
+      "applicationId and environment are required",
+    currentpasswordAndNewpasswordAreRequired:
+      "currentPassword and newPassword are required",
+    failedToUpdateMember: "Failed to update member",
+    failedToRemoveMember: "Failed to remove member",
+    failedToRevokeInvitation: "Failed to revoke invitation",
+  },
+  notFound: {
+    title: "Page not found",
+    description: "The page you are looking for does not exist or was moved.",
+    back: "Back to console",
+  },
+  metadata: {
+    description:
+      "Open-source monetization control plane for multi-product builders.",
+  },
   common: {
+    environment: "Billing environment",
     sandbox: "Sandbox",
     production: "Production",
     noProjectTitle: "No project selected",
@@ -62,6 +143,12 @@ export const en = {
     },
   },
   topbar: {
+    roles: {
+      owner: "Owner",
+      admin: "Admin",
+      operator: "Operator",
+      viewer: "Viewer",
+    },
     environment: "Environment",
     noProject: "No project",
     operator: "Operator",
@@ -72,6 +159,7 @@ export const en = {
     createProject: "Create project",
     scopedData: "Application-scoped console data",
     ariaCurrentProject: "Current project",
+    projectLabel: "Project",
   },
   audit: {
     title: "Audit log",
@@ -108,6 +196,7 @@ export const en = {
     createProject: "Create project",
     description: "Normalized {environment} provider events for {application}.",
     privacyLabel: "Privacy boundary",
+    providerPlaceholder: "waffo or pc_…",
     privacyStrong: "Normalized events only",
     privacyBody:
       "Raw provider webhook bodies are retained for processing but are not exposed in this developer console.",
@@ -144,6 +233,8 @@ export const en = {
     all: "All",
     status: "Status",
     empty: "No operational logs match these filters in {environment}.",
+    providerPlaceholder: "waffo or pc_…",
+    statusPlaceholder: "failed, completed…",
   },
   team: {
     title: "Team",
@@ -285,6 +376,7 @@ export const en = {
     createPriceFirst: "Create an active price before starting checkout.",
   },
   routeEditor: {
+    updated: "{environment} provider updated.",
     sandboxFallback: "Sandbox",
     productionFallback: "Production",
     noProvider:
@@ -662,6 +754,7 @@ export const en = {
     retryConfirm: "Create retry attempt",
   },
   subscriptionDetail: {
+    intervalPeriod: "period",
     title: "Subscription detail",
     description:
       "Recurring billing state, customer access, cancellation eligibility, and operation recovery.",
@@ -737,6 +830,7 @@ export const en = {
     refundConfirm: "Confirm full refund",
   },
   customerDetail: {
+    intervalPeriod: "period",
     workspaceFallback: "Billing workspace for {application}",
     back: "Back to customers",
     kicker: "Customer billing workspace",
@@ -1041,6 +1135,10 @@ export const en = {
     createProduct: "Create product",
   },
   apiKeyManager: {
+    rotateLongNotice:
+      "The replacement secret is shown once. The previous key remains active until you explicitly revoke it after deployment.",
+    createNotice:
+      "This secret is shown once. Store it in a server-side secret manager.",
     requestFailed: "Request failed",
     createdTitle: "{name} created",
     storeNow: "Store this secret now.",
@@ -1074,6 +1172,11 @@ export const en = {
     empty: "No API keys yet. Create one for your backend.",
   },
   webhookManager: {
+    rotateLongNotice:
+      "The new signing secret is shown once and replaces the previous secret immediately.",
+    createNotice:
+      "The signing secret is shown once. Store it with the receiving service and verify x-monetplane-signature on every delivery.",
+    signingSecretTitle: "{name} signing secret",
     requestFailed: "Request failed",
     storeNow: "Store this secret now.",
     failedCreate: "Failed to create webhook",
@@ -1303,6 +1406,7 @@ export const en = {
     cancel: "Cancel",
   },
   settings: {
+    passwordFailed: "Failed to change password",
     title: "Settings",
     workspaceTab: "Workspace",
     profileTab: "Profile",

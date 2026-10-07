@@ -140,6 +140,21 @@ to the environment it was reserved in; addressing it from another environment fa
 with `409 environment_mismatch` instead of booking the ledger into the wrong
 namespace. Omitting `environment` currently defaults to `test` (deprecated).
 
+Reservation semantics around **expiring credits** (period-reset plans):
+
+- Reserving first expires what is due on that account, then evaluates the
+  balance — a reservation can never draw on credits whose period already ended.
+  If the remaining balance is insufficient, the call fails with the same
+  insufficient-credits error you get from a direct debit.
+- Capturing is grandfathered: a reservation created **before** a bucket expired
+  still captures normally after the expiry. Expiry guards new spending, not the
+  settlement of work already reserved.
+- Subscription cancellation revokes the cycle's unused credits server-side;
+  no SDK call is involved.
+
+See `docs/credits-ledger.md` for the full ledger semantics (partial expiry,
+period-reset grants, cancellation clawback).
+
 ## 9. Customer read tokens (browser-side reads)
 
 Your backend holds the `mp_app_*` secret; browsers must not. To let a customer's

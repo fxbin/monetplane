@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireApplicationAccess,
   requirePermission,
@@ -12,6 +13,7 @@ type RouteContext = {
 };
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("catalog:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -24,7 +26,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 
     if (!context.selectedApplication) {
       return NextResponse.json(
-        { error: "Select a project before changing product routing" },
+        { error: adminErrors.selectAProjectBeforeChangingProductRouting },
         { status: 400 },
       );
     }
@@ -73,7 +75,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
         error:
           error instanceof Error
             ? error.message
-            : "Failed to update product provider routing",
+            : adminErrors.failedToUpdateProductProviderRouting,
       },
       { status: 400 },
     );

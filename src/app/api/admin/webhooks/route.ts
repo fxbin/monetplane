@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireAdmin,
   requireApplicationAccess,
@@ -38,6 +39,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("webhooks:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
     const application = context.selectedApplication;
     if (!application) {
       return NextResponse.json(
-        { error: "Create or select a project before adding a webhook" },
+        { error: adminErrors.createOrSelectAProjectBeforeAddingAWebhook },
         { status: 400 },
       );
     }
@@ -90,7 +92,9 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to create webhook";
+      error instanceof Error
+        ? error.message
+        : adminErrors.failedToCreateWebhook;
     const status = /unique|duplicate/i.test(message) ? 409 : 400;
     return NextResponse.json({ error: message }, { status });
   }

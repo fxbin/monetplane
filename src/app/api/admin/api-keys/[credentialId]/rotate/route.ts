@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireApplicationAccess,
   requirePermission,
@@ -10,6 +11,7 @@ import { rotateDeveloperApiKey } from "@/server/control-plane/developer";
 type RouteContext = { params: Promise<{ credentialId: string }> };
 
 export async function POST(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("credentials:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -21,7 +23,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const application = context.selectedApplication;
     if (!application) {
       return NextResponse.json(
-        { error: "No project selected" },
+        { error: adminErrors.noProjectSelected },
         { status: 400 },
       );
     }
@@ -44,7 +46,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to rotate API key";
+      error instanceof Error ? error.message : adminErrors.failedToRotateApiKey;
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

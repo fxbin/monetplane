@@ -52,7 +52,7 @@ export function ProjectSwitcher({
 
   return (
     <label className="project-switcher">
-      <span className="project-switcher-label">Project</span>
+      <span className="project-switcher-label">{labels.projectLabel}</span>
       <span className="project-switcher-control">
         <span className="project-switcher-dot" aria-hidden="true" />
         <select

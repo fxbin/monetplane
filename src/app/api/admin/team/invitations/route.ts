@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requirePermission } from "@/modules/admin/guard";
 import {
   isMemberApplicationScope,
@@ -11,6 +12,7 @@ import { inviteMember, TeamServiceError } from "@/modules/team/service";
  * The invitation URL is returned once; only its hash is stored.
  */
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("team:manage");
   if (guard instanceof NextResponse) return guard;
 
@@ -27,13 +29,13 @@ export async function POST(request: Request) {
 
     if (!isWorkspaceRole(role)) {
       return NextResponse.json(
-        { error: "Choose a valid role" },
+        { error: adminErrors.chooseAValidRole },
         { status: 400 },
       );
     }
     if (!isMemberApplicationScope(applicationScope)) {
       return NextResponse.json(
-        { error: "Invalid application scope" },
+        { error: adminErrors.invalidApplicationScope },
         { status: 400 },
       );
     }
@@ -68,7 +70,7 @@ export async function POST(request: Request) {
     }
     console.error("[admin/team/invitations] Error:", error);
     return NextResponse.json(
-      { error: "Failed to create invitation" },
+      { error: adminErrors.failedToCreateInvitation },
       { status: 500 },
     );
   }

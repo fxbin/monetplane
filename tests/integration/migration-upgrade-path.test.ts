@@ -78,8 +78,10 @@ async function copyMigrationsFolder(target: string): Promise<void> {
 describe("migration upgrade path (main@0019 → branch 0020)", () => {
   it("applies 0020 on top of a deployed 0019 database and is repeat-safe", async () => {
     // ---- Static journal sanity (catches the bug class before any DB
-    // work): idx values strictly increase; `when` timestamps strictly
-    // increase — the migrator's skip predicate depends on both.
+    // work). The migrator's skip predicate is decided by `when`
+    // (`folderMillis`); `idx` strict monotonicity is journal structural
+    // integrity — a duplicate or non-monotonic idx indicates a renumber
+    // went wrong and is how the round-4 defect was first introduced.
     const journalPath = path.join(drizzleFolder, "meta/_journal.json");
     const journal = JSON.parse(await fs.readFile(journalPath, "utf8")) as {
       entries: Array<{ idx: number; when: number; tag: string }>;

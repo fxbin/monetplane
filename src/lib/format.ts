@@ -14,18 +14,21 @@ export function formatAmount(amountMinor: number, currency: string): string {
   return `${symbol}${minorToDisplayString(amountMinor, currency)}`;
 }
 
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string, localeTag = "en-US"): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleDateString("en-US", {
+  return d.toLocaleDateString(localeTag, {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
 }
 
-export function formatDateTime(date: Date | string): string {
+export function formatDateTime(
+  date: Date | string,
+  localeTag = "en-US",
+): string {
   const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleString("en-US", {
+  return d.toLocaleString(localeTag, {
     year: "numeric",
     month: "short",
     day: "numeric",

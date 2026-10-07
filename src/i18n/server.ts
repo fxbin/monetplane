@@ -24,6 +24,14 @@ export function resolveLocale(value: string | undefined): Locale {
   return value === "zh" ? "zh" : "en";
 }
 
+/**
+ * BCP-47 tag matching the active console locale, for Intl formatting
+ * (dates render as "Sep 26, 2026" in en, "2026年9月26日" in zh).
+ */
+export async function getLocaleTag(): Promise<string> {
+  return (await getLocale()) === "zh" ? "zh-CN" : "en-US";
+}
+
 export async function getLocale(): Promise<Locale> {
   const store = await cookies();
   return resolveLocale(store.get(LOCALE_COOKIE)?.value);

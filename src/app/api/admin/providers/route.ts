@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireAdmin,
   requireApplicationAccess,
@@ -14,6 +15,7 @@ import { getProviderList } from "@/server/control-plane/console-queries";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export async function GET() {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -33,13 +35,14 @@ export async function GET() {
   } catch (error) {
     console.error("[admin/providers] Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch providers" },
+      { error: adminErrors.failedToFetchProviders },
       { status: 500 },
     );
   }
 }
 
 export async function POST(request: Request) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -48,7 +51,7 @@ export async function POST(request: Request) {
     const application = context.selectedApplication;
     if (!application) {
       return NextResponse.json(
-        { error: "Create or select a project before connecting a provider" },
+        { error: adminErrors.createOrSelectAProjectBeforeConnectingAProvider },
         { status: 400 },
       );
     }
@@ -68,7 +71,7 @@ export async function POST(request: Request) {
     const setup = getProviderSetup(provider);
     if (!setup) {
       return NextResponse.json(
-        { error: "Choose a supported payment provider" },
+        { error: adminErrors.chooseASupportedPaymentProvider },
         { status: 400 },
       );
     }
@@ -76,7 +79,7 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) {
       return NextResponse.json(
-        { error: "Connection name is required" },
+        { error: adminErrors.connectionNameIsRequired },
         { status: 400 },
       );
     }
@@ -125,7 +128,9 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[admin/providers] Create error:", error);
     const message =
-      error instanceof Error ? error.message : "Failed to connect provider";
+      error instanceof Error
+        ? error.message
+        : adminErrors.failedToConnectProvider;
     const status =
       message.includes("required") ||
       message.includes("supported payment provider")

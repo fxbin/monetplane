@@ -680,3 +680,45 @@ a {
 .filter-field .form-input {
   min-height: 38px;
 }
+
+/* Error/404 boundaries (i18n residual sweep) */
+.error-boundary {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  min-height: 60vh;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.error-boundary-title {
+  font-size: 28px;
+  font-weight: 650;
+  margin: 0;
+}
+
+.error-boundary-body {
+  color: var(--color-text-secondary);
+  margin: 0;
+  max-width: 480px;
+}
+
+.error-boundary-digest {
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono, monospace);
+  font-size: 12px;
+  margin: 0;
+}
+
+.error-boundary-home {
+  color: inherit;
+}
+
+/* Client error boundary renders both locales; the root layout's lang
+   attribute selects the active one. */
+[lang="en"] span[lang="zh"],
+[lang="zh"] span[lang="en"] {
+  display: none;
+}

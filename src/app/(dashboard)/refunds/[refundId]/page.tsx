@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
-import { formatMessage, getDictionary } from "@/i18n/server";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { getRefundDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -19,6 +19,9 @@ export default async function RefundPage({ params }: RefundPageProps) {
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.refundDetail;
   if (!context.selectedApplication) notFound();
 
@@ -53,7 +56,7 @@ export default async function RefundPage({ params }: RefundPageProps) {
           <div className="billing-detail-meta">
             <code>{refund.id}</code>
             <span>{refund.providerRefundId}</span>
-            <span>{formatDateTime(refund.createdAt)}</span>
+            <span>{fmtDateTime(refund.createdAt)}</span>
           </div>
         </div>
         <StatusBadge status={refund.status} />
@@ -141,7 +144,7 @@ export default async function RefundPage({ params }: RefundPageProps) {
                 <div>
                   <strong>{event.normalizedType}</strong>
                   <span>{event.providerEventName}</span>
-                  <small>{formatDateTime(event.occurredAt)}</small>
+                  <small>{fmtDateTime(event.occurredAt)}</small>
                 </div>
                 <StatusBadge status={event.status} />
               </div>

@@ -37,14 +37,16 @@ export function PasswordChangeForm({
       });
       const body = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(typeof body.error === "string" ? body.error : "Failed");
+        throw new Error(
+          typeof body.error === "string" ? body.error : labels.passwordFailed,
+        );
       }
       setDone(true);
       setCurrentPassword("");
       setNewPassword("");
       setConfirm("");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Failed");
+      setError(cause instanceof Error ? cause.message : labels.passwordFailed);
     } finally {
       setPending(false);
     }
