@@ -180,6 +180,73 @@ describe("password self-service hardening (external review)", () => {
     expect(loser).toHaveLength(0);
   });
 
+  // Round-4 P2 (external review, non-blocking): a REAL two-request race
+  // through the service, not just the 0-row predicate above. Two
+  // rotations with the same verified current password run concurrently;
+  // the row lock serializes the CAS UPDATEs, so exactly one commits and
+  // the loser is rejected fail-closed. Two legal interleavings exist:
+  //  - loser read the pre-rotation hash → CAS UPDATE matches 0 rows → 409;
+  //  - loser read the post-rotation hash → current-password verify fails → 401.
+  it("two concurrent rotations: exactly one wins, the loser is rejected fail-closed (409 or 401)", async () => {
+    const m = await seedOperator(Math.random().toString(36).slice(2, 8));
+    const [before] = await getDb()
+      .select({ version: operators.credentialVersion })
+      .from(operators)
+      .where(eq(operators.id, m.operatorId))
+      .limit(1);
+
+    const rotate = (newPassword: string) =>
+      changeOperatorPassword({
+        operatorId: m.operatorId,
+        currentPassword: "current(s3cret)1",
+        newPassword,
+      });
+
+    const results = await Promise.allSettled([
+      rotate("winner(s3cret)1"),
+      rotate("loser(s3cret)1"),
+    ]);
+    const fulfilled = results.filter(
+      (r) => r.status === "fulfilled",
+    ) as PromiseFulfilledResult<void>[];
+    const rejected = results.filter(
+      (r) => r.status === "rejected",
+    ) as PromiseRejectedResult[];
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const { findMembershipByOperatorId } = await import(
+      "../../src/modules/team/service"
+    );
+    const loserError = rejected[0]?.reason as {
+      status?: number;
+      code?: string;
+    };
+    expect(
+      typeof loserError?.status === "number" &&
+        (loserError.status === 409 || loserError.status === 401),
+      `loser must be rejected fail-closed, got ${loserError?.status}`,
+    ).toBe(true);
+
+    // Exactly one version bump, and only the winner's password verifies.
+    const after = await findMembershipByOperatorId(m.operatorId);
+    expect(after?.operatorCredentialVersion).toBe((before?.version ?? 0) + 1);
+    await expect(
+      changeOperatorPassword({
+        operatorId: m.operatorId,
+        currentPassword: "winner(s3cret)1",
+        newPassword: "next(s3cret)2",
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      changeOperatorPassword({
+        operatorId: m.operatorId,
+        currentPassword: "loser(s3cret)1",
+        newPassword: "anything(s3cret)1",
+      }),
+    ).rejects.toThrow(/incorrect/i);
+  });
+
   it("bumps credentialVersion so a stale session is rejected by the guard (P1-150-03)", async () => {
     const m = await seedOperator(Math.random().toString(36).slice(2, 8));
     const { changeOperatorPassword } = await import(

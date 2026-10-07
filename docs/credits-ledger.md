@@ -69,7 +69,13 @@ capture.usage
 release.usage
 refund.usage
 adjustment.admin
+grant.expired      // time-triggered: a bucket's cycle ended
+grant.revoked      // contract-triggered: the subscription was cancelled
 ```
+
+`grant.expired` and `grant.revoked` are strictly separate ledger types:
+expiry is the passage of a period; revocation is the end of a contract.
+They never substitute for each other in reports or reconciliation.
 
 The ledger is the audit history; the balances on `CreditAccount` are the fast current-state projection.
 
@@ -128,6 +134,16 @@ Long-running or variable-cost work uses reservations.
 
 ### Reserve
 
+Reservations never draw on expired credits. Inside the single reservation
+transaction the service locks the account row first (canonical
+account → buckets order), runs the account-scoped expiry sweep, and only
+then evaluates the conditional balance check. If the balance is
+insufficient after expiry, the transaction still commits — the expiry
+work must survive a rejected reservation — and `InsufficientCreditsError`
+is raised after commit. There is no window between "expiry applied" and
+"reservation evaluated" where a concurrent release could make expired
+credits spendable again.
+
 Customer has:
 
 ```text
@@ -176,6 +192,12 @@ reserved  = 0
 ```
 
 The customer paid only the actual 32 credits.
+
+Capture deliberately **grandfathers** the reservation: it settles with
+`allowExpired`, so a reservation made before a bucket expired still
+captures against that bucket afterwards. Expiry guards new spending
+(reserve/debit), not the settlement of work already reserved and in
+flight.
 
 ### Release
 
@@ -237,12 +259,47 @@ boundaries (e.g. PayPal `PAYMENT.SALE.COMPLETED`, enriched from the subscription
 when possible) keys off the provider event id instead — stable across redeliveries,
 unique per cycle, so a paid cycle can never collide with the previous cycle's grants.
 
-P0 grants accumulate. Credit expiration, rollover limits, and bucket-consumption policy are intentionally deferred until after the basic ledger is proven.
+**Period-reset quota semantics**: a subscription cycle's credit grant lands in a
+bucket that expires with the cycle's own `periodEnd`; the next cycle's grant lands
+in a fresh bucket. A monthly plan granting 1,000 credits/month therefore accumulates
+at most one live cycle of quota — unused credits do not roll into the next cycle
+(rollover limits remain a deferred item, see the end of this document).
 
-**Bucket expiry has a console entry**: the admin grant route (`POST /api/admin/customers/{id}/credits`)
-accepts `expiresAt` (ISO 8601) or `expiresInDays` (whole days), and the grant dialog exposes the
-days form; the expiry cron sweeps buckets whose `expiresAt` has passed. The reservation sweeper
-remains a separate open item — reservations do not expire automatically in this release.
+**Boundary-less renewals fail closed for credits.** In this ledger
+`expiresAt: NULL` means "permanent asset"; a renewal that would grant credits
+without its own period boundary cannot be allowed to mint permanent credits, nor
+may it reuse the stale stored period (the new cycle's credits would be born
+expired while colliding with the previous cycle's idempotency keys). The webhook
+inbox marks the event failed and the provider redelivery — now carrying the
+boundary — heals it: a failed inbox row being redelivered is re-armed with the
+current delivery's payload before processing, so the same event id can succeed on
+its second arrival and grant exactly once. Benefits-only subscriptions (no credit
+grant config) are unaffected by this requirement.
+
+## Cancellation clawback
+
+When a subscription ends, its unused cycle credits are revoked:
+
+```text
+subscription cancelled (webhook event)      or   immediate cancel (journaled reconcile)
+   ↓
+revokeSubscriptionCreditsInTransaction()
+   ↓
+CreditTransaction -N grant.revoked          (bucket → status=reversed)
+```
+
+- Both trigger paths — the webhook cancel branch and the journaled immediate-cancel
+  reconcile (provider synchronous cancels, e.g. Creem) — call the same
+  transaction-scoped core; no ledger write happens outside a transaction.
+- Revocation is idempotent per bucket with monotonic keys
+  (`revoke:{subscriptionId}:{bucketId}:before:{remainingBefore}`): a replayed
+  cancel cannot revoke twice, and concurrent attempts serialize on the account
+  row lock (accounts locked in sorted order, then buckets).
+- Fully-drained buckets transition to `status=reversed`; buckets created before
+  the period-reset model (legacy permanent buckets) are grandfathered rather than
+  revoked — scope decision recorded in `.agents/notes/`.
+- The ledger invariant holds throughout:
+  `sum(active bucket remaining) == availableBalance + reservedBalance`.
 
 ## API semantics
 
@@ -278,14 +335,27 @@ Product browsers must not possess credentials that can perform credit mutations.
 8. Duplicate payment webhooks grant credits once.
 9. A customer cannot spend credits belonging to another application or credit type.
 10. Reserved credits cannot be spent by unrelated direct debits.
+11. A reservation made before bucket expiry still captures afterwards
+    (grandfather); a NEW reservation after expiry is rejected.
+12. A replayed cancellation webhook revokes unused cycle credits exactly once.
 
 ## Credit bucket expiry (cron)
 
-Every grant creates one auditable bucket (`credit_buckets`). Expired buckets do
-not transition themselves: the only writer that moves due buckets out of
-`active` (and reverses their remaining amount through a `grant.expired` ledger
-entry) is `expireDueCreditBuckets()`. Until it runs, expired credits remain
-spendable and the documented invariant drifts:
+Every grant creates one auditable bucket (`credit_buckets`). Buckets support
+**partial expiry**: the sweep expires `min(bucket.remainingAmount,
+account.availableBalance)` immediately — the portion of a bucket backed by
+available balance — while a residual backed by open reservations stays active
+until those reservations settle (capture consumes it with grandfathering;
+release-back residuals are retired by the next sweep with monotonic
+`expire:{bucketId}:before:{remainingBefore}` idempotency keys, so an overlapping
+or replayed sweep can never double-reverse).
+
+Expired buckets do not transition themselves: the only writer that moves due
+buckets out of `active` (and reverses their remaining amount through a
+`grant.expired` ledger entry) is `expireDueCreditBuckets()` — plus its
+account-scoped variant, which runs inline at the start of reserve/debit
+transactions so new spending always evaluates a clean balance. Until a sweep
+runs, expired credits remain spendable and the documented invariant drifts:
 
 ```text
 sum(active bucket remaining) == availableBalance + reservedBalance
@@ -337,6 +407,12 @@ canonical order (account row first, then buckets ordered by
 `expiresAt ASC NULLS LAST, createdAt ASC, id ASC`). Concurrent debits,
 captures, and expiry runs therefore serialize without deadlocks or lost
 updates.
+
+**Console entry**: the admin grant route (`POST /api/admin/customers/{id}/credits`)
+accepts `expiresAt` (ISO 8601) or `expiresInDays` (whole days), and the grant
+dialog exposes the days form. The reservation sweeper remains a separate open
+item — reservation rows carry `expiresAt` but are not auto-expired in this
+release; capture and release are the settlement paths.
 
 ## Deferred after P0
 
