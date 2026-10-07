@@ -519,7 +519,7 @@ describe("journaled billing operation audit (A4)", () => {
     if (!membership) throw new Error("membership missing after accept");
 
     mockAuth.mockResolvedValue({
-      user: { id: membership.operatorId },
+      user: { id: membership.operatorId, credentialVersion: 0 },
       expires: new Date(Date.now() + 3600_000).toISOString(),
     } as never);
     mockCookies.mockResolvedValue({ get: () => undefined } as never);

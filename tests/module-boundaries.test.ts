@@ -202,6 +202,14 @@ const UI_MODULE_IMPORT_ALLOWLIST = [
     module: "/modules/admin/guard",
   },
   {
+    // Dashboard layout's DB-backed actor gate (external review round-2):
+    // getSessionActor is the session-actor resolver (no data mutation);
+    // the gate must run before ANY dashboard subtree renders, so the
+    // layout itself is the right home.
+    file: "src/app/(dashboard)/layout.tsx",
+    module: "/modules/admin/guard",
+  },
+  {
     file: "src/components/layout/Sidebar.tsx",
     module: "/modules/team/permissions",
   },

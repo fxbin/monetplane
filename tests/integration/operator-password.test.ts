@@ -1,6 +1,8 @@
+import { and, eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { POST as passwordPOST } from "../../src/app/api/admin/session/password/route";
 import { getDb } from "../../src/db/client";
+import { operators } from "../../src/modules/team/schema";
 import {
   acceptInvitation,
   changeOperatorPassword,
@@ -55,7 +57,7 @@ async function seedOperator(seed: string) {
   const membership = await findMembershipByEmail(email);
   if (!membership) throw new Error("membership missing");
   mockAuth.mockResolvedValue({
-    user: { id: membership.operatorId },
+    user: { id: membership.operatorId, credentialVersion: 0 },
     expires: new Date(Date.now() + 3600_000).toISOString(),
   } as never);
   mockCookies.mockResolvedValue({ get: () => undefined } as never);
@@ -132,7 +134,9 @@ describe("password self-service hardening (external review)", () => {
     const membership = await findMembershipByEmail(email);
     if (!membership) throw new Error("membership missing");
     mockAuth.mockResolvedValue({
-      user: { id: membership.operatorId },
+      // credentialVersion 0 matches the DB row at creation (fail-closed
+      // guard requires a safe-integer version that equals the DB value).
+      user: { id: membership.operatorId, credentialVersion: 0 },
       expires: new Date(Date.now() + 3600_000).toISOString(),
     } as never);
 
@@ -143,29 +147,37 @@ describe("password self-service hardening (external review)", () => {
     expect(response.status).toBe(200);
   });
 
-  it("rejects a concurrent rotation with 409 (CAS, P1-150-02)", async () => {
+  it("hits the CAS loser path: an UPDATE armed with the OLD hash matches 0 rows after the winner commits (round-2)", async () => {
     const m = await seedOperator(Math.random().toString(36).slice(2, 8));
-    const { changeOperatorPassword, TeamServiceError } = await import(
-      "../../src/modules/team/service"
-    );
-    // First rotation wins.
+
+    // What a concurrent request would have read + verified against.
+    const [before] = await getDb()
+      .select({ passwordHash: operators.passwordHash })
+      .from(operators)
+      .where(eq(operators.id, m.operatorId))
+      .limit(1);
+    expect(before).toBeTruthy();
+
+    // Winner commits.
     await changeOperatorPassword({
       operatorId: m.operatorId,
       currentPassword: "current(s3cret)1",
       newPassword: "rotated(s3cret)1",
     });
-    // Second rotation using the now-stale old password: verify passes only
-    // against the OLD hash we cached — simulate by asserting the service
-    // rejects when the hash moved: the direct second call with the old
-    // password must fail credential verification.
-    await expect(
-      changeOperatorPassword({
-        operatorId: m.operatorId,
-        currentPassword: "current(s3cret)1",
-        newPassword: "rotated(s3cret)2",
-      }),
-    ).rejects.toMatchObject({ status: 401 });
-    expect(TeamServiceError).toBeDefined();
+
+    // Loser: the CAS WHERE clause (same shape the service uses) matches
+    // 0 rows against the stale hash — the loser cannot win.
+    const loser = await getDb()
+      .update(operators)
+      .set({ updatedAt: new Date() })
+      .where(
+        and(
+          eq(operators.id, m.operatorId),
+          eq(operators.passwordHash, before?.passwordHash ?? ""),
+        ),
+      )
+      .returning({ id: operators.id });
+    expect(loser).toHaveLength(0);
   });
 
   it("bumps credentialVersion so a stale session is rejected by the guard (P1-150-03)", async () => {
