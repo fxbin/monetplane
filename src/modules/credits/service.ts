@@ -633,62 +633,39 @@ export async function reserveCredits(
   },
   db: Database = getDb(),
 ) {
-  // Round-2 P0 fix (external review): expire due buckets on the target
-  // account BEFORE the reservation transaction, so the conditional
-  // available-balance check evaluates a CLEAN balance and a reservation
-  // can never draw on expired credits (the reserve → capture bypass).
-  // This runs in its OWN transaction on purpose: when the reservation is
-  // subsequently rejected for insufficient (post-expiry) balance, the
-  // expiry still commits — rolling it back with the failed reservation
-  // would leave the expired credits spendable to the next caller.
-  {
-    const environment = resolveCreditEnvironment(input.environment);
-    const applicationCustomerId = await resolveApplicationCustomerId(
-      input.applicationId,
-      input.externalCustomerId,
-      db,
-    );
-    const account = await findAccount(
-      input.applicationId,
-      applicationCustomerId,
-      normalizeCreditType(input.creditType),
-      db,
-      environment,
-    );
-    if (account) {
-      await db.transaction((tx) =>
-        expireDueBucketsForAccount(
-          input.applicationId,
-          account.id,
-          environment,
-          tx,
-        ),
-      );
-    }
-  }
+  const creditType = normalizeCreditType(input.creditType);
+  assertPositiveAmount(input.amount, "Reservation amount");
+  const referenceType = requireText(
+    input.referenceType,
+    "Reservation reference type",
+  );
+  const referenceId = requireText(
+    input.referenceId,
+    "Reservation reference ID",
+  );
+  const idempotencyKey = requireText(
+    input.idempotencyKey,
+    "Credit idempotency key",
+  );
+  const environment = resolveCreditEnvironment(input.environment);
 
-  return db.transaction(async (tx) => {
-    const creditType = normalizeCreditType(input.creditType);
-    assertPositiveAmount(input.amount, "Reservation amount");
-    const referenceType = requireText(
-      input.referenceType,
-      "Reservation reference type",
-    );
-    const referenceId = requireText(
-      input.referenceId,
-      "Reservation reference ID",
-    );
-    const idempotencyKey = requireText(
-      input.idempotencyKey,
-      "Credit idempotency key",
-    );
+  // Round-3 fix (external review): ONE transaction, account-first lock,
+  // expiry inside, insufficient = sentinel (committed) + throw after.
+  //
+  // The round-2 "pre-transaction expiry" had a TOCTOU race: between the
+  // expiry commit and the reservation transaction, a concurrent release
+  // could land expired credits back into available and the reservation
+  // would succeed against them. Single-transaction removes the window;
+  // the sentinel keeps the round-2 goal — a rejected reservation still
+  // commits its expiry work (throwing inside the tx would roll it back
+  // and leave the expired credits spendable to the next caller).
+  const outcome = await db.transaction(async (tx) => {
     const applicationCustomerId = await resolveApplicationCustomerId(
       input.applicationId,
       input.externalCustomerId,
       tx,
     );
 
-    const environment = resolveCreditEnvironment(input.environment);
     await lockIdempotency(input.applicationId, environment, idempotencyKey, tx);
     const [existingReservation] = await tx
       .select()
@@ -710,7 +687,11 @@ export async function reserveCredits(
       ) {
         throw new CreditIdempotencyConflictError();
       }
-      return { reservation: existingReservation, duplicate: true };
+      return {
+        kind: "reserved" as const,
+        reservation: existingReservation,
+        duplicate: true,
+      };
     }
 
     const account = await findAccount(
@@ -720,7 +701,24 @@ export async function reserveCredits(
       tx,
       environment,
     );
-    if (!account) throw new InsufficientCreditsError();
+    if (!account) return { kind: "insufficient" as const };
+
+    // Account-first lock (canonical order shared with debit/expiry):
+    // explicitly lock the account row BEFORE any bucket lock.
+    await tx
+      .select({ id: creditAccounts.id })
+      .from(creditAccounts)
+      .where(eq(creditAccounts.id, account.id))
+      .for("update");
+
+    // Account-scoped partial expiry UNDER the account lock: available is
+    // clean from here on — no expired credit can be reserved.
+    await expireDueBucketsForAccount(
+      input.applicationId,
+      account.id,
+      environment,
+      tx,
+    );
 
     const [updated] = await tx
       .update(creditAccounts)
@@ -737,7 +735,9 @@ export async function reserveCredits(
         ),
       )
       .returning();
-    if (!updated) throw new InsufficientCreditsError();
+    // Sentinel, not throw: the expiry above must commit even when the
+    // reservation itself is rejected.
+    if (!updated) return { kind: "insufficient" as const };
 
     const [reservation] = await tx
       .insert(creditReservations)
@@ -778,8 +778,18 @@ export async function reserveCredits(
       tx,
     );
 
-    return { reservation, duplicate: false };
+    return {
+      kind: "reserved" as const,
+      reservation,
+      duplicate: false,
+    };
   });
+
+  if (outcome.kind === "insufficient") throw new InsufficientCreditsError();
+  return {
+    reservation: outcome.reservation,
+    duplicate: outcome.duplicate,
+  };
 }
 
 async function lockReservation(

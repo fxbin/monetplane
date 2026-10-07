@@ -198,9 +198,59 @@ describe("password self-service hardening (external review)", () => {
     expect(after?.operatorCredentialVersion).toBe(
       (before?.operatorCredentialVersion ?? 0) + 1,
     );
-    // The still-cached mockAuth session carries NO credentialVersion
-    // (undefined) — per the guard contract, undefined skips the gate
-    // (legacy tokens); a versioned token at the old version would be
-    // rejected. The version bump is the enforceable part here.
+  });
+
+  // Round-3 (external review): the guard is fail-closed on the version
+  // claim — all three states exercised end-to-end through the route.
+  it("credentialVersion gate: unversioned session → 401, stale version → 401, current version → allowed", async () => {
+    const m = await seedOperator(Math.random().toString(36).slice(2, 8));
+    const { findMembershipByOperatorId } = await import(
+      "../../src/modules/team/service"
+    );
+
+    // Rotate: DB version moves 0 → 1. The mock session (seeded at version
+    // 0) is now stale by construction.
+    await changeOperatorPassword({
+      operatorId: m.operatorId,
+      currentPassword: "current(s3cret)1",
+      newPassword: "rotated(s3cret)1",
+    });
+    const membership = await findMembershipByOperatorId(m.operatorId);
+    const currentVersion = membership?.operatorCredentialVersion ?? 1;
+
+    const post = () =>
+      passwordPOST(
+        new Request("https://console.test/api/admin/session/password", {
+          method: "POST",
+          body: JSON.stringify({
+            currentPassword: "rotated(s3cret)1",
+            newPassword: "next(s3cret)2",
+          }),
+          headers: { "content-type": "application/json" },
+        }),
+      );
+
+    // State 1: unversioned legacy session (no credentialVersion claim)
+    // — fail-closed, NOT a silent skip.
+    mockAuth.mockResolvedValue({
+      user: { id: m.operatorId },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    } as never);
+    expect((await post()).status).toBe(401);
+
+    // State 2: versioned session captured before the rotation (stale).
+    mockAuth.mockResolvedValue({
+      user: { id: m.operatorId, credentialVersion: currentVersion - 1 },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    } as never);
+    expect((await post()).status).toBe(401);
+
+    // State 3: session re-issued after the rotation (current version)
+    // — passes the gate and the request succeeds end-to-end.
+    mockAuth.mockResolvedValue({
+      user: { id: m.operatorId, credentialVersion: currentVersion },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    } as never);
+    expect((await post()).status).toBe(200);
   });
 });

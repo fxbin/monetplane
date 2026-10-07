@@ -184,8 +184,11 @@ export async function consumeBuckets(
  * reserve → capture path (capture deliberately settles pre-expiry
  * reservations via allowExpired).
  *
- * Canonical lock order preserved: the caller holds the account row lock
- * (its conditional UPDATE precedes this call); buckets lock after.
+ * PRECONDITION (round-3 fix): the caller MUST already hold the account
+ * row lock (SELECT ... FOR UPDATE) before invoking this helper. The
+ * account read below is deliberately lock-free — taking it here would
+ * invert the canonical account → buckets lock order and deadlock against
+ * concurrent debit/release paths.
  */
 export async function expireDueBucketsForAccount(
   applicationId: string,
@@ -216,13 +219,15 @@ export async function expireDueBucketsForAccount(
     .for("update");
 
   for (const bucket of due) {
+    // Lock-free read: the caller holds the account row lock (see
+    // precondition above), so this balance is stable for the duration of
+    // the transaction and re-locking here would deadlock.
     const [account] = await tx
       .select({
         availableBalance: creditAccounts.availableBalance,
       })
       .from(creditAccounts)
-      .where(eq(creditAccounts.id, accountId))
-      .for("update");
+      .where(eq(creditAccounts.id, accountId));
     if (!account) return;
     const fresh = bucket; // rows were locked above in canonical order
     const reversible = Math.min(

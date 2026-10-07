@@ -149,7 +149,28 @@ export async function processProviderWebhook(
         };
       }
 
-      const event = asStoredNormalizedEvent(locked.normalizedEvent);
+      // Round-3 fix (external review): re-arm a failed row with the CURRENT
+      // delivery's payload. The first attempt may have failed precisely
+      // because its payload was incomplete (e.g. a renewal missing
+      // periodEnd); reprocessing the stale persisted copy would fail forever
+      // instead of letting the provider redelivery self-heal. We hold the
+      // inbox row lock, so this refresh is race-free.
+      let storedEvent = locked.normalizedEvent;
+      if (locked.status === "failed") {
+        await tx
+          .update(webhookEvents)
+          .set({
+            rawBody: input.rawBody,
+            normalizedEvent: normalized as unknown as Record<string, unknown>,
+            normalizedType: normalized.type,
+            providerEventName: normalized.providerEventName,
+            errorMessage: null,
+          })
+          .where(eq(webhookEvents.id, webhookEventId));
+        storedEvent = normalized as unknown as Record<string, unknown>;
+      }
+
+      const event = asStoredNormalizedEvent(storedEvent);
       if (event.type === "unknown") {
         await tx
           .update(webhookEvents)
