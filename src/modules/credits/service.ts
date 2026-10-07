@@ -7,6 +7,7 @@ import {
   bucketSourceForTransactionType,
   consumeBuckets,
   createBucketForGrant,
+  expireDueBucketsForAccount,
 } from "./buckets";
 import {
   creditAccounts,
@@ -23,7 +24,8 @@ export type CreditTransactionType =
   | "capture.usage"
   | "release.usage"
   | "refund.usage"
-  | "adjustment.admin";
+  | "adjustment.admin"
+  | "grant.revoked";
 
 type CreditStore = Pick<Database, "select" | "insert" | "update" | "execute">;
 type CreditAccountRow = typeof creditAccounts.$inferSelect;
@@ -379,6 +381,21 @@ export async function grantCreditsInTransaction(
       sourceType,
       sourceId,
     });
+    // Round-2 fix (external review P2): expiresAt decides when the asset
+    // disappears — it is ledger semantics, not metadata. A duplicate
+    // grant carrying a DIFFERENT expiry (e.g. a provider corrected the
+    // period end) must conflict loudly instead of silently keeping the
+    // first bucket's expiry. Grant writes stamp metadata.expiresAt (via
+    // grantConfiguredCreditsInTransaction / the grant metadata below).
+    const requestedExpiry =
+      (input.metadata?.expiresAt as string | undefined) ??
+      input.expiresAt?.toISOString() ??
+      null;
+    const existingExpiry =
+      (existing.metadata?.expiresAt as string | undefined) ?? null;
+    if (existingExpiry !== requestedExpiry) {
+      throw new CreditIdempotencyConflictError();
+    }
     return { transaction: existing, duplicate: true };
   }
 
@@ -413,7 +430,12 @@ export async function grantCreditsInTransaction(
       sourceId,
       environment,
       idempotencyKey,
-      metadata: input.metadata,
+      metadata: {
+        ...(input.expiresAt
+          ? { expiresAt: input.expiresAt.toISOString() }
+          : {}),
+        ...(input.metadata ?? {}),
+      },
     },
     db,
   );
@@ -611,28 +633,39 @@ export async function reserveCredits(
   },
   db: Database = getDb(),
 ) {
-  return db.transaction(async (tx) => {
-    const creditType = normalizeCreditType(input.creditType);
-    assertPositiveAmount(input.amount, "Reservation amount");
-    const referenceType = requireText(
-      input.referenceType,
-      "Reservation reference type",
-    );
-    const referenceId = requireText(
-      input.referenceId,
-      "Reservation reference ID",
-    );
-    const idempotencyKey = requireText(
-      input.idempotencyKey,
-      "Credit idempotency key",
-    );
+  const creditType = normalizeCreditType(input.creditType);
+  assertPositiveAmount(input.amount, "Reservation amount");
+  const referenceType = requireText(
+    input.referenceType,
+    "Reservation reference type",
+  );
+  const referenceId = requireText(
+    input.referenceId,
+    "Reservation reference ID",
+  );
+  const idempotencyKey = requireText(
+    input.idempotencyKey,
+    "Credit idempotency key",
+  );
+  const environment = resolveCreditEnvironment(input.environment);
+
+  // Round-3 fix (external review): ONE transaction, account-first lock,
+  // expiry inside, insufficient = sentinel (committed) + throw after.
+  //
+  // The round-2 "pre-transaction expiry" had a TOCTOU race: between the
+  // expiry commit and the reservation transaction, a concurrent release
+  // could land expired credits back into available and the reservation
+  // would succeed against them. Single-transaction removes the window;
+  // the sentinel keeps the round-2 goal — a rejected reservation still
+  // commits its expiry work (throwing inside the tx would roll it back
+  // and leave the expired credits spendable to the next caller).
+  const outcome = await db.transaction(async (tx) => {
     const applicationCustomerId = await resolveApplicationCustomerId(
       input.applicationId,
       input.externalCustomerId,
       tx,
     );
 
-    const environment = resolveCreditEnvironment(input.environment);
     await lockIdempotency(input.applicationId, environment, idempotencyKey, tx);
     const [existingReservation] = await tx
       .select()
@@ -654,7 +687,11 @@ export async function reserveCredits(
       ) {
         throw new CreditIdempotencyConflictError();
       }
-      return { reservation: existingReservation, duplicate: true };
+      return {
+        kind: "reserved" as const,
+        reservation: existingReservation,
+        duplicate: true,
+      };
     }
 
     const account = await findAccount(
@@ -664,7 +701,24 @@ export async function reserveCredits(
       tx,
       environment,
     );
-    if (!account) throw new InsufficientCreditsError();
+    if (!account) return { kind: "insufficient" as const };
+
+    // Account-first lock (canonical order shared with debit/expiry):
+    // explicitly lock the account row BEFORE any bucket lock.
+    await tx
+      .select({ id: creditAccounts.id })
+      .from(creditAccounts)
+      .where(eq(creditAccounts.id, account.id))
+      .for("update");
+
+    // Account-scoped partial expiry UNDER the account lock: available is
+    // clean from here on — no expired credit can be reserved.
+    await expireDueBucketsForAccount(
+      input.applicationId,
+      account.id,
+      environment,
+      tx,
+    );
 
     const [updated] = await tx
       .update(creditAccounts)
@@ -681,7 +735,9 @@ export async function reserveCredits(
         ),
       )
       .returning();
-    if (!updated) throw new InsufficientCreditsError();
+    // Sentinel, not throw: the expiry above must commit even when the
+    // reservation itself is rejected.
+    if (!updated) return { kind: "insufficient" as const };
 
     const [reservation] = await tx
       .insert(creditReservations)
@@ -722,8 +778,18 @@ export async function reserveCredits(
       tx,
     );
 
-    return { reservation, duplicate: false };
+    return {
+      kind: "reserved" as const,
+      reservation,
+      duplicate: false,
+    };
   });
+
+  if (outcome.kind === "insufficient") throw new InsufficientCreditsError();
+  return {
+    reservation: outcome.reservation,
+    duplicate: outcome.duplicate,
+  };
 }
 
 async function lockReservation(
@@ -842,7 +908,12 @@ export async function captureReservation(
       .returning();
     if (!updatedReservation) throw new Error("Failed to capture reservation");
 
-    await consumeBuckets(reservation.creditAccountId, input.amount, tx);
+    // Captures settle a reservation that predates any bucket expiry:
+    // expired buckets remain consumable for exactly the reserved claim
+    // (grandfather; the external-review P0 model).
+    await consumeBuckets(reservation.creditAccountId, input.amount, tx, {
+      allowExpired: true,
+    });
 
     const transaction = await appendTransaction(
       {

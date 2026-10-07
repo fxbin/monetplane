@@ -8,6 +8,7 @@ import {
   refunds,
   subscriptions,
 } from "@/modules/commerce/schema";
+import { revokeSubscriptionCreditsInTransaction } from "@/modules/credits/revocation";
 import { revokeEntitlementsBySource } from "@/modules/entitlements/service";
 import { billingOperations } from "@/modules/operations/schema";
 import type {
@@ -807,6 +808,21 @@ export async function reconcileBillingOperation(
             applicationId,
             "subscription",
             subscription.id,
+            tx,
+          );
+          // Contract-termination clawback (external review 2026-10-06,
+          // P1-151-03): the journaled cancel path previously revoked
+          // entitlements but left the cycle's unused credits spendable —
+          // a Creem synchronous immediate-cancel would complete the
+          // operation with credits still live. Same transaction.
+          await revokeSubscriptionCreditsInTransaction(
+            {
+              applicationId,
+              subscriptionId: subscription.id,
+              environment:
+                subscription.environment === "live" ? "live" : "test",
+              reason: "subscription_cancelled",
+            },
             tx,
           );
         }

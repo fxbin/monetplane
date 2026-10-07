@@ -19,6 +19,20 @@ export async function grantConfiguredCreditsInTransaction(
     periodKey: string;
     sourceEventId?: string | null;
     environment?: "test" | "live";
+    /**
+     * Optional bucket expiry (roundtable 2026-10-06, PR-B): subscription
+     * renewals pass the period end so each cycle's grant expires with its
+     * cycle — the "period reset" quota semantic. One-time purchases leave
+     * this unset (credits persist).
+     */
+    expiresAt?: Date | null;
+    /**
+     * Round-2 fail-closed (external review): when true, grants without a
+     * real expiresAt throw instead of creating permanent buckets — used
+     * by subscription renewals whose period boundary is the balance's
+     * lifecycle. One-time purchases leave this unset.
+     */
+    requireExpiry?: boolean;
   },
   db: CommerceCreditDb,
 ) {
@@ -71,6 +85,15 @@ export async function grantConfiguredCreditsInTransaction(
     amountByCreditType.set(config.creditType, next);
   }
 
+  // Fail-closed boundary requirement (external review round-2 P1): only
+  // applies when this product actually grants CREDITS — entitlement-only
+  // products have no expiry semantics and renew fine without boundaries.
+  if (input.requireExpiry && !input.expiresAt && amountByCreditType.size > 0) {
+    throw new Error(
+      "Period-reset credit grants require an expiry boundary (subscription period end missing)",
+    );
+  }
+
   const results = [];
   for (const [creditType, amount] of amountByCreditType) {
     if (amount <= 0) continue;
@@ -86,9 +109,15 @@ export async function grantConfiguredCreditsInTransaction(
           sourceId: input.sourceId,
           environment: input.environment,
           idempotencyKey: `grant:${input.sourceType}:${input.sourceId}:${input.periodKey}:${creditType}`,
-          metadata: input.sourceEventId
-            ? { sourceEventId: input.sourceEventId }
-            : {},
+          expiresAt: input.expiresAt ?? null,
+          metadata: {
+            ...(input.expiresAt
+              ? { expiresAt: input.expiresAt.toISOString() }
+              : {}),
+            ...(input.sourceEventId
+              ? { sourceEventId: input.sourceEventId }
+              : {}),
+          },
         },
         db,
       ),

@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { prices } from "../catalog/schema";
 import { grantConfiguredCreditsInTransaction } from "../credits/commerce";
+import { revokeSubscriptionCreditsInTransaction } from "../credits/revocation";
 import {
   expireEntitlementsBySource,
   grantConfiguredEntitlements,
@@ -214,6 +215,20 @@ export async function applySubscriptionEvent(
           environment,
           sourceEventId: event.providerEventId,
           periodKey: grantPeriodKey,
+          // Period-reset quota semantics (roundtable 2026-10-06, PR-B):
+          // each cycle's grant expires with its cycle, so expiresAt is
+          // the event's own period end. Round-2 fix (external review):
+          // a RENEWAL that grants credits without its own period
+          // boundary now fails closed — expiresAt NULL means "permanent
+          // asset" in this ledger, and permanent credits from a
+          // period-reset subscription model are a contract violation.
+          // The inbox marks the event failed and the provider redelivers
+          // (with boundaries) rather than us guessing or silently
+          // accumulating permanent grants. Activations without boundaries
+          // still grant (periodEnd may be learned later; the first-cycle
+          // grant keeps entitlement delivery on the happy path).
+          expiresAt: eventPeriodEnd ?? undefined,
+          requireExpiry: event.type === "subscription.renewed",
         },
         tx,
       );
@@ -225,6 +240,18 @@ export async function applySubscriptionEvent(
       applicationId,
       "subscription",
       subscription.id,
+      tx,
+    );
+    // Contract-termination clawback (roundtable 2026-10-06, PR-C):
+    // unused cycle credits are recorded as grant.revoked (NOT expired —
+    // different trigger kind, different reconciliation line).
+    await revokeSubscriptionCreditsInTransaction(
+      {
+        applicationId,
+        subscriptionId: subscription.id,
+        environment,
+        reason: "subscription_cancelled",
+      },
       tx,
     );
   }
