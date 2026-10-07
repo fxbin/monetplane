@@ -85,7 +85,10 @@ export async function grantConfiguredCreditsInTransaction(
     amountByCreditType.set(config.creditType, next);
   }
 
-  if (input.requireExpiry && !input.expiresAt) {
+  // Fail-closed boundary requirement (external review round-2 P1): only
+  // applies when this product actually grants CREDITS — entitlement-only
+  // products have no expiry semantics and renew fine without boundaries.
+  if (input.requireExpiry && !input.expiresAt && amountByCreditType.size > 0) {
     throw new Error(
       "Period-reset credit grants require an expiry boundary (subscription period end missing)",
     );
