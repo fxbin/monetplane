@@ -2,8 +2,8 @@ import Link from "next/link";
 import { BillingOperationsFilters } from "@/components/billing/BillingOperationsFilters";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
-import { getDictionary } from "@/i18n/server";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
   getProviderFilterOptions,
@@ -42,6 +42,9 @@ export default async function SubscriptionsPage({
     searchParams,
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.subscriptions;
   const filter = readFilter(params);
   const applicationId = context.selectedApplication?.id;
@@ -56,7 +59,7 @@ export default async function SubscriptionsPage({
     : [[], []];
 
   return (
-    <PageContainer title="Subscriptions" description={t.description}>
+    <PageContainer title={t.title} description={t.description}>
       {applicationId && (
         <BillingOperationsFilters
           action="/subscriptions"
@@ -160,7 +163,7 @@ export default async function SubscriptionsPage({
                       </td>
                       <td className="cell-muted">
                         {subscription.currentPeriodEnd
-                          ? formatDateTime(subscription.currentPeriodEnd)
+                          ? fmtDateTime(subscription.currentPeriodEnd)
                           : "—"}
                       </td>
                       <td>
@@ -169,7 +172,7 @@ export default async function SubscriptionsPage({
                           "—"}
                       </td>
                       <td className="cell-muted">
-                        {formatDateTime(subscription.updatedAt)}
+                        {fmtDateTime(subscription.updatedAt)}
                       </td>
                       <td>
                         <Link

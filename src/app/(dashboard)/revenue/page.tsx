@@ -1,6 +1,6 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { CurrencyBreakdown } from "@/components/ui/CurrencyBreakdown";
-import { formatMessage, getDictionary } from "@/i18n/server";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
 import { formatAmount } from "@/lib/format";
 import {
   getRevenueAnalytics,
@@ -11,13 +11,13 @@ import { getConsoleContext } from "@/server/control-plane/context";
 
 export const dynamic = "force-dynamic";
 
-function formatMonth(month: string): string {
+function formatMonth(month: string, localeTag: string): string {
   const [year, monthNumber] = month.split("-");
   const date = new Date(
     Number(year),
     Number(monthNumber) - 1,
     1,
-  ).toLocaleDateString("en-US", { month: "short", year: "2-digit" });
+  ).toLocaleDateString(localeTag, { month: "short", year: "2-digit" });
   return date;
 }
 
@@ -26,6 +26,7 @@ export default async function RevenuePage() {
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
   const t = dictionary.revenue;
   const application = context.selectedApplication;
   const environmentLabel =
@@ -190,7 +191,7 @@ export default async function RevenuePage() {
                     title={`${entry.month}: ${formatAmount(entry.revenueMinor, entry.currency)}`}
                   />
                   <span className="chart-bar-label">
-                    {formatMonth(entry.month)}
+                    {formatMonth(entry.month, localeTag)}
                   </span>
                 </div>
               ))}

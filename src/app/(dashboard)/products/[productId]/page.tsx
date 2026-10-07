@@ -2,8 +2,8 @@ import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProductProviderRouteEditor } from "@/components/products/ProductProviderRouteEditor";
 import { StatusBadge } from "@/components/ui/console";
-import { formatMessage, getDictionary } from "@/i18n/server";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import {
   getBuilderProviderOptions,
@@ -24,6 +24,9 @@ export default async function ProductDetailPage({
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.productsDetail;
   const TYPE_LABELS: Record<string, string> = {
     one_time: t.typeOneTime,
@@ -90,7 +93,7 @@ export default async function ProductDetailPage({
           <code>{detail.product.key}</code>
           <p>
             {formatMessage(t.createdAt, {
-              date: formatDateTime(detail.product.createdAt),
+              date: fmtDateTime(detail.product.createdAt),
               application: context.selectedApplication.name,
             })}
           </p>

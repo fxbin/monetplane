@@ -83,7 +83,9 @@ export function WebhookManager({
       });
       const endpoint = body.endpoint as { name: string; secret: string };
       setRevealed({
-        title: `${endpoint.name} signing secret`,
+        title: formatMessage(labels.signingSecretTitle, {
+          name: endpoint.name,
+        }),
         secret: endpoint.secret,
         notice: String(body.notice ?? labels.storeNow),
       });

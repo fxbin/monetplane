@@ -227,8 +227,10 @@ export function TeamManager({
                       ) : (
                         <span className="cell-muted">
                           {member.applicationScope === "all"
-                            ? "All projects"
-                            : `${member.applicationIds.length} project(s)`}
+                            ? labels.allProjects
+                            : formatMessage(labels.projectsCount, {
+                                count: String(member.applicationIds.length),
+                              })}
                         </span>
                       )}
                     </td>

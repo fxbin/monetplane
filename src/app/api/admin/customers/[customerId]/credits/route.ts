@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireApplicationAccess,
   requirePermission,
@@ -12,6 +13,7 @@ type RouteContext = {
 };
 
 export async function POST(request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("credits:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -30,7 +32,7 @@ export async function POST(request: Request, { params }: RouteContext) {
     ]);
     if (!context.selectedApplication) {
       return NextResponse.json(
-        { error: "Select a project first" },
+        { error: adminErrors.selectAProjectFirst },
         { status: 400 },
       );
     }
@@ -56,13 +58,13 @@ export async function POST(request: Request, { params }: RouteContext) {
         : undefined;
     if (!creditType) {
       return NextResponse.json(
-        { error: "Credit type is required" },
+        { error: adminErrors.creditTypeIsRequired },
         { status: 400 },
       );
     }
     if (!Number.isSafeInteger(amount) || amount <= 0) {
       return NextResponse.json(
-        { error: "Amount must be a positive whole number" },
+        { error: adminErrors.amountMustBeAPositiveWholeNumber },
         { status: 400 },
       );
     }
@@ -89,7 +91,9 @@ export async function POST(request: Request, { params }: RouteContext) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to grant credits",
+          error instanceof Error
+            ? error.message
+            : adminErrors.failedToGrantCredits,
       },
       { status: 400 },
     );

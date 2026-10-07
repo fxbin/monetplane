@@ -1,6 +1,6 @@
 import { PageContainer } from "@/components/layout/PageContainer";
-import { formatMessage, getDictionary } from "@/i18n/server";
-import { formatDateTime } from "@/lib/format";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getCreditsOverview } from "@/server/control-plane/credits-overview";
 
@@ -19,6 +19,9 @@ export default async function CreditsPage() {
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.creditsOverview;
   const application = context.selectedApplication;
   const environmentLabel =
@@ -106,7 +109,7 @@ export default async function CreditsPage() {
                     </td>
                     <td className="cell-muted">{entry.type}</td>
                     <td className="cell-muted">
-                      {formatDateTime(entry.createdAt)}
+                      {fmtDateTime(entry.createdAt)}
                     </td>
                   </tr>
                 ))}
@@ -138,9 +141,7 @@ export default async function CreditsPage() {
                     <td>{bucket.customer ?? "—"}</td>
                     <td>{bucket.remaining.toLocaleString()}</td>
                     <td className="cell-muted">
-                      {bucket.expiresAt
-                        ? formatDateTime(bucket.expiresAt)
-                        : "—"}
+                      {bucket.expiresAt ? fmtDateTime(bucket.expiresAt) : "—"}
                     </td>
                   </tr>
                 ))}
@@ -179,7 +180,7 @@ export default async function CreditsPage() {
                       {reservation.referenceType}/{reservation.referenceId}
                     </td>
                     <td className="cell-muted">
-                      {formatDateTime(reservation.createdAt)}
+                      {fmtDateTime(reservation.createdAt)}
                     </td>
                   </tr>
                 ))}

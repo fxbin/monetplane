@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireApplicationAccess,
   requirePermission,
@@ -10,6 +11,7 @@ import { getConsoleContext } from "@/server/control-plane/context";
 type RouteContext = { params: Promise<{ endpointId: string }> };
 
 export async function POST(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("webhooks:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -21,7 +23,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const application = context.selectedApplication;
     if (!application) {
       return NextResponse.json(
-        { error: "No project selected" },
+        { error: adminErrors.noProjectSelected },
         { status: 400 },
       );
     }
@@ -50,7 +52,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     const message =
       error instanceof Error
         ? error.message
-        : "Failed to rotate webhook secret";
+        : adminErrors.failedToRotateWebhookSecret;
     return NextResponse.json({ error: message }, { status: 404 });
   }
 }

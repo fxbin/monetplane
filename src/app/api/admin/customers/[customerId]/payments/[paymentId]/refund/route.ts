@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireApplicationAccess,
   requirePermission,
@@ -12,6 +13,7 @@ type RouteContext = {
 };
 
 export async function POST(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("billing:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -22,7 +24,7 @@ export async function POST(_request: Request, { params }: RouteContext) {
     ]);
     if (!context.selectedApplication) {
       return NextResponse.json(
-        { error: "Select a project first" },
+        { error: adminErrors.selectAProjectFirst },
         { status: 400 },
       );
     }
@@ -57,7 +59,9 @@ export async function POST(_request: Request, { params }: RouteContext) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error ? error.message : "Failed to refund payment",
+          error instanceof Error
+            ? error.message
+            : adminErrors.failedToRefundPayment,
       },
       { status: 400 },
     );

@@ -7,8 +7,8 @@ import {
 } from "@/components/billing/BillingOperationActions";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
-import { formatMessage, getDictionary } from "@/i18n/server";
-import { formatAmount, formatDateTime } from "@/lib/format";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
+import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { getPaymentDetail } from "@/server/control-plane/billing-operations";
 import { getConsoleContext } from "@/server/control-plane/context";
 
@@ -24,6 +24,9 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.paymentDetail;
   if (!context.selectedApplication) notFound();
 
@@ -54,7 +57,7 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
           <div className="billing-detail-meta">
             <code>{payment.id}</code>
             <span>{payment.providerPaymentId}</span>
-            <span>{formatDateTime(payment.createdAt)}</span>
+            <span>{fmtDateTime(payment.createdAt)}</span>
           </div>
         </div>
         <StatusBadge status={payment.status} />
@@ -183,7 +186,7 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                       })}
                       {operation.retryOfOperationId ? t.retrySuffix : ""}
                       {" · "}
-                      {formatDateTime(operation.createdAt)}
+                      {fmtDateTime(operation.createdAt)}
                     </span>
                     {operation.failureKind && (
                       <small>
@@ -275,7 +278,7 @@ export default async function PaymentPage({ params }: PaymentPageProps) {
                 <div>
                   <strong>{event.normalizedType}</strong>
                   <span>{event.providerEventName}</span>
-                  <small>{formatDateTime(event.occurredAt)}</small>
+                  <small>{fmtDateTime(event.occurredAt)}</small>
                 </div>
                 <StatusBadge status={event.status} />
               </div>

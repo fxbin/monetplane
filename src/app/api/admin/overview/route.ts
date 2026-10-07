@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import { requireAdmin } from "@/modules/admin/guard";
 import {
   getOverviewStats,
@@ -7,6 +8,7 @@ import {
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export async function GET() {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -29,7 +31,7 @@ export async function GET() {
   } catch (error) {
     console.error("[admin/overview] Error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch overview data" },
+      { error: adminErrors.failedToFetchOverviewData },
       { status: 500 },
     );
   }

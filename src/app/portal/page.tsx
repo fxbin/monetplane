@@ -1,5 +1,5 @@
 import { CancelSubscriptionButton } from "@/components/portal/PortalActions";
-import { formatMessage, getDictionary } from "@/i18n/server";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
 import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
 import { PortalServiceError } from "@/modules/portal/service";
 import { getPortalBillingState } from "@/server/control-plane/portal";
@@ -33,6 +33,9 @@ export default async function PortalPage({
     searchParams,
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
+  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
+  const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.portal;
   const token = typeof params.token === "string" ? params.token : "";
 
@@ -127,16 +130,14 @@ export default async function PortalPage({
                       {subscription.cancelAtPeriodEnd ? (
                         <span className="portal-badge">
                           {formatMessage(t.ends, {
-                            date: formatDate(
-                              subscription.currentPeriodEnd ?? "",
-                            ),
+                            date: fmtDate(subscription.currentPeriodEnd ?? ""),
                           })}
                         </span>
                       ) : (
                         subscription.currentPeriodEnd && (
                           <span className="portal-badge">
                             {formatMessage(t.renews, {
-                              date: formatDate(subscription.currentPeriodEnd),
+                              date: fmtDate(subscription.currentPeriodEnd),
                             })}
                           </span>
                         )
@@ -255,7 +256,7 @@ export default async function PortalPage({
                 <tbody>
                   {state.payments.map((payment) => (
                     <tr key={payment.id}>
-                      <td>{formatDateTime(payment.createdAt)}</td>
+                      <td>{fmtDateTime(payment.createdAt)}</td>
                       <td>
                         {formatAmount(payment.amountMinor, payment.currency)}
                       </td>
@@ -285,7 +286,7 @@ export default async function PortalPage({
                   {formatMessage(t.refundLine, { status: refund.status })}
                   {refund.amountMinor !== null &&
                     ` · ${formatAmount(refund.amountMinor, state.payments[0]?.currency ?? "USD")}`}
-                  · {formatDate(refund.createdAt)}
+                  · {fmtDate(refund.createdAt)}
                 </li>
               ))}
             </ul>

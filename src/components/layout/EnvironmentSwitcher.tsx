@@ -47,7 +47,7 @@ export function EnvironmentSwitcher({
   }
 
   return (
-    <section className="environment-switcher" aria-label="Billing environment">
+    <section className="environment-switcher" aria-label={labels.environment}>
       {environments.map((item) => {
         const active = item.value === environment;
         return (

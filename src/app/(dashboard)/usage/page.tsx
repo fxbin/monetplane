@@ -1,14 +1,14 @@
 import { PageContainer } from "@/components/layout/PageContainer";
-import { formatMessage, getDictionary } from "@/i18n/server";
+import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
 import { getUsageAnalytics } from "@/server/control-plane/analytics";
 import { getConsoleContext } from "@/server/control-plane/context";
 
 export const dynamic = "force-dynamic";
 
-function formatMonth(month: string): string {
+function formatMonth(month: string, localeTag: string): string {
   const [year, monthNumber] = month.split("-");
   return new Date(Number(year), Number(monthNumber) - 1, 1).toLocaleDateString(
-    "en-US",
+    localeTag,
     { month: "short", year: "2-digit" },
   );
 }
@@ -18,6 +18,7 @@ export default async function UsagePage() {
     getConsoleContext(),
     getDictionary(),
   ]);
+  const localeTag = await getLocaleTag();
   const t = dictionary.usage;
   const application = context.selectedApplication;
 
@@ -65,7 +66,7 @@ export default async function UsagePage() {
                   title={`${entry.month}: ${entry.debited} credits`}
                 />
                 <span className="chart-bar-label">
-                  {formatMonth(entry.month)}
+                  {formatMonth(entry.month, localeTag)}
                 </span>
               </div>
             ))}

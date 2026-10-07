@@ -69,7 +69,9 @@ export function ProductProviderRouteEditor({
       if (!response.ok) {
         throw new Error(result.error ?? labels.failed);
       }
-      setMessage(`${environmentLabel} provider updated.`);
+      setMessage(
+        formatMessage(labels.updated, { environment: environmentLabel }),
+      );
       router.refresh();
     } catch (cause) {
       setMessage(cause instanceof Error ? cause.message : labels.failed);

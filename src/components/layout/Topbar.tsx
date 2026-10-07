@@ -23,9 +23,10 @@ export async function Topbar() {
   ]);
   const userName =
     session?.user?.name ?? session?.user?.email ?? dictionary.topbar.operator;
-  const role = (
-    (session?.user as { role?: string } | undefined)?.role ?? "operator"
-  ).replace(/^./, (c) => c.toUpperCase());
+  const rawRole =
+    (session?.user as { role?: string } | undefined)?.role ?? "operator";
+  const roleLabels = dictionary.topbar.roles as Record<string, string>;
+  const role = roleLabels[rawRole] ?? dictionary.topbar.operator;
   const applicationName =
     context.selectedApplication?.name ?? dictionary.topbar.noProject;
 

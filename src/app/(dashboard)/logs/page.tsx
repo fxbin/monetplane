@@ -83,7 +83,7 @@ export default async function LogsPage({
           label={t.provider}
           name="provider"
           defaultValue={filters.provider}
-          placeholder="waffo or pc_…"
+          placeholder={t.providerPlaceholder}
         />
         <FilterTextField
           label={t.customer}
@@ -112,7 +112,7 @@ export default async function LogsPage({
           label={t.status}
           name="status"
           defaultValue={filters.status}
-          placeholder="failed, completed…"
+          placeholder={t.statusPlaceholder}
         />
         <FilterActions>
           <button className="btn btn-primary" type="submit">

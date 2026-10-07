@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getDictionary } from "@/i18n/server";
 import {
   requireAdmin,
   requireApplicationAccess,
@@ -34,6 +35,7 @@ async function resolveScopedConnection(connectionId: string) {
 }
 
 export async function GET(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requireAdmin();
   if (guard instanceof NextResponse) return guard;
 
@@ -41,7 +43,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   const { context, connection } = await resolveScopedConnection(connectionId);
   if (!context.selectedApplication || !connection) {
     return NextResponse.json(
-      { error: "Provider connection not found" },
+      { error: adminErrors.providerConnectionNotFound },
       { status: 404 },
     );
   }
@@ -53,7 +55,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
   );
   if (!detail) {
     return NextResponse.json(
-      { error: "Provider connection not found" },
+      { error: adminErrors.providerConnectionNotFound },
       { status: 404 },
     );
   }
@@ -62,6 +64,7 @@ export async function GET(_request: Request, { params }: RouteContext) {
 }
 
 export async function PATCH(request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -71,7 +74,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const application = context.selectedApplication;
     if (!application || !connection) {
       return NextResponse.json(
-        { error: "Provider connection not found" },
+        { error: adminErrors.providerConnectionNotFound },
         { status: 404 },
       );
     }
@@ -79,7 +82,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     if (scopeCheck) return scopeCheck;
     if (connection.status !== "active") {
       return NextResponse.json(
-        { error: "Revoked provider connections cannot be reconfigured" },
+        { error: adminErrors.revokedProviderConnectionsCannotBeReconfigured },
         { status: 409 },
       );
     }
@@ -95,7 +98,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       const setup = getProviderSetup(connection.provider);
       if (!setup) {
         return NextResponse.json(
-          { error: "This provider cannot be reconfigured from the console" },
+          { error: adminErrors.thisProviderCannotBeReconfiguredFromTheConsole },
           { status: 400 },
         );
       }
@@ -118,7 +121,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     );
     if (!updated) {
       return NextResponse.json(
-        { error: "Provider connection is no longer active" },
+        { error: adminErrors.providerConnectionIsNoLongerActive },
         { status: 409 },
       );
     }
@@ -140,7 +143,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
     const message =
       error instanceof Error
         ? error.message
-        : "Failed to update provider connection";
+        : adminErrors.failedToUpdateProviderConnection;
     const status =
       message.includes("required") || message.includes("changes") ? 400 : 500;
     return NextResponse.json({ error: message }, { status });
@@ -148,6 +151,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
 }
 
 export async function DELETE(_request: Request, { params }: RouteContext) {
+  const adminErrors = (await getDictionary()).adminErrors;
   const guard = await requirePermission("providers:write");
   if (guard instanceof NextResponse) return guard;
 
@@ -156,7 +160,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   const application = context.selectedApplication;
   if (!application || !connection) {
     return NextResponse.json(
-      { error: "Provider connection not found" },
+      { error: adminErrors.providerConnectionNotFound },
       { status: 404 },
     );
   }
@@ -178,7 +182,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
   });
   if (!revoked) {
     return NextResponse.json(
-      { error: "Provider connection could not be revoked" },
+      { error: adminErrors.providerConnectionCouldNotBeRevoked },
       { status: 409 },
     );
   }
