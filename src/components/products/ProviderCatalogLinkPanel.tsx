@@ -156,6 +156,9 @@ export function ProviderCatalogLinkPanel({
   function invalidateVerification() {
     verifyAbort.current?.abort();
     verifyAbort.current = null;
+    // An aborted verification will never reach its own finally cleanup
+    // (ownership check below), so the flag resets here.
+    setVerifying(false);
     setPreview(null);
     setVerified(null);
     setMessage(null);
@@ -214,7 +217,14 @@ export function ProviderCatalogLinkPanel({
       if (controller.signal.aborted) return;
       setMessage(cause instanceof Error ? cause.message : labels.mismatchTitle);
     } finally {
-      if (!controller.signal.aborted) setVerifying(false);
+      // Ownership-aware cleanup: only the CURRENT verification owns the
+      // flag. An aborted request (input change or superseding verify)
+      // leaves the flag alone — the aborter already reset it, and a
+      // superseding verify set its own true.
+      if (verifyAbort.current === controller) {
+        verifyAbort.current = null;
+        setVerifying(false);
+      }
     }
   }
 
@@ -267,7 +277,7 @@ export function ProviderCatalogLinkPanel({
           <span className="catalog-link-current-title">
             {labels.currentTitle}
           </span>
-          <code>{mappingForPrice.providerProductId}</code>
+          <code>{mappingForPrice.providerProductId ?? "—"}</code>
           <span>
             {formatMessage(labels.currentDetail, {
               source: sourceLabel(labels, mappingForPrice.source),
