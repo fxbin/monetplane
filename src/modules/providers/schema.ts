@@ -146,12 +146,15 @@ export const providerCatalogMappings = pgTable(
       "provider_catalog_mappings_status_check",
       sql`${table.status} IN ('pending', 'creating', 'synced', 'needs_reconciliation', 'failed')`,
     ),
-    // A provider product id is only absent while the provisioning intent
-    // (#156) has not produced one yet; synced/needs_reconciliation rows
-    // always carry the id they were verified against.
+    // A provider product id is only absent while the mapping does not
+    // claim a verified link: provisioning intents (#156 pending/creating),
+    // definite failures, and — critically — uncertain outcomes parked in
+    // needs_reconciliation where the create response was lost and the id
+    // is UNKNOWN. Only synced rows must carry the id they were verified
+    // against.
     check(
       "provider_catalog_mappings_product_shape_check",
-      sql`${table.providerProductId} IS NOT NULL OR ${table.status} IN ('pending', 'creating', 'failed')`,
+      sql`${table.providerProductId} IS NOT NULL OR ${table.status} <> 'synced'`,
     ),
   ],
 );

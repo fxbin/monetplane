@@ -166,12 +166,17 @@ describe("migration upgrade path (main@0020 → branch 0021)", () => {
 
     // Forward-compat for #156: a provisioning intent persisted BEFORE the
     // external product exists commits with a NULL provider_product_id
-    // (second price row — the scope unique index allows one mapping per
+    // (extra price rows — the scope unique index allows one mapping per
     // price)…
     await scratch`insert into prices (id, product_id, key, currency, amount_minor, billing_type, metadata) values (${`price_intent_${mapSuffix}`}, ${`prod_${mapSuffix}`}, 'intent', 'USD', 4900, 'one_time', '{}'::jsonb)`;
     await scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_intent_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_intent_${mapSuffix}`}, 'creem', NULL, 'created', 'pending')`;
-    // …while a NULL id in a state that claims a verified product is
-    // rejected by the product-shape check.
+    // …and the #156 uncertain-outcome scenario — create response LOST,
+    // product id unknown, parked for manual reconciliation — also commits
+    // with NULL (review round 4, F6: only synced requires the id).
+    await scratch`insert into prices (id, product_id, key, currency, amount_minor, billing_type, metadata) values (${`price_uncertain_${mapSuffix}`}, ${`prod_${mapSuffix}`}, 'uncertain', 'USD', 2900, 'one_time', '{}'::jsonb)`;
+    await scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_uncertain_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_uncertain_${mapSuffix}`}, 'creem', NULL, 'created', 'needs_reconciliation')`;
+    // …while a NULL id on a row that claims a verified link is rejected
+    // by the product-shape check.
     await expect(
       scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_nullsynced_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_intent_${mapSuffix}`}, 'creem', NULL, 'linked', 'synced')`,
     ).rejects.toThrow(/provider_catalog_mappings_product_shape_check/i);

@@ -19,7 +19,7 @@ CREATE TABLE "provider_catalog_mappings" (
   CONSTRAINT "provider_catalog_mappings_environment_check" CHECK ("provider_catalog_mappings"."environment" IN ('test', 'live')),
   CONSTRAINT "provider_catalog_mappings_source_check" CHECK ("provider_catalog_mappings"."source" IN ('linked', 'created')),
   CONSTRAINT "provider_catalog_mappings_status_check" CHECK ("provider_catalog_mappings"."status" IN ('pending', 'creating', 'synced', 'needs_reconciliation', 'failed')),
-  CONSTRAINT "provider_catalog_mappings_product_shape_check" CHECK ("provider_catalog_mappings"."provider_product_id" IS NOT NULL OR "provider_catalog_mappings"."status" IN ('pending', 'creating', 'failed'))
+  CONSTRAINT "provider_catalog_mappings_product_shape_check" CHECK ("provider_catalog_mappings"."provider_product_id" IS NOT NULL OR "provider_catalog_mappings"."status" <> 'synced')
 );
 --> statement-breakpoint
 ALTER TABLE "provider_catalog_mappings" ADD CONSTRAINT "provider_catalog_mappings_connection_app_fk" FOREIGN KEY ("provider_connection_id","application_id") REFERENCES "public"."provider_connections"("id","application_id") ON DELETE cascade ON UPDATE no action;

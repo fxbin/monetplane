@@ -28,8 +28,8 @@ Creem Checkout 此前唯一的价格→商品映射来源是 `provider_connectio
 
 ## Revision (review round 2,人工复核 PR #158 后)
 
-1. **`provider_product_id` 改为可空 + 状态形状约束**(面向 #156,合并前修正):#156 需要「先持久化创建意图、后获得外部商品 ID」——`pending/creating/failed` 状态允许 NULL,`synced/needs_reconciliation` 必须非空(DB CHECK `provider_catalog_mappings_product_shape_check` 强制)。0021 未部署,原地修订迁移 + 手动 ALTER 本地开发库对齐;synced⇒非空由 DB 保证,checkout 解析层仍按非空过滤防御。
+1. **`provider_product_id` 改为可空 + 状态形状约束**(面向 #156,合并前修正;round 4 再收紧):#156 需要「先持久化创建意图、后获得外部商品 ID」。约束最终形态:**仅 `synced` 要求非空**——`needs_reconciliation` 也允许 NULL,因为 #156 的核心故障场景正是「创建请求已发出但响应丢失、Product ID 未知」的不确定态(round 4 F6);`pending/creating/failed` 同样可空。0021 未部署,原地修订迁移 + 手动 ALTER 本地开发库对齐;synced⇒非空由 DB 保证,checkout 解析层仍按 synced+非空过滤防御。
 2. **`billing_period` 仅 recurring 必需**(Creem 官方文档核实):一次性商品可缺省该字段——缺省归一化为「无周期」;recurring 商品缺省周期同样归一化为无周期,由比对层输出 `billingInterval` mismatch 诊断拒绝,而不是 adapter 抛通用错误。原实现会把缺省周期的一次性商品误拒。
 3. **`provider_unsupported` 接线修正**:首轮宣称的修复因脚本补丁未命中被静默跳过(biome 先行换行导致 old_string 不匹配);本轮以工具显式接线并补集成回归测试(lookup-less adapter → 400 `provider_unsupported` 而非 `provider_lookup_failed`)。教训:脚本化 str.replace 补丁必须校验命中。
-4. **控制台校验竞态**(F2):verify 在途时改价格/商品 ID,旧响应会覆盖新选择并可能解锁未验证组合(服务器仍兜底)。修复:AbortController 中断在途请求 + `verified = {priceId, providerProductId}` 精确配对门禁,任一输入变化即失效。round-3 独立验证发现首版修复存在 verifying 标志泄漏(被中断的请求跳过 setVerifying(false),按钮永久卡死)——改为所有权语义清理:仅当前持有 ref 的请求负责复位,中断方同步复位;未持有所有权的 finally 不碰标志。
+4. **控制台校验竞态**(F2,round 4 扩展为 F7):verify 在途时改价格/商品 ID,旧响应会覆盖新选择并可能解锁未验证组合(服务器仍兜底)。修复:AbortController 中断在途请求 + 验证身份精确配对门禁。round-3 独立验证发现首版修复存在 verifying 标志泄漏(被中断的请求跳过 setVerifying(false),按钮永久卡死)——改为所有权语义清理:仅当前持有 ref 的请求负责复位,中断方同步复位;未持有所有权的 finally 不碰标志。round 4(F7)把验证身份从 `{priceId, providerProductId}` 扩为 `{environment, connectionId, priceId, providerProductId}` 四元组:同页 Provider Route Editor 切换连接或控制台切环境不再保留旧连接的验证结果——实现为单一 `verification` 状态对象 + `identityRef` 请求所有权检查(响应仅在请求时的环境+连接仍当前时才落地),旧身份结果既不展示也不能解锁;不用 useEffect 重置(biome useExhaustiveDependencies 与 prop-keyed reset 天然冲突,且渲染层身份比对已闭环)。
 5. **Issue 关闭条件**:PR 由 `Closes #155` 改为 `Refs #155`——#155 验收第一条(真实 Sandbox 绑定)属外部证据,按 #58 §11 保持门禁开放,待 #157 端到端验收或人工 Sandbox 证据后再关闭 Issue。

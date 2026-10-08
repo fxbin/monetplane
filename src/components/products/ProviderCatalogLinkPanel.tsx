@@ -116,21 +116,32 @@ export function ProviderCatalogLinkPanel({
   const router = useRouter();
   const [priceId, setPriceId] = useState(prices[0]?.id ?? "");
   const [providerProductId, setProviderProductId] = useState("");
-  const [preview, setPreview] = useState<CatalogLinkPreview | null>(null);
   /**
-   * The exact (price, product) pair whose read-only verification succeeded.
-   * Confirm unlocks only while BOTH inputs still equal this pair, and any
-   * input change aborts an in-flight verification so a stale response can
-   * never re-open the confirm button for a pair that was never verified.
+   * A verification result is only ever valid for the exact identity it
+   * was checked under: environment + routed connection + price + provider
+   * product (review rounds 2/4). Confirm unlocks only while ALL FOUR
+   * still match the current props/inputs; a stale result (input change,
+   * provider-route switch, environment switch) is neither displayed nor
+   * able to unlock anything.
    */
-  const [verified, setVerified] = useState<{
+  const [verification, setVerification] = useState<{
+    environment: "test" | "live";
+    connectionId: string;
     priceId: string;
     providerProductId: string;
+    preview: CatalogLinkPreview;
   } | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [linking, setLinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const verifyAbort = useRef<AbortController | null>(null);
+  /**
+   * Latest verification identity, readable from an async continuation
+   * after props changed. A response is only applied when the identity it
+   * was requested under is still current (review round 4, F7).
+   */
+  const identityRef = useRef("");
+  identityRef.current = `${environment}:${connection?.id ?? "none"}`;
 
   const environmentNoun =
     environment === "test" ? labels.sandbox : labels.production;
@@ -145,12 +156,16 @@ export function ProviderCatalogLinkPanel({
       )
     : undefined;
 
+  const verificationIsCurrent =
+    verification !== null &&
+    verification.environment === environment &&
+    verification.connectionId === connection?.id &&
+    verification.priceId === priceId &&
+    verification.providerProductId === providerProductId.trim();
+
   const canLink =
-    Boolean(
-      verified &&
-        verified.priceId === priceId &&
-        verified.providerProductId === providerProductId.trim(),
-    ) && !linking;
+    Boolean(verificationIsCurrent && verification?.preview.match.ok) &&
+    !linking;
 
   /** Any input change invalidates the previous verification entirely. */
   function invalidateVerification() {
@@ -159,8 +174,7 @@ export function ProviderCatalogLinkPanel({
     // An aborted verification will never reach its own finally cleanup
     // (ownership check below), so the flag resets here.
     setVerifying(false);
-    setPreview(null);
-    setVerified(null);
+    setVerification(null);
     setMessage(null);
   }
 
@@ -193,34 +207,43 @@ export function ProviderCatalogLinkPanel({
     verifyAbort.current?.abort();
     const controller = new AbortController();
     verifyAbort.current = controller;
+    const requestIdentity = identityRef.current;
     setVerifying(true);
     setMessage(null);
-    setPreview(null);
-    setVerified(null);
+    setVerification(null);
     try {
       const result = await callCatalogLinks("/preview", controller.signal);
       if (!result.ok || !result.preview) {
-        setMessage(result.error ?? labels.mismatchTitle);
+        if (identityRef.current === requestIdentity) {
+          setMessage(result.error ?? labels.mismatchTitle);
+        }
         return;
       }
-      // An unaborted response means the inputs never changed while the
-      // request was in flight — safe to trust for both display and the
-      // confirm gate.
-      setPreview(result.preview);
-      if (result.preview.match.ok) {
-        setVerified({
-          priceId,
-          providerProductId: providerProductId.trim(),
-        });
-      }
+      // Ownership: apply the response only when the identity it was
+      // requested under (environment + routed connection) is still the
+      // one on screen — e.g. the Provider Route Editor may have switched
+      // the connection while the request was in flight.
+      if (identityRef.current !== requestIdentity) return;
+      setVerification({
+        environment,
+        connectionId: connection.id,
+        priceId,
+        providerProductId: providerProductId.trim(),
+        preview: result.preview,
+      });
     } catch (cause) {
       if (controller.signal.aborted) return;
-      setMessage(cause instanceof Error ? cause.message : labels.mismatchTitle);
+      if (identityRef.current === requestIdentity) {
+        setMessage(
+          cause instanceof Error ? cause.message : labels.mismatchTitle,
+        );
+      }
     } finally {
       // Ownership-aware cleanup: only the CURRENT verification owns the
       // flag. An aborted request (input change or superseding verify)
       // leaves the flag alone — the aborter already reset it, and a
-      // superseding verify set its own true.
+      // superseding verify set its own true. An identity change does NOT
+      // abort the request, so this still runs and the flag unwinds.
       if (verifyAbort.current === controller) {
         verifyAbort.current = null;
         setVerifying(false);
@@ -348,18 +371,20 @@ export function ProviderCatalogLinkPanel({
             {verifying ? labels.verifying : labels.verify}
           </button>
 
-          {preview && (
+          {verificationIsCurrent && verification && (
             <div className="catalog-link-preview">
-              {preview.match.ok ? (
+              {verification.preview.match.ok ? (
                 <>
                   <p>{labels.matchOk}</p>
-                  {preview.product && (
+                  {verification.preview.product && (
                     <p>
                       {formatMessage(labels.providerSummary, {
-                        currency: preview.product.currency,
-                        amountMinor: String(preview.product.amountMinor),
-                        billingType: preview.product.billingType,
-                        status: preview.product.status,
+                        currency: verification.preview.product.currency,
+                        amountMinor: String(
+                          verification.preview.product.amountMinor,
+                        ),
+                        billingType: verification.preview.product.billingType,
+                        status: verification.preview.product.status,
                       })}
                     </p>
                   )}
@@ -368,7 +393,7 @@ export function ProviderCatalogLinkPanel({
                 <>
                   <p>{labels.mismatchTitle}</p>
                   <ul>
-                    {preview.match.mismatches.map((mismatch) => (
+                    {verification.preview.match.mismatches.map((mismatch) => (
                       <li key={mismatch.field}>
                         {fieldLabel(labels, mismatch.field)}:{" "}
                         {mismatch.monetplane} ≠ {mismatch.provider}
@@ -377,10 +402,10 @@ export function ProviderCatalogLinkPanel({
                   </ul>
                 </>
               )}
-              {preview.legacyProviderProductId && (
+              {verification.preview.legacyProviderProductId && (
                 <p>
                   {formatMessage(labels.legacyNote, {
-                    productId: preview.legacyProviderProductId,
+                    productId: verification.preview.legacyProviderProductId,
                   })}
                 </p>
               )}
