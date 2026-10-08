@@ -6,6 +6,7 @@ import {
   products,
   type RecurringInterval,
 } from "@/modules/catalog";
+import { listCatalogMappings } from "@/modules/providers/catalog-mapping";
 import { getProviderCapabilities } from "@/modules/providers/runtime";
 import {
   getProviderConnection,
@@ -271,6 +272,7 @@ export async function getProductBuilderList(
         product,
         productType: readProductBuilderType(product.metadata),
         primaryPrice,
+        prices: activePrices,
         grants,
         creditGrants: grants.filter((grant) => grant.grantType === "credit"),
         featureGrants: grants.filter(
@@ -291,7 +293,12 @@ export async function getProductBuilderDetail(
   environment: ConsoleEnvironment,
 ) {
   const rows = await getProductBuilderList(applicationId, environment);
-  return rows.find((row) => row.product.id === productId) ?? null;
+  const row = rows.find((row) => row.product.id === productId);
+  if (!row) return null;
+  // Provider catalog mappings (#155) for the console link panel: scoped to
+  // the selected application + environment, matched client-side per price.
+  const catalogMappings = await listCatalogMappings(applicationId, environment);
+  return { ...row, catalogMappings };
 }
 
 export async function getBuilderProviderOptions(

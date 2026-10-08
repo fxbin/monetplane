@@ -19,6 +19,24 @@ export const en = {
     chooseConfigurationPaymentOrSubscriptionDiagnostic:
       "Choose configuration, payment, or subscription diagnostic",
     connectionNameIsRequired: "Connection name is required",
+    catalogLinkInvalidInput:
+      "Provider connection, price, and provider product ID are required",
+    catalogLinkConnectionNotFound:
+      "Provider connection not found in the selected project",
+    catalogLinkConnectionRevoked: "Provider connection is revoked",
+    catalogLinkEnvironmentMismatch:
+      "Provider connection does not belong to the selected environment",
+    catalogLinkPriceNotFound:
+      "MonetPlane price not found in the selected project",
+    catalogLinkPriceInactive: "Archived prices cannot be linked",
+    catalogLinkProviderUnsupported:
+      "This provider does not support verifying existing products",
+    catalogLinkProviderLookupFailed: "Provider product lookup failed",
+    catalogLinkProductMismatch: "Provider product does not match this price",
+    catalogLinkLegacyConflict:
+      "The connection's legacy metadata maps this price to a different provider product",
+    catalogLinkMappingConflict:
+      "This price already maps to a different provider product",
     createOrSelectAProjectBeforeAddingAWebhook:
       "Create or select a project before adding a webhook",
     createOrSelectAProjectBeforeConnectingAProvider:
@@ -42,7 +60,9 @@ export const en = {
     failedToFetchProducts: "Failed to fetch products",
     failedToFetchProviders: "Failed to fetch providers",
     failedToGrantCredits: "Failed to grant credits",
+    failedToLinkProviderProduct: "Failed to link provider product",
     failedToLoadTeam: "Failed to load team",
+    failedToPreviewProviderProduct: "Failed to verify provider product",
     failedToReconcileBillingOperation: "Failed to reconcile billing operation",
     failedToRefundPayment: "Failed to refund payment",
     failedToRetryWebhook: "Failed to retry webhook",
@@ -388,6 +408,48 @@ export const en = {
     failed: "Failed to update provider route",
     saved: "Provider route saved",
     chooseProviderFirst: "Choose a {environment} provider first.",
+  },
+  catalogLink: {
+    sandbox: "Sandbox",
+    production: "Production",
+    kicker: "{environment} catalog mapping",
+    title: "Link an existing provider product",
+    description:
+      "Bind a price to an existing product at the provider. MonetPlane verifies the provider product read-only first — nothing is saved until you confirm.",
+    priceLabel: "MonetPlane price",
+    productLabel: "Provider product ID",
+    productPlaceholder: "prod_…",
+    verify: "Verify",
+    verifying: "Verifying…",
+    link: "Link product",
+    linking: "Linking…",
+    matchOk: "Verified — the provider product matches this price.",
+    mismatchTitle: "The provider product does not match this price:",
+    legacyNote: "Legacy metadata maps this price to {productId}.",
+    currentTitle: "Current mapping",
+    currentDetail: "{source} · {status}",
+    currentSince: "Verified {date}",
+    noMapping: "No provider product is mapped for this price in {environment}.",
+    noConnection:
+      "Choose a payment provider for this product in {environment} before linking a provider product.",
+    noPrice: "Create an active price before linking a provider product.",
+    linked: "Linked {productId}.",
+    reverified: "Mapping already existed — verification refreshed.",
+    providerSummary:
+      "{currency} {amountMinor} (minor units) · {billingType} · {status}",
+    fieldCurrency: "Currency",
+    fieldAmountMinor: "Amount (minor units)",
+    fieldBillingType: "Billing type",
+    fieldBillingInterval: "Billing interval",
+    fieldMode: "Provider mode",
+    fieldStatus: "Product status",
+    sourceLinked: "linked",
+    sourceCreated: "auto-created",
+    statusSynced: "synced",
+    statusPending: "pending",
+    statusCreating: "creating",
+    statusNeedsReconciliation: "needs review",
+    statusFailed: "failed",
   },
   wizard: {
     sandbox: "Sandbox",

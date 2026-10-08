@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProductProviderRouteEditor } from "@/components/products/ProductProviderRouteEditor";
+import { ProviderCatalogLinkPanel } from "@/components/products/ProviderCatalogLinkPanel";
 import { StatusBadge } from "@/components/ui/console";
 import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
 import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
@@ -25,7 +26,6 @@ export default async function ProductDetailPage({
     getDictionary(),
   ]);
   const localeTag = await getLocaleTag();
-  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
   const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.productsDetail;
   const TYPE_LABELS: Record<string, string> = {
@@ -71,6 +71,32 @@ export default async function ProductDetailPage({
         2,
       )
     : null;
+
+  const catalogLinkPrices = detail.prices.map((priceOption) => {
+    const intervalSuffix =
+      priceOption.billingType === "recurring"
+        ? priceOption.recurringInterval === "year"
+          ? t.perYear
+          : t.perMonth
+        : t.oneTime;
+    return {
+      id: priceOption.id,
+      label: `${priceOption.key} · ${formatAmount(
+        priceOption.amountMinor,
+        priceOption.currency,
+      )} ${intervalSuffix}`,
+    };
+  });
+  const catalogLinkMappings = detail.catalogMappings.map((mapping) => ({
+    monetplanePriceId: mapping.monetplanePriceId,
+    providerConnectionId: mapping.providerConnectionId,
+    providerProductId: mapping.providerProductId,
+    source: mapping.source,
+    status: mapping.status,
+    lastVerifiedLabel: mapping.lastVerifiedAt
+      ? formatDate(mapping.lastVerifiedAt, localeTag)
+      : null,
+  }));
 
   return (
     <PageContainer
@@ -216,6 +242,24 @@ export default async function ProductDetailPage({
           <p className="product-routing-note">{t.routingNote}</p>
         </section>
       </div>
+
+      <section className="card product-detail-section">
+        <ProviderCatalogLinkPanel
+          environment={context.environment}
+          connection={
+            detail.provider
+              ? {
+                  id: detail.provider.id,
+                  name: detail.provider.name,
+                  provider: detail.provider.provider,
+                }
+              : null
+          }
+          prices={catalogLinkPrices}
+          mappings={catalogLinkMappings}
+          labels={dictionary.catalogLink}
+        />
+      </section>
 
       <section className="card product-detail-section">
         <div className="card-heading-row">

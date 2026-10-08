@@ -19,11 +19,13 @@ import { afterAll, describe, expect, it } from "vitest";
  * environment while fresh CI stays green.
  *
  * This test simulates the actual release path:
- *   1. migrate a scratch database up to main's tip (0019);
- *   2. migrate again with the full branch journal (0019 + 0020);
- *   3. assert 0020 was applied — row count, the widened
- *      credit_transactions type constraint, and a real
- *      `grant.revoked` ledger INSERT;
+ *   1. migrate a scratch database up to main's tip (0020);
+ *   2. migrate again with the full branch journal (0020 + 0021);
+ *   3. assert 0021 was applied — row count, the provider_catalog_mappings
+ *      table with its composite same-app/same-environment foreign keys
+ *      (a consistent mapping INSERT commits, an environment-mismatched
+ *      one is rejected by the database), and the earlier 0020 constraint
+ *      still holding;
  *   4. migrate a third time and assert repeat-safety.
  */
 const repoRoot = path.resolve(
@@ -31,7 +33,7 @@ const repoRoot = path.resolve(
   "../..",
 );
 const drizzleFolder = path.join(repoRoot, "drizzle");
-const MAIN_TIP_TAG = "0019_operator_credential_version";
+const MAIN_TIP_TAG = "0020_credit_grant_revoked";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -75,8 +77,8 @@ async function copyMigrationsFolder(target: string): Promise<void> {
   }
 }
 
-describe("migration upgrade path (main@0019 → branch 0020)", () => {
-  it("applies 0020 on top of a deployed 0019 database and is repeat-safe", async () => {
+describe("migration upgrade path (main@0020 → branch 0021)", () => {
+  it("applies 0021 on top of a deployed 0020 database and is repeat-safe", async () => {
     // ---- Static journal sanity (catches the bug class before any DB
     // work). The migrator's skip predicate is decided by `when`
     // (`folderMillis`); `idx` strict monotonicity is journal structural
@@ -89,7 +91,7 @@ describe("migration upgrade path (main@0019 → branch 0020)", () => {
     const mainTipIndex = journal.entries.findIndex(
       (entry) => entry.tag === MAIN_TIP_TAG,
     );
-    expect(mainTipIndex, `journal must contain ${MAIN_TIP_TAG}`).toBe(19);
+    expect(mainTipIndex, `journal must contain ${MAIN_TIP_TAG}`).toBe(20);
     for (const [i, entry] of journal.entries.entries()) {
       // idx counts from 0 (0000_bootstrap) and must equal array position.
       expect(entry.idx, `entry ${entry.tag} idx`).toBe(i);
@@ -126,15 +128,51 @@ describe("migration upgrade path (main@0019 → branch 0020)", () => {
     } finally {
       await fs.rm(mainFolder, { recursive: true, force: true });
     }
-    expect(await appliedCount()).toBe(20);
-
-    // Pass 2: deploy this branch and migrate — the discriminator.
-    // With 0020's `when` earlier than 0019's, the migrator silently
-    // skips it here and the count stays 20.
-    await migrate(db, { migrationsFolder: drizzleFolder });
     expect(await appliedCount()).toBe(21);
 
-    // The widened constraint is live: `grant.revoked` is accepted.
+    // Pass 2: deploy this branch and migrate — the discriminator.
+    // With 0021's `when` earlier than 0020's, the migrator silently
+    // skips it here and the count stays 21.
+    await migrate(db, { migrationsFolder: drizzleFolder });
+    expect(await appliedCount()).toBe(22);
+
+    // 0021 is live: provider_catalog_mappings exists with the composite
+    // same-application / same-environment foreign keys enforced by the
+    // database itself (#155 DB-layer isolation).
+    const mappingTables = await scratch<
+      Array<{ n: number }>
+    >`select count(*)::int as n from information_schema.tables where table_name = 'provider_catalog_mappings'`;
+    expect(mappingTables[0]?.n).toBe(1);
+    const mappingFks = await scratch<
+      Array<{ conname: string }>
+    >`select conname from pg_constraint where conrelid = 'provider_catalog_mappings'::regclass and contype = 'f'`;
+    expect(new Set(mappingFks.map((fk) => fk.conname))).toEqual(
+      new Set([
+        "provider_catalog_mappings_connection_app_fk",
+        "provider_catalog_mappings_connection_mode_fk",
+        "provider_catalog_mappings_price_fk",
+      ]),
+    );
+
+    const mapSuffix = randomUUID().slice(0, 8);
+    await scratch`insert into applications (id, slug, name) values (${`app_${mapSuffix}`}, ${`upgrade-${mapSuffix}`}, ${`Upgrade ${mapSuffix}`})`;
+    await scratch`insert into provider_connections (id, application_id, provider, name, mode, encrypted_credentials, metadata) values (${`pconn_${mapSuffix}`}, ${`app_${mapSuffix}`}, 'creem', ${`creem-${mapSuffix}`}, 'test', 'encrypted', '{}'::jsonb)`;
+    await scratch`insert into products (id, application_id, key, name, metadata) values (${`prod_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pro-${mapSuffix}`}, ${`Pro ${mapSuffix}`}, '{}'::jsonb)`;
+    await scratch`insert into prices (id, product_id, key, currency, amount_minor, billing_type, metadata) values (${`price_${mapSuffix}`}, ${`prod_${mapSuffix}`}, 'default', 'USD', 1900, 'one_time', '{}'::jsonb)`;
+
+    // A CONSISTENT mapping (same app, connection mode matches the
+    // environment column) commits.
+    await scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_${mapSuffix}`}, 'creem', ${`creem_prod_${mapSuffix}`}, 'linked', 'synced')`;
+
+    // An INCONSISTENT mapping (environment 'live' on a test-mode
+    // connection) is rejected by the composite foreign key — the
+    // database-level environment isolation #155 requires.
+    await expect(
+      scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_bad_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'live', ${`price_${mapSuffix}`}, 'creem', ${`creem_prod_bad_${mapSuffix}`}, 'linked', 'synced')`,
+    ).rejects.toThrow(/provider_catalog_mappings_connection_mode_fk/i);
+
+    // The earlier 0020 constraint is still live: `grant.revoked` is
+    // accepted.
     const constraintDefs = await scratch<
       Array<{ def: string }>
     >`select pg_get_constraintdef(oid) as def from pg_constraint where conname = 'credit_transactions_type_check'`;
@@ -151,6 +189,6 @@ describe("migration upgrade path (main@0019 → branch 0020)", () => {
 
     // Pass 3: migrate again — repeat-safe, nothing new applied.
     await migrate(db, { migrationsFolder: drizzleFolder });
-    expect(await appliedCount()).toBe(21);
+    expect(await appliedCount()).toBe(22);
   }, 120_000);
 });

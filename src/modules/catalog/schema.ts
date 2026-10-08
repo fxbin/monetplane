@@ -99,10 +99,6 @@ export const prices = pgTable(
         AND ${table.intervalCount} >= 1
       )`,
     ),
-    check(
-      "prices_status_check",
-      sql`${table.status} IN ('active', 'archived')`,
-    ),
   ],
 );
 

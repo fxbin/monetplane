@@ -1,6 +1,6 @@
 import { PageContainer } from "@/components/layout/PageContainer";
 import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getCreditsOverview } from "@/server/control-plane/credits-overview";
 
@@ -20,7 +20,6 @@ export default async function CreditsPage() {
     getDictionary(),
   ]);
   const localeTag = await getLocaleTag();
-  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
   const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.creditsOverview;
   const application = context.selectedApplication;

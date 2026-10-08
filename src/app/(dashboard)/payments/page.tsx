@@ -3,7 +3,7 @@ import { BillingOperationsFilters } from "@/components/billing/BillingOperations
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
 import { getDictionary, getLocaleTag } from "@/i18n/server";
-import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
   getPaymentsList,
@@ -43,7 +43,6 @@ export default async function PaymentsPage({
     getDictionary(),
   ]);
   const localeTag = await getLocaleTag();
-  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
   const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.payments;
   const filter = readFilter(params);
