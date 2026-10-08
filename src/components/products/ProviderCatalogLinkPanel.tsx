@@ -213,6 +213,10 @@ export function ProviderCatalogLinkPanel({
     setVerification(null);
     try {
       const result = await callCatalogLinks("/preview", controller.signal);
+      // Belt-and-suspenders ownership on every non-throw path: a fully
+      // buffered response can resolve even after abort(), so the aborted
+      // signal is checked here too, not only in catch (review round 6).
+      if (controller.signal.aborted) return;
       if (!result.ok || !result.preview) {
         if (identityRef.current === requestIdentity) {
           setMessage(result.error ?? labels.mismatchTitle);
