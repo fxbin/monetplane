@@ -164,6 +164,18 @@ describe("migration upgrade path (main@0020 → branch 0021)", () => {
     // environment column) commits.
     await scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_${mapSuffix}`}, 'creem', ${`creem_prod_${mapSuffix}`}, 'linked', 'synced')`;
 
+    // Forward-compat for #156: a provisioning intent persisted BEFORE the
+    // external product exists commits with a NULL provider_product_id
+    // (second price row — the scope unique index allows one mapping per
+    // price)…
+    await scratch`insert into prices (id, product_id, key, currency, amount_minor, billing_type, metadata) values (${`price_intent_${mapSuffix}`}, ${`prod_${mapSuffix}`}, 'intent', 'USD', 4900, 'one_time', '{}'::jsonb)`;
+    await scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_intent_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_intent_${mapSuffix}`}, 'creem', NULL, 'created', 'pending')`;
+    // …while a NULL id in a state that claims a verified product is
+    // rejected by the product-shape check.
+    await expect(
+      scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_nullsynced_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'test', ${`price_intent_${mapSuffix}`}, 'creem', NULL, 'linked', 'synced')`,
+    ).rejects.toThrow(/provider_catalog_mappings_product_shape_check/i);
+
     // An INCONSISTENT mapping (environment 'live' on a test-mode
     // connection) is rejected by the composite foreign key — the
     // database-level environment isolation #155 requires.

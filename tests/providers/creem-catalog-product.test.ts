@@ -139,6 +139,38 @@ describe("Creem getCatalogProduct (#155)", () => {
     ).toMatchObject({ recurringInterval: "week", intervalCount: 2 });
   });
 
+  it("accepts an omitted billing_period (Creem requires it only for recurring products)", () => {
+    // One-time product without a period: normalizes to no interval and
+    // can link against a one-time price (review round 2, F4).
+    expect(
+      normalizeCreemCatalogProduct(
+        creemProduct({
+          billing_type: "onetime",
+          billing_period: undefined,
+        }) as never,
+      ),
+    ).toMatchObject({
+      billingType: "one_time",
+      recurringInterval: null,
+      intervalCount: null,
+    });
+    // Recurring product without a period: normalizes to no interval; the
+    // comparison layer flags the missing interval as a mismatch rather
+    // than the adapter guessing one.
+    expect(
+      normalizeCreemCatalogProduct(
+        creemProduct({
+          billing_type: "recurring",
+          billing_period: undefined,
+        }) as never,
+      ),
+    ).toMatchObject({
+      billingType: "recurring",
+      recurringInterval: null,
+      intervalCount: null,
+    });
+  });
+
   it("normalizes sandbox/test modes and treats unknown values as unknown", () => {
     expect(
       normalizeCreemCatalogProduct(creemProduct({ mode: "sandbox" }) as never)

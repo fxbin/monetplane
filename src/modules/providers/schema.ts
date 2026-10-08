@@ -85,7 +85,12 @@ export const providerCatalogMappings = pgTable(
     environment: text("environment").notNull(),
     monetplanePriceId: text("monetplane_price_id").notNull(),
     provider: text("provider").notNull(),
-    providerProductId: text("provider_product_id").notNull(),
+    /**
+     * NULL while a provisioning intent (#156: pending/creating, or a
+     * failed attempt before the external create) has no external product
+     * id yet; the shape check below keeps every other state non-null.
+     */
+    providerProductId: text("provider_product_id"),
     source: text("source").notNull(),
     status: text("status").notNull(),
     verifiedSnapshot: jsonb("verified_snapshot")
@@ -140,6 +145,13 @@ export const providerCatalogMappings = pgTable(
     check(
       "provider_catalog_mappings_status_check",
       sql`${table.status} IN ('pending', 'creating', 'synced', 'needs_reconciliation', 'failed')`,
+    ),
+    // A provider product id is only absent while the provisioning intent
+    // (#156) has not produced one yet; synced/needs_reconciliation rows
+    // always carry the id they were verified against.
+    check(
+      "provider_catalog_mappings_product_shape_check",
+      sql`${table.providerProductId} IS NOT NULL OR ${table.status} IN ('pending', 'creating', 'failed')`,
     ),
   ],
 );

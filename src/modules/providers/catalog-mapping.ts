@@ -462,6 +462,10 @@ export async function resolveCheckoutProviderProductIds(
       ),
     );
   return new Map(
-    rows.map((row) => [row.monetplanePriceId, row.providerProductId]),
+    rows.flatMap((row) =>
+      row.providerProductId
+        ? ([[row.monetplanePriceId, row.providerProductId]] as const)
+        : [],
+    ),
   );
 }

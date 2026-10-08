@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useRef, useState } from "react";
 import type { Dictionary } from "@/i18n/dictionaries/en";
 import { formatMessage } from "@/i18n/format";
 
@@ -13,7 +13,8 @@ type CatalogLinkPriceOption = {
 type CatalogLinkMappingView = {
   monetplanePriceId: string;
   providerConnectionId: string;
-  providerProductId: string;
+  /** Null while a provisioning intent (#156) has no external product yet. */
+  providerProductId: string | null;
   source: string;
   status: string;
   lastVerifiedLabel: string | null;
@@ -116,9 +117,20 @@ export function ProviderCatalogLinkPanel({
   const [priceId, setPriceId] = useState(prices[0]?.id ?? "");
   const [providerProductId, setProviderProductId] = useState("");
   const [preview, setPreview] = useState<CatalogLinkPreview | null>(null);
+  /**
+   * The exact (price, product) pair whose read-only verification succeeded.
+   * Confirm unlocks only while BOTH inputs still equal this pair, and any
+   * input change aborts an in-flight verification so a stale response can
+   * never re-open the confirm button for a pair that was never verified.
+   */
+  const [verified, setVerified] = useState<{
+    priceId: string;
+    providerProductId: string;
+  } | null>(null);
   const [verifying, setVerifying] = useState(false);
   const [linking, setLinking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const verifyAbort = useRef<AbortController | null>(null);
 
   const environmentNoun =
     environment === "test" ? labels.sandbox : labels.production;
@@ -133,17 +145,25 @@ export function ProviderCatalogLinkPanel({
       )
     : undefined;
 
-  // Confirm only the exact pair that was just verified.
-  const verifiedPair = preview?.match.ok
-    ? `${priceId}:${preview.providerProductId}`
-    : null;
   const canLink =
     Boolean(
-      verifiedPair && providerProductId.trim() === preview?.providerProductId,
+      verified &&
+        verified.priceId === priceId &&
+        verified.providerProductId === providerProductId.trim(),
     ) && !linking;
+
+  /** Any input change invalidates the previous verification entirely. */
+  function invalidateVerification() {
+    verifyAbort.current?.abort();
+    verifyAbort.current = null;
+    setPreview(null);
+    setVerified(null);
+    setMessage(null);
+  }
 
   async function callCatalogLinks(
     path: string,
+    signal: AbortSignal,
   ): Promise<{ ok: boolean; error?: string; preview?: CatalogLinkPreview }> {
     const response = await fetch(`/api/admin/providers/catalog-links${path}`, {
       method: "POST",
@@ -153,6 +173,7 @@ export function ProviderCatalogLinkPanel({
         priceId,
         providerProductId: providerProductId.trim(),
       }),
+      signal,
     });
     const result = (await response.json()) as {
       error?: string;
@@ -166,20 +187,34 @@ export function ProviderCatalogLinkPanel({
 
   async function verify() {
     if (!connection || !priceId || !providerProductId.trim()) return;
+    verifyAbort.current?.abort();
+    const controller = new AbortController();
+    verifyAbort.current = controller;
     setVerifying(true);
     setMessage(null);
     setPreview(null);
+    setVerified(null);
     try {
-      const result = await callCatalogLinks("/preview");
+      const result = await callCatalogLinks("/preview", controller.signal);
       if (!result.ok || !result.preview) {
         setMessage(result.error ?? labels.mismatchTitle);
         return;
       }
+      // An unaborted response means the inputs never changed while the
+      // request was in flight — safe to trust for both display and the
+      // confirm gate.
       setPreview(result.preview);
+      if (result.preview.match.ok) {
+        setVerified({
+          priceId,
+          providerProductId: providerProductId.trim(),
+        });
+      }
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setMessage(cause instanceof Error ? cause.message : labels.mismatchTitle);
     } finally {
-      setVerifying(false);
+      if (!controller.signal.aborted) setVerifying(false);
     }
   }
 
@@ -271,8 +306,7 @@ export function ProviderCatalogLinkPanel({
               value={priceId}
               onChange={(event) => {
                 setPriceId(event.target.value);
-                setPreview(null);
-                setMessage(null);
+                invalidateVerification();
               }}
             >
               {prices.map((price) => (
@@ -289,8 +323,7 @@ export function ProviderCatalogLinkPanel({
               placeholder={labels.productPlaceholder}
               onChange={(event) => {
                 setProviderProductId(event.target.value);
-                setPreview(null);
-                setMessage(null);
+                invalidateVerification();
               }}
             />
           </label>

@@ -418,6 +418,35 @@ describe("provider catalog link flow (#155)", () => {
     expect(await mappingsFor(seed.app.id)).toHaveLength(0);
   });
 
+  it("classifies providers without catalog lookup as unsupported, not lookup-failed", async () => {
+    // F1 regression: an adapter without getCatalogProduct must surface
+    // provider_unsupported, not a generic provider_lookup_failed.
+    await seedOperator("owner");
+    const seed = await seedCatalog("unsupported");
+    const lookuplessAdapter: PaymentProviderAdapter = {
+      ...mockProviderAdapter,
+      provider: "creem",
+    };
+    registerProviderAdapter(lookuplessAdapter);
+
+    const response = await previewPOST(
+      catalogLinksRequest(
+        {
+          connectionId: seed.connection.id,
+          priceId: seed.price.id,
+          providerProductId: "prod_ok",
+        },
+        "/preview",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { code: string; error: string };
+    expect(body.code).toBe("provider_unsupported");
+    expect(body.error).toContain("does not support");
+    expect(await mappingsFor(seed.app.id)).toHaveLength(0);
+  });
+
   it("rejects a legacy metadata mapping that points at a different product", async () => {
     await seedOperator("owner");
     const seed = await seedCatalog("legacy");

@@ -213,7 +213,12 @@ function creemBillingPeriodToInterval(value: JsonRecord): {
   intervalCount: number;
 } | null {
   const period = stringValue(value.billing_period);
-  if (period === "once") return null;
+  // `billing_period` is only REQUIRED for recurring products in the Creem
+  // reference (verified 2026-10-08): a one-time product may omit it. An
+  // omitted period normalizes to "no interval"; if a recurring MonetPlane
+  // price is being compared, the comparison layer flags the missing
+  // interval as a mismatch instead of guessing.
+  if (!period || period === "once") return null;
 
   if (period === "custom") {
     const interval = stringValue(value.recurring_interval);
@@ -231,11 +236,9 @@ function creemBillingPeriodToInterval(value: JsonRecord): {
     );
   }
 
-  const fixed = period ? CREEM_FIXED_BILLING_PERIODS[period] : undefined;
+  const fixed = CREEM_FIXED_BILLING_PERIODS[period];
   if (fixed) return fixed;
-  throw new Error(
-    `Creem product has an unsupported billing period: ${period ?? "(missing)"}`,
-  );
+  throw new Error(`Creem product has an unsupported billing period: ${period}`);
 }
 
 function creemProductMode(value: unknown): ProviderMode | "unknown" {

@@ -9,7 +9,7 @@ CREATE TABLE "provider_catalog_mappings" (
   "environment" text NOT NULL,
   "monetplane_price_id" text NOT NULL,
   "provider" text NOT NULL,
-  "provider_product_id" text NOT NULL,
+  "provider_product_id" text,
   "source" text NOT NULL,
   "status" text NOT NULL,
   "verified_snapshot" jsonb DEFAULT '{}'::jsonb NOT NULL,
@@ -18,7 +18,8 @@ CREATE TABLE "provider_catalog_mappings" (
   "last_verified_at" timestamp with time zone,
   CONSTRAINT "provider_catalog_mappings_environment_check" CHECK ("provider_catalog_mappings"."environment" IN ('test', 'live')),
   CONSTRAINT "provider_catalog_mappings_source_check" CHECK ("provider_catalog_mappings"."source" IN ('linked', 'created')),
-  CONSTRAINT "provider_catalog_mappings_status_check" CHECK ("provider_catalog_mappings"."status" IN ('pending', 'creating', 'synced', 'needs_reconciliation', 'failed'))
+  CONSTRAINT "provider_catalog_mappings_status_check" CHECK ("provider_catalog_mappings"."status" IN ('pending', 'creating', 'synced', 'needs_reconciliation', 'failed')),
+  CONSTRAINT "provider_catalog_mappings_product_shape_check" CHECK ("provider_catalog_mappings"."provider_product_id" IS NOT NULL OR "provider_catalog_mappings"."status" IN ('pending', 'creating', 'failed'))
 );
 --> statement-breakpoint
 ALTER TABLE "provider_catalog_mappings" ADD CONSTRAINT "provider_catalog_mappings_connection_app_fk" FOREIGN KEY ("provider_connection_id","application_id") REFERENCES "public"."provider_connections"("id","application_id") ON DELETE cascade ON UPDATE no action;

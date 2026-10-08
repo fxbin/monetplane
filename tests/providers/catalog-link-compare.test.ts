@@ -103,6 +103,23 @@ describe("compareProviderProductWithPrice (#155)", () => {
     expect(wrongCount.map((m) => m.field)).toEqual(["billingInterval"]);
   });
 
+  it("rejects a recurring price against a provider product with no interval (Creem omits billing_period for one-time products)", () => {
+    const mismatches = compareProviderProductWithPrice(
+      price({
+        billingType: "recurring",
+        recurringInterval: "month",
+        intervalCount: 1,
+      }),
+      product({
+        billingType: "recurring",
+        recurringInterval: null,
+        intervalCount: null,
+      }),
+      "test",
+    );
+    expect(mismatches.map((m) => m.field)).toEqual(["billingInterval"]);
+  });
+
   it("rejects a recurring provider product for a one-time price", () => {
     const mismatches = compareProviderProductWithPrice(
       price(),

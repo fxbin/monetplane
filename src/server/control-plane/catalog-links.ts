@@ -107,7 +107,8 @@ export type CatalogLinkPreview = {
   product: NormalizedProviderCatalogProduct | null;
   match: { ok: boolean; mismatches: CatalogComparisonMismatch[] };
   existingMapping: {
-    providerProductId: string;
+    /** Null while a #156 provisioning intent has no external product yet. */
+    providerProductId: string | null;
     source: string;
     status: string;
   } | null;
@@ -115,6 +116,9 @@ export type CatalogLinkPreview = {
 };
 
 function toProviderLookupError(cause: unknown): CatalogLinkError {
+  if (cause instanceof ProviderCatalogLookupUnsupportedError) {
+    return new CatalogLinkError(cause.message, "provider_unsupported");
+  }
   if (
     cause instanceof ProviderOperationError &&
     cause.failureKind === "rejected"
