@@ -244,7 +244,12 @@ export default async function ProductDetailPage({
       </div>
 
       <section className="card product-detail-section">
+        {/* Keyed by the verification identity scope: switching the routed
+            provider connection or the console environment remounts the
+            panel, so no state (verification, in-flight request, message)
+            survives an identity change. */}
         <ProviderCatalogLinkPanel
+          key={`${context.environment}:${detail.providerConnectionId ?? "none"}`}
           environment={context.environment}
           connection={
             detail.provider

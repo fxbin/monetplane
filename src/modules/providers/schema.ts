@@ -86,9 +86,11 @@ export const providerCatalogMappings = pgTable(
     monetplanePriceId: text("monetplane_price_id").notNull(),
     provider: text("provider").notNull(),
     /**
-     * NULL while a provisioning intent (#156: pending/creating, or a
-     * failed attempt before the external create) has no external product
-     * id yet; the shape check below keeps every other state non-null.
+     * NULL while the external product id is not known: #156 provisioning
+     * intents (pending/creating), definite failures, and
+     * needs_reconciliation rows parked after an uncertain create whose
+     * response was lost. Only synced rows must carry the verified id —
+     * enforced by the product-shape check below.
      */
     providerProductId: text("provider_product_id"),
     source: text("source").notNull(),
