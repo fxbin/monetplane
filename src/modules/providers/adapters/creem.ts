@@ -2,15 +2,18 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
+  GetCatalogProductInput,
   GetPaymentInput,
   GetSubscriptionInput,
   NormalizedPayment,
+  NormalizedProviderCatalogProduct,
   NormalizedProviderEvent,
   NormalizedRefund,
   NormalizedSubscription,
   PaymentProviderAdapter,
   ProviderCapabilities,
   ProviderConnectionContext,
+  ProviderMode,
   RefundPaymentInput,
   UpdateSubscriptionInput,
   VerifiedWebhook,
@@ -186,6 +189,113 @@ function mapSubscriptionStatus(
     default:
       return "pending";
   }
+}
+
+/**
+ * Fixed Creem billing periods (GET /v1/products ProductEntity, verified
+ * 2026-10-08) normalized to MonetPlane interval semantics. `every-day` and
+ * unknown periods are deliberately absent: a period we cannot represent
+ * cannot be verified against a MonetPlane price, so the lookup fails
+ * closed instead of guessing (#155).
+ */
+const CREEM_FIXED_BILLING_PERIODS: Record<
+  string,
+  { recurringInterval: "week" | "month" | "year"; intervalCount: number }
+> = {
+  "every-month": { recurringInterval: "month", intervalCount: 1 },
+  "every-three-months": { recurringInterval: "month", intervalCount: 3 },
+  "every-six-months": { recurringInterval: "month", intervalCount: 6 },
+  "every-year": { recurringInterval: "year", intervalCount: 1 },
+};
+
+function creemBillingPeriodToInterval(value: JsonRecord): {
+  recurringInterval: "week" | "month" | "year";
+  intervalCount: number;
+} | null {
+  const period = stringValue(value.billing_period);
+  // `billing_period` is only REQUIRED for recurring products in the Creem
+  // reference (verified 2026-10-08): a one-time product may omit it. An
+  // omitted period normalizes to "no interval"; if a recurring MonetPlane
+  // price is being compared, the comparison layer flags the missing
+  // interval as a mismatch instead of guessing.
+  if (!period || period === "once") return null;
+
+  if (period === "custom") {
+    const interval = stringValue(value.recurring_interval);
+    const count = numberValue(value.recurring_interval_count);
+    if (
+      (interval === "week" || interval === "month" || interval === "year") &&
+      count !== undefined &&
+      Number.isSafeInteger(count) &&
+      count >= 1
+    ) {
+      return { recurringInterval: interval, intervalCount: count };
+    }
+    throw new Error(
+      "Creem product has a custom billing interval MonetPlane cannot verify",
+    );
+  }
+
+  const fixed = CREEM_FIXED_BILLING_PERIODS[period];
+  if (fixed) return fixed;
+  throw new Error(`Creem product has an unsupported billing period: ${period}`);
+}
+
+function creemProductMode(value: unknown): ProviderMode | "unknown" {
+  switch (value) {
+    case "prod":
+      return "live";
+    case "test":
+    case "sandbox":
+      return "test";
+    default:
+      return "unknown";
+  }
+}
+
+/**
+ * Normalize a Creem ProductEntity into the comparison shape used by the
+ * console link flow (#155). Anything required for verification that is
+ * missing or unrepresentable throws — the caller fails closed.
+ */
+export function normalizeCreemCatalogProduct(
+  value: JsonRecord,
+): NormalizedProviderCatalogProduct {
+  const providerProductId = stringValue(value.id);
+  const billingType =
+    value.billing_type === "onetime"
+      ? ("one_time" as const)
+      : value.billing_type === "recurring"
+        ? ("recurring" as const)
+        : undefined;
+  const amountMinor = minorAmountValue(value.price);
+  const currency = stringValue(value.currency)?.toUpperCase();
+  if (
+    !providerProductId ||
+    !billingType ||
+    amountMinor === undefined ||
+    !currency
+  ) {
+    throw new Error(
+      "Creem product response is missing id, billing_type, price, or currency",
+    );
+  }
+  const interval = creemBillingPeriodToInterval(value);
+  return {
+    providerProductId,
+    name: stringValue(value.name) ?? null,
+    status:
+      value.status === "active" || value.status === "archived"
+        ? value.status
+        : "unknown",
+    mode: creemProductMode(value.mode),
+    billingType,
+    amountMinor,
+    currency,
+    recurringInterval: interval?.recurringInterval ?? null,
+    intervalCount: interval?.intervalCount ?? null,
+    taxCategory: stringValue(value.tax_category) ?? null,
+  };
 }
 
 function normalizeSubscriptionObject(
@@ -467,7 +577,11 @@ export function createCreemProviderAdapter(
       }
       const item = input.items[0];
       if (!item) throw new Error("Creem checkout requires one item");
-      const productId = catalogProductId(connection, item.priceId);
+      // Mapping precedence (#155): the persisted provider_catalog_mappings
+      // row wins; the legacy connection metadata catalog is the fallback so
+      // pre-existing connections keep their exact checkout behavior.
+      const productId =
+        item.providerProductId ?? catalogProductId(connection, item.priceId);
       const metadata: Record<string, string> = {
         ...(input.metadata ?? {}),
         monetplane_application_id: input.applicationId,
@@ -606,6 +720,18 @@ export function createCreemProviderAdapter(
         providerPaymentId: input.providerPaymentId,
         status: normalizedStatus,
       };
+    },
+
+    async getCatalogProduct(
+      connection,
+      input: GetCatalogProductInput,
+    ): Promise<NormalizedProviderCatalogProduct> {
+      const response = await creemRequest(
+        connection,
+        options,
+        `/v1/products/${encodeURIComponent(input.providerProductId)}`,
+      );
+      return normalizeCreemCatalogProduct(response);
     },
 
     async verifyWebhook(

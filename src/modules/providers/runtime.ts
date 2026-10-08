@@ -3,12 +3,15 @@ import { getDb } from "../../db/client";
 import { createCreemProviderAdapter } from "./adapters/creem";
 import { createPayPalProviderAdapter } from "./adapters/paypal";
 import { createWaffoProviderAdapter } from "./adapters/waffo";
+import { resolveCheckoutProviderProductIds } from "./catalog-mapping";
 import type {
   CancelSubscriptionInput,
   CheckoutBillingMode,
   CreateCheckoutInput,
+  GetCatalogProductInput,
   GetPaymentInput,
   GetSubscriptionInput,
+  NormalizedProviderCatalogProduct,
   PaymentProviderAdapter,
   ProviderCapability,
   RefundPaymentInput,
@@ -17,6 +20,7 @@ import type {
 } from "./contract";
 import {
   ProviderApplicationMismatchError,
+  ProviderCatalogLookupUnsupportedError,
   UnsupportedProviderCapabilityError,
 } from "./contract";
 import {
@@ -128,7 +132,45 @@ export async function createProviderCheckout(
     );
   }
 
-  return adapter.createCheckout(connection, input);
+  // Catalog mapping precedence (#155): persisted provider_catalog_mappings
+  // rows win over the adapters' legacy connection-metadata catalog. With no
+  // mapping row the items carry no providerProductId and every adapter
+  // behaves exactly as before.
+  const providerProductIds = await resolveCheckoutProviderProductIds(
+    applicationId,
+    connectionId,
+    input.items.map((item) => item.priceId),
+    db,
+  );
+  const items = input.items.map((item) => ({
+    ...item,
+    providerProductId: providerProductIds.get(item.priceId),
+  }));
+
+  return adapter.createCheckout(connection, { ...input, items });
+}
+
+/**
+ * Read-only provider product lookup for the console link flow (#155).
+ * Fails closed with a rejected ProviderOperationError when the provider
+ * adapter cannot verify existing products.
+ */
+export async function getProviderCatalogProduct(
+  applicationId: string,
+  connectionId: string,
+  input: GetCatalogProductInput,
+  db: Database = getDb(),
+): Promise<NormalizedProviderCatalogProduct> {
+  const connection = await loadProviderConnectionContext(
+    applicationId,
+    connectionId,
+    db,
+  );
+  const adapter = resolveProviderAdapter(connection.provider);
+  if (!adapter.getCatalogProduct) {
+    throw new ProviderCatalogLookupUnsupportedError(connection.provider);
+  }
+  return adapter.getCatalogProduct(connection, input);
 }
 
 export async function getProviderPayment(

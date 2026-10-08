@@ -91,6 +91,34 @@ only if the provider offers a real hosted billing portal, return only the
 provider-produced URL, and remember the customer portal never invents URLs
 from browser input.
 
+### 4b. Catalog product lookup (optional, #155)
+
+`getCatalogProduct(connection, { providerProductId })` is the optional
+read-only lookup behind the console "link existing provider product"
+flow. It fetches the provider-side product and normalizes it into
+`NormalizedProviderCatalogProduct` (id, name, status, environment mode,
+billing type, minor-unit amount, currency, recurring interval + count,
+tax category). The link flow compares every field against the MonetPlane
+price and fails closed on any mismatch or on any value the adapter cannot
+represent (Creem, for example, rejects `every-day` billing periods because
+MonetPlane prices cannot express them).
+
+Rules for implementers:
+
+- **Read-only.** This method must never mutate anything at the provider.
+- **Fail closed.** Missing fields, unknown enum values, and non-integer
+  minor-unit amounts throw instead of returning a best-effort shape.
+- **Credentials stay server-side.** Use the decrypted connection
+  credentials exactly like checkout does; the lookup result must never
+  echo them.
+- **Precedence contract.** Checkout items may carry a runtime-resolved
+  `providerProductId` (from the persisted `provider_catalog_mappings`
+  table); adapters must prefer it over their legacy
+  `connection.metadata.catalog` lookup so existing connections keep
+  working unchanged while new links take effect. A missing implementation
+  means the provider cannot verify existing products, and linking fails
+  closed with a rejected `ProviderOperationError`.
+
 ### 5. Webhook verification and normalization
 
 `verifyWebhook` authenticates the raw request (signature/HMAC) and throws

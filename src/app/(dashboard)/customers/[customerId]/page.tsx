@@ -8,7 +8,7 @@ import {
 import { PageContainer } from "@/components/layout/PageContainer";
 import { StatusBadge } from "@/components/ui/console";
 import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
-import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTime } from "@/lib/format";
 import { getConsoleContext } from "@/server/control-plane/context";
 import { getCustomerWorkspace } from "@/server/control-plane/customer-workspace";
 
@@ -35,7 +35,6 @@ export default async function CustomerPage({ params }: CustomerPageProps) {
     getDictionary(),
   ]);
   const localeTag = await getLocaleTag();
-  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
   const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.customerDetail;
   if (!context.selectedApplication) notFound();

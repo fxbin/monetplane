@@ -3,7 +3,7 @@ import { BillingOperationsFilters } from "@/components/billing/BillingOperations
 import { PageContainer } from "@/components/layout/PageContainer";
 import { EmptyState, StatusBadge } from "@/components/ui/console";
 import { getDictionary, getLocaleTag } from "@/i18n/server";
-import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
+import { formatAmount, formatDateTime } from "@/lib/format";
 import {
   type BillingOperationsFilter,
   getProviderFilterOptions,
@@ -41,7 +41,6 @@ export default async function RefundsPage({ searchParams }: RefundsPageProps) {
     getDictionary(),
   ]);
   const localeTag = await getLocaleTag();
-  const fmtDate = (d: Date | string) => formatDate(d, localeTag);
   const fmtDateTime = (d: Date | string) => formatDateTime(d, localeTag);
   const t = dictionary.refunds;
   const filter = readFilter(params);

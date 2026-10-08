@@ -50,6 +50,13 @@ export type CreateCheckoutInput = {
     priceId: string;
     quantity: number;
     unitAmountMinor: number;
+    /**
+     * Persisted catalog mapping for this price (#155), resolved by the
+     * provider runtime from provider_catalog_mappings before the adapter
+     * call. Adapters prefer it over their legacy connection-metadata
+     * catalog so existing connections keep working unchanged.
+     */
+    providerProductId?: string;
   }>;
   successUrl: string;
   cancelUrl: string;
@@ -99,6 +106,29 @@ export type NormalizedRefund = {
   providerPaymentId: string;
   status: "pending" | "succeeded" | "failed";
   amountMinor?: number;
+};
+
+/**
+ * Read-only provider catalog product lookup (#155). Optional adapter
+ * operation used by the console "link existing product" flow: the adapter
+ * fetches the provider-side product and normalizes it into the fields the
+ * link validation compares against a MonetPlane price. Providers without a
+ * product API leave this unimplemented and the link flow fails closed.
+ */
+export type GetCatalogProductInput = { providerProductId: string };
+
+export type NormalizedProviderCatalogProduct = {
+  providerProductId: string;
+  name: string | null;
+  status: "active" | "archived" | "unknown";
+  /** Provider-side environment of the product, normalized from provider terms. */
+  mode: ProviderMode | "unknown";
+  billingType: "one_time" | "recurring";
+  amountMinor: number;
+  currency: string;
+  recurringInterval: "week" | "month" | "year" | null;
+  intervalCount: number | null;
+  taxCategory: string | null;
 };
 
 /**
@@ -198,6 +228,15 @@ export interface PaymentProviderAdapter {
     connection: ProviderConnectionContext,
     input: CreateCustomerPortalSessionInput,
   ): Promise<CustomerPortalSessionResult>;
+  /**
+   * Optional: read-only catalog product lookup for the console link flow
+   * (#155). A missing implementation means the provider cannot verify
+   * existing products, and linking must fail closed rather than guess.
+   */
+  getCatalogProduct?(
+    connection: ProviderConnectionContext,
+    input: GetCatalogProductInput,
+  ): Promise<NormalizedProviderCatalogProduct>;
   verifyWebhook(
     connection: ProviderConnectionContext,
     input: VerifyWebhookInput,
@@ -239,6 +278,18 @@ export class ProviderApplicationMismatchError extends Error {
   constructor(message = "Provider request application context mismatch") {
     super(message);
     this.name = "ProviderApplicationMismatchError";
+  }
+}
+
+/**
+ * The provider's adapter does not implement the optional catalog product
+ * lookup (#155). Distinct from ProviderOperationError so the console link
+ * flow can surface "unsupported provider" instead of a lookup failure.
+ */
+export class ProviderCatalogLookupUnsupportedError extends Error {
+  constructor(public readonly provider: string) {
+    super(`Provider ${provider} does not support catalog product lookup`);
+    this.name = "ProviderCatalogLookupUnsupportedError";
   }
 }
 
