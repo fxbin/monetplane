@@ -1,6 +1,6 @@
 # Agent Note: Creem 商品自动创建的幂等与不确定态语义(#156)
 
-Status: implemented — 状态机 pending→creating→synced/NR/failed;Idempotency-Key=映射行 id;不确定态绝不自动重发;恢复=link 采纳或显式标记失败;修订(review round 2):attempt_token 所有权防 ABA;意图参数首claim冻结
+Status: implemented — 状态机 pending→creating→synced/NR/failed;Idempotency-Key=映射行 id;不确定态绝不自动重发;恢复=link 采纳或显式标记失败;修订(review round 2/3):attempt_token 所有权防 ABA(round 3 补齐最终 synced CAS 与 stale-park 版本 CAS);意图参数首claim冻结
 
 ## Problem
 
@@ -39,3 +39,5 @@ Status: implemented — 状态机 pending→creating→synced/NR/failed;Idempote
 3. **post-create mismatch 审计归类(F3)**:创建成功但核对不一致时,行已带 id 停车 NR,审计应为 `provision_uncertain`(人工核对事项)而非 `provision_rejected`;编排层对该错误码补记 uncertain 后再抛。
 4. **fail-intent null body(F4)**:JSON `null` 视为无效输入返回 400,不再 TypeError→500。
 5. **finish 谓词统一顺带修复**:persistCreatedId 之后行可能已处于 NR,后续转移原先只匹配 creating 会误抛——统一 IN(creating, NR)+token 后,自有的迟到结果在停车行上也能正确收敛(确定性失败→failed、核对通过→synced)。
+6. **(round 3, F1a)** 最终 synced 写入补上所有权谓词——批量替换曾漏掉这一处(教训:脚本补丁必须逐处断言命中),「id 已持久化、GET 未返回」期间行被重新 claim 后,迟到核对通过也不能落 synced;交错测试覆盖该窗口。
+7. **(round 3, F1b)** stale-park CAS 增加对所观察 `updatedAt` 的等值比较:attempt 保存迟到 id 等任何行内进度都会刷新 updatedAt,过期的超时观察不再能授权停车;并发请求此时得到 in_progress 而非误停。

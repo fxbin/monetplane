@@ -951,4 +951,174 @@ describe("provider catalog provisioning (#156)", () => {
     );
     expect(await mappingsFor(seed.app.id)).toHaveLength(0);
   });
+
+  it("F1a: a late synced write cannot land after the row was re-claimed (id persisted, GET pending)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("f1a");
+
+    // Attempt A claims and its POST returns an id — persistCreatedId runs,
+    // then the verification GET hangs.
+    const first = await beginProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    if (first.outcome !== "begin") throw new Error("expected begin");
+    stubProduct = defaultStubProduct({ providerProductId: "prod_a" });
+
+    let releaseVerify!: (product: NormalizedProviderCatalogProduct) => void;
+    const verifyGate = new Promise<NormalizedProviderCatalogProduct>(
+      (resolve) => {
+        releaseVerify = resolve;
+      },
+    );
+    const lateFinish = finishProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+        mappingId: first.mapping.id,
+        attemptToken: first.attemptToken,
+      },
+      { kind: "created", providerProductId: "prod_a" },
+      () => verifyGate,
+      db,
+    );
+
+    // While A's GET is pending: park, mark failed, and let attempt B
+    // re-claim the SAME row with a fresh token.
+    await db
+      .update(providerCatalogMappings)
+      .set({ status: "needs_reconciliation" })
+      .where(eq(providerCatalogMappings.id, first.mapping.id));
+    await failNeedsReconciliationIntent(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    const second = await beginProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    if (second.outcome !== "begin") throw new Error("expected second begin");
+
+    // A's GET finally returns a MATCHING product — the final synced CAS
+    // must refuse because B owns the row now.
+    releaseVerify(defaultStubProduct({ providerProductId: "prod_a" }));
+    await expect(lateFinish).rejects.toThrow(/no longer in the creating/i);
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({ status: "creating" }),
+    ]);
+    const currentToken = (await mappingsFor(seed.app.id))[0]?.attemptToken;
+    expect(currentToken).toBe(second.attemptToken);
+
+    // B completes with ITS token and syncs.
+    stubProduct = defaultStubProduct({ providerProductId: "prod_b" });
+    const finish = await finishProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+        mappingId: second.mapping.id,
+        attemptToken: second.attemptToken,
+      },
+      { kind: "created", providerProductId: "prod_b" },
+      async (id) => {
+        const lookup = stubCreemAdapter.getCatalogProduct;
+        if (!lookup) throw new Error("stub lookup missing");
+        return lookup({} as never, { providerProductId: id });
+      },
+      db,
+    );
+    expect(finish.outcome).toBe("synced");
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({
+        status: "synced",
+        providerProductId: "prod_b",
+      }),
+    ]);
+  });
+
+  it("F1b: progress after a staleness observation blocks the stale park (version CAS)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("f1b");
+
+    // An attempt that LOOKS stale (updatedAt 10 minutes ago).
+    const first = await beginProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    if (first.outcome !== "begin") throw new Error("expected begin");
+    await db
+      .update(providerCatalogMappings)
+      .set({ updatedAt: new Date(Date.now() - 10 * 60_000) })
+      .where(eq(providerCatalogMappings.id, first.mapping.id));
+
+    // The attempt wakes up and persists its created product id — this
+    // refreshes updatedAt (progress since any earlier stale observation).
+    stubProduct = defaultStubProduct({ providerProductId: "prod_f1b" });
+    let releaseVerify!: (product: NormalizedProviderCatalogProduct) => void;
+    const verifyGate = new Promise<NormalizedProviderCatalogProduct>(
+      (resolve) => {
+        releaseVerify = resolve;
+      },
+    );
+    const pendingFinish = finishProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+        mappingId: first.mapping.id,
+        attemptToken: first.attemptToken,
+      },
+      { kind: "created", providerProductId: "prod_f1b" },
+      () => verifyGate,
+      db,
+    );
+
+    // A concurrent provision request must NOT stale-park the row now —
+    // the persisted product id refreshed updatedAt, so the staleness read
+    // of a moment ago no longer authorizes parking; the request is told
+    // an attempt is in progress instead.
+    await expect(
+      beginProvision(
+        {
+          applicationId: seed.app.id,
+          environment: "test",
+          providerConnectionId: seed.connection.id,
+          monetplanePriceId: seed.price.id,
+        },
+        db,
+      ),
+    ).rejects.toMatchObject({ code: "provision_in_progress" });
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({ status: "creating" }),
+    ]);
+
+    // The original attempt completes normally.
+    releaseVerify(defaultStubProduct({ providerProductId: "prod_f1b" }));
+    const finish = await pendingFinish;
+    expect(finish.outcome).toBe("synced");
+  });
 });

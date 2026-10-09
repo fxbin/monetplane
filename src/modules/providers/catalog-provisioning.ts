@@ -323,6 +323,11 @@ export async function beginProvision(
             and(
               eq(providerCatalogMappings.id, existing.id),
               eq(providerCatalogMappings.status, existing.status),
+              // Compare-and-swap on the observed version: an attempt that
+              // made progress since the staleness read (e.g. persisted its
+              // created product id, refreshing updated_at) must not be
+              // parked from a stale observation (#156 review round 3, F1b).
+              eq(providerCatalogMappings.updatedAt, existing.updatedAt),
             ),
           )
           .returning();
@@ -689,7 +694,11 @@ export async function finishProvision(
     .where(
       and(
         eq(providerCatalogMappings.id, input.mappingId),
-        eq(providerCatalogMappings.status, "creating"),
+        inArray(providerCatalogMappings.status, [
+          "creating",
+          "needs_reconciliation",
+        ]),
+        eq(providerCatalogMappings.attemptToken, input.attemptToken),
       ),
     )
     .returning();
