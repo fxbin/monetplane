@@ -298,7 +298,20 @@ export async function getProductBuilderDetail(
   // Provider catalog mappings (#155) for the console link panel: scoped to
   // the selected application + environment, matched client-side per price.
   const catalogMappings = await listCatalogMappings(applicationId, environment);
-  return { ...row, catalogMappings };
+  // Capability gate for the console Create action (PR #160 review F2):
+  // only providers claiming catalog_provisioning show the create button.
+  // Resolution failure fails closed (no create offered).
+  let providerSupportsCatalogCreate = false;
+  if (row.providerConnectionId) {
+    try {
+      providerSupportsCatalogCreate = (
+        await getProviderCapabilities(applicationId, row.providerConnectionId)
+      ).catalog_provisioning;
+    } catch {
+      providerSupportsCatalogCreate = false;
+    }
+  }
+  return { ...row, catalogMappings, providerSupportsCatalogCreate };
 }
 
 export async function getBuilderProviderOptions(

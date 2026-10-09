@@ -670,6 +670,27 @@ describe("provider catalog provisioning (#156)", () => {
     expect(unauthenticated.status).toBe(401);
   });
 
+  it("rejects creation for providers without catalog_provisioning BEFORE any intent row exists (F2)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("nocap");
+
+    // A "creem" adapter WITHOUT the capability — like PayPal/Waffo.
+    const incapableAdapter: PaymentProviderAdapter = {
+      ...mockProviderAdapter,
+      provider: "creem",
+    };
+    clearProviderAdaptersForTests();
+    registerProviderAdapter(incapableAdapter);
+
+    const response = await provision(seed);
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { code: string };
+    expect(body.code).toBe("provider_unsupported");
+    // The decisive property: no failed intent row is left behind.
+    expect(await mappingsFor(seed.app.id)).toHaveLength(0);
+    expect(createCalls).toHaveLength(0);
+  });
+
   it("refuses fail-intent on any state other than needs_reconciliation", async () => {
     await seedOperator("owner");
     const seed = await seedCatalog("failrefuse");

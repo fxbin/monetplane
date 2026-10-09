@@ -1,6 +1,6 @@
 # Agent Note: #157 控制台统一操作面的状态-动作映射
 
-Status: implemented — 单面板按映射状态渲染可用动作;盲重试结构性缺席;生产环境二次确认
+Status: implemented — 单面板按映射状态渲染可用动作;盲重试结构性缺席;生产环境二次确认;修订(review round 1):创建按钮能力门控(双层);标记失败加专用确认;快照恢复文档重写
 
 ## Problem
 
@@ -19,6 +19,13 @@ Status: implemented — 单面板按映射状态渲染可用动作;盲重试结�
 - 每价格一行表格化(否决:多价格产品较少,选择器+单状态卡信息密度更合适;#157 后续真实使用反馈再演化);
 - 禁用而非隐藏不适用的按钮(否决:隐藏更能传达「此状态无此操作」的语义,避免禁用态的权限歧义);
 - 新增 recovery 专用端点(否决:复用 #159 的采纳/失败语义,避免第二套恢复逻辑)。
+
+## Revision (review round 1,人工复核 PR #160)
+
+1. **创建能力双层门控(F2)**:服务端在 beginProvision **之前**做能力预检(无 catalog_provisioning → 400 provider_unsupported,**零意图行残留**);控制台由 getProductBuilderDetail 解析能力并作为 `providerSupportsCreate` 门控创建按钮,无能力时显示「请改用关联」提示,能力解析失败 fail-closed。
+2. **标记失败加专用确认(F4)**:解除不确定态保护在任何环境都是审慎动作(若原商品实际存在,后续重建可能重复)——`window.confirm(markFailedConfirm)` 无条件执行,与生产确认相互独立。
+3. **canLink 补 !failing(F3)**:四个写动作(create/link/mark-failed/verify)现已完全互斥。
+4. **快照恢复文档重写(F1)**:明确「数据库快照回滚 ≠ 目录回滚」——新幂等键**不能**去重遗留商品,直接重建会产出第二个外部商品;给出五步安全恢复顺序(暂停→查找→核实→采纳→确认不存在才新建)。
 
 ## Revisit when
 

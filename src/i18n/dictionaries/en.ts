@@ -470,9 +470,13 @@ export const en = {
     environmentLabel: "Environment",
     connectionLabel: "Provider connection",
     createInProvider: "Create in {provider}",
+    createUnsupportedHint:
+      "This provider does not support automatic product creation — link an existing product instead.",
     creating: "Creating…",
     createFailed: "Provider product creation failed",
     markFailedForRetry: "Mark failed to allow retry",
+    markFailedConfirm:
+      "This lifts the uncertain-outcome protection: if the original product actually exists at the provider, re-creating it later may produce a duplicate product. Continue?",
     markingFailed: "Marking…",
     markedFailedRetryable: "Marked failed — retry the create when ready",
     inFlightNote:

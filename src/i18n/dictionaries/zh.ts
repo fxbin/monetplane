@@ -436,9 +436,12 @@ export const zh: Dictionary = {
     environmentLabel: "环境",
     connectionLabel: "渠道连接",
     createInProvider: "在 {provider} 创建",
+    createUnsupportedHint: "该渠道不支持商品自动创建——请改为关联已有商品。",
     creating: "创建中…",
     createFailed: "创建渠道商品失败",
     markFailedForRetry: "标记失败以允许重试",
+    markFailedConfirm:
+      "此操作将解除不确定态保护:若原商品实际已在渠道存在,之后重新创建可能产生重复商品。确认继续?",
     markingFailed: "标记中…",
     markedFailedRetryable: "已标记失败——可随时重试创建",
     inFlightNote: "该价格的创建尝试进行中;请等待完成,或在其超时后进行恢复。",

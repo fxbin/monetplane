@@ -49,6 +49,8 @@ type CatalogLinkPreview = {
 type ProviderCatalogPanelProps = {
   applicationName: string;
   environment: "test" | "live";
+  /** Routed provider claims catalog_provisioning (fail-closed). */
+  providerSupportsCreate: boolean;
   /** Product's routed provider connection for this environment. */
   connection: CatalogLinkConnection | null;
   prices: CatalogLinkPriceOption[];
@@ -112,6 +114,7 @@ function sourceLabel(
 export function ProviderCatalogPanel({
   applicationName,
   environment,
+  providerSupportsCreate,
   connection,
   prices,
   mappings,
@@ -160,7 +163,8 @@ export function ProviderCatalogPanel({
   const canLink =
     Boolean(verificationIsCurrent && verification?.preview.match.ok) &&
     !linking &&
-    !creating;
+    !creating &&
+    !failing;
 
   /**
    * Production writes need a deliberate confirmation — creating or
@@ -316,6 +320,10 @@ export function ProviderCatalogPanel({
 
   async function markFailedForRetry() {
     if (!connection || !priceId || failing) return;
+    // Lifting the uncertain-outcome protection is deliberate in EVERY
+    // environment: if the original product actually exists at the
+    // provider, a later re-create can duplicate it (PR #160 review F4).
+    if (!window.confirm(labels.markFailedConfirm)) return;
     setFailing(true);
     setMessage(null);
     try {
@@ -349,6 +357,11 @@ export function ProviderCatalogPanel({
       mappingStatus === "needs_reconciliation" ||
       mappingStatus === "failed");
   const showCreate =
+    providerSupportsCreate &&
+    Boolean(connection && priceId) &&
+    (mappingStatus === "unconfigured" || mappingStatus === "failed");
+  const showCreateUnsupportedHint =
+    !providerSupportsCreate &&
     Boolean(connection && priceId) &&
     (mappingStatus === "unconfigured" || mappingStatus === "failed");
 
@@ -452,6 +465,10 @@ export function ProviderCatalogPanel({
                 {failing ? labels.markingFailed : labels.markFailedForRetry}
               </button>
             </div>
+          )}
+
+          {showCreateUnsupportedHint && (
+            <p className="catalog-link-empty">{labels.createUnsupportedHint}</p>
           )}
 
           {showCreate && (

@@ -252,6 +252,7 @@ export default async function ProductDetailPage({
           key={`${context.environment}:${detail.providerConnectionId ?? "none"}`}
           applicationName={context.selectedApplication.name}
           environment={context.environment}
+          providerSupportsCreate={detail.providerSupportsCatalogCreate}
           connection={
             detail.provider
               ? {

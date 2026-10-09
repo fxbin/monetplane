@@ -87,13 +87,24 @@ row version (`updated_at`) so committed progress is never parked over.
   construction: the row stays `needs_reconciliation`, the created product
   id (if the POST returned before the crash) was persisted before the
   verification read, and recovery is adoption via the console.
-- Restoring a database snapshot reverts mapping rows; a product created
-  before the snapshot stays at Creem, unreferenced by the restored rows. A
-  re-created mapping after restore uses a NEW row id (new idempotency
-  key), so a fresh create cannot collide with the orphan. If a snapshot
-  restores a `creating` row whose product was actually created, treat it
-  as needs-reconciliation: find the product in the Creem dashboard and
-  link it.
+- **A database snapshot rollback is NOT a catalog rollback.** Restoring a
+  snapshot reverts mapping rows, but a product created before the snapshot
+  stays at Creem — and a mapping created after the restore gets a NEW row
+  id, hence a NEW idempotency key. That key CANNOT dedupe against the
+  orphaned product: clicking Create again would produce a **second
+  external product**. After any snapshot restore involving in-flight
+  provisioning, recover in this order:
+  1. Pause automatic creation for the affected prices.
+  2. Search the matching Creem environment (Test/Live follows the
+     connection mode) for products that may already have been created.
+  3. Verify identity — amount, currency, billing type, period — against
+     the MonetPlane price.
+  4. If a product is found, recover the mapping through the audited
+     **Link existing** flow (adoption).
+  5. Only when no original product exists, start a new create intent.
+- If a snapshot restores a `creating` row whose product was actually
+  created, treat it as needs-reconciliation (stale-park or manual) and
+  follow the same search-then-adopt order above.
 - Upgrades keep legacy `metadata.catalog` behavior for connections that
   never opted into managed mappings; rolling back the feature is dropping
   the mapping table (and the 0022 `attempt_token` column) — checkout then
