@@ -106,9 +106,15 @@ row version (`updated_at`) so committed progress is never parked over.
   created, treat it as needs-reconciliation (stale-park or manual) and
   follow the same search-then-adopt order above.
 - Upgrades keep legacy `metadata.catalog` behavior for connections that
-  never opted into managed mappings; rolling back the feature is dropping
-  the mapping table (and the 0022 `attempt_token` column) — checkout then
-  falls back to legacy metadata.
+  never opted into managed mappings.
+- **Rollback rule: roll back application code first and KEEP the
+  database mappings.** Never drop the mapping table as a default rollback
+  step — a price whose provider product id lives only in
+  `provider_catalog_mappings` (no legacy `metadata.catalog` entry) would
+  lose its checkout product-id source entirely. Cleaning the new table is
+  acceptable ONLY after ALL of: the old checkout is confirmed to have a
+  complete, valid mapping source for every affected price; the table has
+  been backed up and reconciled; and a human has approved the removal.
 
 ## Real-Sandbox acceptance (external evidence, #157)
 

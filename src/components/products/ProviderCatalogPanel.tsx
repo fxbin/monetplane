@@ -507,7 +507,11 @@ export function ProviderCatalogPanel({
                 className="btn btn-secondary"
                 onClick={verify}
                 disabled={
-                  verifying || linking || creating || !providerProductId.trim()
+                  verifying ||
+                  linking ||
+                  creating ||
+                  failing ||
+                  !providerProductId.trim()
                 }
               >
                 {verifying ? labels.verifying : labels.verify}
