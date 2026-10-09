@@ -159,7 +159,8 @@ export function ProviderCatalogPanel({
 
   const canLink =
     Boolean(verificationIsCurrent && verification?.preview.match.ok) &&
-    !linking;
+    !linking &&
+    !creating;
 
   /**
    * Production writes need a deliberate confirmation — creating or
@@ -446,7 +447,7 @@ export function ProviderCatalogPanel({
                 type="button"
                 className="btn btn-secondary"
                 onClick={markFailedForRetry}
-                disabled={failing || creating}
+                disabled={failing || creating || linking}
               >
                 {failing ? labels.markingFailed : labels.markFailedForRetry}
               </button>
@@ -458,7 +459,7 @@ export function ProviderCatalogPanel({
               type="button"
               className="btn btn-primary catalog-create-btn"
               onClick={createInProvider}
-              disabled={creating}
+              disabled={creating || linking || failing}
             >
               {creating
                 ? labels.creating

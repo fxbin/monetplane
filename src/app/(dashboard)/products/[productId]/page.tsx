@@ -94,7 +94,7 @@ export default async function ProductDetailPage({
     source: mapping.source,
     status: mapping.status,
     lastVerifiedLabel: mapping.lastVerifiedAt
-      ? formatDate(mapping.lastVerifiedAt, localeTag)
+      ? formatDateTime(mapping.lastVerifiedAt, localeTag)
       : null,
   }));
 

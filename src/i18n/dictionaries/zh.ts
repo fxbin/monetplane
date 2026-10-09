@@ -245,9 +245,9 @@ export const zh: Dictionary = {
     statusPlaceholder: "failed、completed…",
   },
   team: {
-    title: "团队",
+    title: "该价格的渠道商品",
     description:
-      "工作区操作员、他们的控制台角色与项目访问范围。所有变更都会记入审计日志。",
+      "从此价格创建渠道商品,或关联已有商品——MonetPlane 先只读校验渠道侧,确认前不会写入任何数据。",
     members: "成员",
     thOperator: "操作员",
     thRole: "角色",

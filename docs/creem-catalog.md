@@ -87,14 +87,17 @@ row version (`updated_at`) so committed progress is never parked over.
   construction: the row stays `needs_reconciliation`, the created product
   id (if the POST returned before the crash) was persisted before the
   verification read, and recovery is adoption via the console.
-- Restoring a database snapshot reverts mapping rows but can never orphan
-  a product at Creem: a re-created mapping reuses a NEW row id (new
-  idempotency key). If a snapshot restores a `creating` row whose product
-  was actually created, treat it as needs-reconciliation: find the product
-  in the Creem dashboard and link it.
+- Restoring a database snapshot reverts mapping rows; a product created
+  before the snapshot stays at Creem, unreferenced by the restored rows. A
+  re-created mapping after restore uses a NEW row id (new idempotency
+  key), so a fresh create cannot collide with the orphan. If a snapshot
+  restores a `creating` row whose product was actually created, treat it
+  as needs-reconciliation: find the product in the Creem dashboard and
+  link it.
 - Upgrades keep legacy `metadata.catalog` behavior for connections that
   never opted into managed mappings; rolling back the feature is dropping
-  the two tables (checkout falls back to legacy metadata).
+  the mapping table (and the 0022 `attempt_token` column) — checkout then
+  falls back to legacy metadata.
 
 ## Real-Sandbox acceptance (external evidence, #157)
 

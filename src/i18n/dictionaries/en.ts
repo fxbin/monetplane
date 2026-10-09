@@ -272,9 +272,9 @@ export const en = {
     statusPlaceholder: "failed, completed…",
   },
   team: {
-    title: "Team",
+    title: "Provider catalog for this price",
     description:
-      "Workspace operators, their console roles, and project access scopes. Every change is recorded in the audit log.",
+      "Create the provider product from this price, or link an existing one — MonetPlane verifies the provider side read-only first, and nothing is written until you confirm.",
     members: "Members",
     thOperator: "Operator",
     thRole: "Role",
