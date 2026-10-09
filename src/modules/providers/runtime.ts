@@ -7,7 +7,9 @@ import { resolveCheckoutProviderProductIds } from "./catalog-mapping";
 import type {
   CancelSubscriptionInput,
   CheckoutBillingMode,
+  CreateCatalogProductInput,
   CreateCheckoutInput,
+  CreatedCatalogProduct,
   GetCatalogProductInput,
   GetPaymentInput,
   GetSubscriptionInput,
@@ -21,6 +23,7 @@ import type {
 import {
   ProviderApplicationMismatchError,
   ProviderCatalogLookupUnsupportedError,
+  ProviderOperationError,
   UnsupportedProviderCapabilityError,
 } from "./contract";
 import {
@@ -171,6 +174,37 @@ export async function getProviderCatalogProduct(
     throw new ProviderCatalogLookupUnsupportedError(connection.provider);
   }
   return adapter.getCatalogProduct(connection, input);
+}
+
+/**
+ * Provider product creation for the provisioning flow (#156). Capability
+ * AND implementation gated: a provider that cannot create products fails
+ * closed as a deterministic rejection before any state is persisted.
+ */
+export async function createProviderCatalogProduct(
+  applicationId: string,
+  connectionId: string,
+  input: CreateCatalogProductInput,
+  db: Database = getDb(),
+): Promise<CreatedCatalogProduct> {
+  const connection = await loadProviderConnectionContext(
+    applicationId,
+    connectionId,
+    db,
+  );
+  const adapter = resolveProviderAdapter(connection.provider);
+  requireCapability(
+    connection.provider,
+    adapter.getCapabilities(connection),
+    "catalog_provisioning",
+  );
+  if (!adapter.createCatalogProduct) {
+    throw new ProviderOperationError(
+      `Provider ${connection.provider} does not support catalog product creation`,
+      "rejected",
+    );
+  }
+  return adapter.createCatalogProduct(connection, input);
 }
 
 export async function getProviderPayment(

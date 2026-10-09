@@ -229,6 +229,7 @@ export function classifyHttpFailure(
   return new ProviderOperationError(
     message,
     status >= 400 && status < 500 ? "rejected" : "outcome_uncertain",
+    status,
   );
 }
 

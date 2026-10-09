@@ -70,6 +70,7 @@ const PAYPAL_CAPABILITIES: ProviderCapabilities = {
   subscription_update: false,
   customer_portal: false,
   provider_hosted_checkout: true,
+  catalog_provisioning: false,
 };
 
 type FetchLike = typeof fetch;

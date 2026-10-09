@@ -90,6 +90,7 @@ const WAFFO_CAPABILITIES: ProviderCapabilities = {
   subscription_update: false,
   customer_portal: false,
   provider_hosted_checkout: true,
+  catalog_provisioning: false,
 };
 
 /** Subset of the SDK surface this adapter uses (also the test seam). */

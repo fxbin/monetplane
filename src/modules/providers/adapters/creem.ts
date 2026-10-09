@@ -2,6 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CancelSubscriptionInput,
   CheckoutResult,
+  CreateCatalogProductInput,
+  CreatedCatalogProduct,
   GetCatalogProductInput,
   GetPaymentInput,
   GetSubscriptionInput,
@@ -21,6 +23,7 @@ import type {
 } from "../contract";
 import {
   InvalidProviderWebhookSignatureError,
+  ProviderOperationError,
   UnsupportedProviderCapabilityError,
 } from "../contract";
 // Shared adapter kit (audit A8): JSON guards, credential access, base URL
@@ -58,6 +61,7 @@ const CREEM_CAPABILITIES: ProviderCapabilities = {
   subscription_update: false,
   customer_portal: false,
   provider_hosted_checkout: true,
+  catalog_provisioning: true,
 };
 
 type FetchLike = typeof fetch;
@@ -240,6 +244,46 @@ function creemBillingPeriodToInterval(value: JsonRecord): {
   if (fixed) return fixed;
   throw new Error(`Creem product has an unsupported billing period: ${period}`);
 }
+
+/**
+ * Inverse mapping for creates (#156): MonetPlane interval semantics → the
+ * Creem request body. Fixed Creem periods are preferred; anything else
+ * (week-based, month xN beyond the fixed set, year xN) becomes the
+ * documented `custom` form with recurring_interval + count. Exported for
+ * unit tests.
+ */
+export function creemBillingPeriodFromBody(input: {
+  billingType: "one_time" | "recurring";
+  recurringInterval: "week" | "month" | "year" | null;
+  intervalCount: number | null;
+}): Record<string, unknown> {
+  if (input.billingType !== "recurring") return {};
+  const interval = input.recurringInterval;
+  const count = input.intervalCount;
+  if (!interval || count === null || count === undefined) {
+    throw new Error(
+      "Recurring Creem products require a billing interval and count",
+    );
+  }
+  for (const [period, fixed] of Object.entries(CREEM_FIXED_BILLING_PERIODS)) {
+    if (fixed.recurringInterval === interval && fixed.intervalCount === count) {
+      return { billing_period: period };
+    }
+  }
+  return {
+    billing_period: "custom",
+    recurring_interval: interval,
+    recurring_interval_count: count,
+  };
+}
+
+/** Creem create-product constraints (reference, verified 2026-10-08). */
+const CREEM_CREATE_CURRENCIES = new Set(["USD", "EUR"]);
+const CREEM_TAX_CATEGORIES = new Set([
+  "saas",
+  "digital-goods-service",
+  "ebooks",
+]);
 
 function creemProductMode(value: unknown): ProviderMode | "unknown" {
   switch (value) {
@@ -732,6 +776,69 @@ export function createCreemProviderAdapter(
         `/v1/products/${encodeURIComponent(input.providerProductId)}`,
       );
       return normalizeCreemCatalogProduct(response);
+    },
+
+    async createCatalogProduct(
+      connection,
+      input: CreateCatalogProductInput,
+    ): Promise<CreatedCatalogProduct> {
+      // Creem-side pre-flight (reference, verified 2026-10-08): currency
+      // must be USD/EUR; price must be 0 (free) or at least 100 minor
+      // units; tax_category must be a documented enum when supplied.
+      // Violations are deterministic (rejected) — the state machine parks
+      // them as failed, never as uncertain.
+      const currency = input.currency.toUpperCase();
+      if (!CREEM_CREATE_CURRENCIES.has(currency)) {
+        throw new ProviderOperationError(
+          `Creem only supports ${[...CREEM_CREATE_CURRENCIES].join(" and ")} product currencies, not ${currency}`,
+          "rejected",
+        );
+      }
+      if (
+        !Number.isSafeInteger(input.amountMinor) ||
+        (input.amountMinor !== 0 && input.amountMinor < 100)
+      ) {
+        throw new ProviderOperationError(
+          "Creem product prices must be 0 (free) or at least 100 minor units",
+          "rejected",
+        );
+      }
+      if (input.taxCategory && !CREEM_TAX_CATEGORIES.has(input.taxCategory)) {
+        throw new ProviderOperationError(
+          `Unsupported Creem tax category: ${input.taxCategory}`,
+          "rejected",
+        );
+      }
+      if (!input.idempotencyKey.trim()) {
+        throw new ProviderOperationError(
+          "Creem product creation requires an idempotency key",
+          "rejected",
+        );
+      }
+
+      const body: Record<string, unknown> = {
+        name: input.name,
+        description: input.description ?? "",
+        price: input.amountMinor,
+        currency,
+        billing_type:
+          input.billingType === "one_time" ? "onetime" : "recurring",
+        ...creemBillingPeriodFromBody(input),
+      };
+      if (input.taxCategory) body.tax_category = input.taxCategory;
+
+      const response = await creemRequest(connection, options, "/v1/products", {
+        method: "POST",
+        headers: { "idempotency-key": input.idempotencyKey.trim() },
+        body: JSON.stringify(body),
+      });
+      const providerProductId = stringValue(response.id);
+      if (!providerProductId) {
+        throw new Error("Creem create product response is missing id");
+      }
+      // Only the id is trusted here: the caller must re-read the product
+      // via getCatalogProduct and compare before declaring it synced.
+      return { providerProductId };
     },
 
     async verifyWebhook(

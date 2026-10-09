@@ -119,6 +119,36 @@ Rules for implementers:
   means the provider cannot verify existing products, and linking fails
   closed with a rejected `ProviderOperationError`.
 
+### 4c. Catalog product creation (optional, #156)
+
+`createCatalogProduct(connection, input)` is the optional create behind the
+console provisioning flow, gated by the `catalog_provisioning` capability
+(declare it `false` in your capability record when unsupported). The
+provisioning state machine calls it with a caller-stable
+`idempotencyKey` (the persisted mapping row id) so a re-sent create after
+a crash dedupes at the provider instead of forking duplicates — implement
+the header/parameter only if the provider's documented contract supports
+it (Creem: `Idempotency-Key`, verified 2026-10-08).
+
+Rules for implementers:
+
+- **Return only `{ providerProductId }`.** The caller re-reads the product
+  through `getCatalogProduct` and compares it against the MonetPlane price
+  before declaring the mapping synced (bidirectional verification). Do not
+  trust the create response body beyond its id.
+- **Pre-flight fail closed.** Provider-side constraints you know about
+  (Creem: USD/EUR currencies, price 0 or ≥ 100 minor units, documented
+  tax categories) are rejected as deterministic `ProviderOperationError`s
+  BEFORE any HTTP call — deterministic rejections park the intent as
+  `failed`; timeouts and 5xx park it as `needs_reconciliation`.
+- **Map intervals honestly.** Prefer the provider's fixed billing periods
+  when they match (month×1 → `every-month`, …); everything else MonetPlane
+  can express goes through the provider's custom-interval form. An
+  interval you cannot represent must throw, not round.
+- **`ProviderOperationError` now carries `status?`** for HTTP failures —
+  the orchestration uses it to distinguish bounded-retry 429 rate limits
+  from other deterministic 4xx rejections.
+
 ### 5. Webhook verification and normalization
 
 `verifyWebhook` authenticates the raw request (signature/HMAC) and throws

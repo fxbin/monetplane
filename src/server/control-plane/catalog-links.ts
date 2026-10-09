@@ -294,7 +294,7 @@ export async function linkProviderCatalogProductFromConsole(
     action: string;
     resourceId: string;
     metadata: Record<string, unknown>;
-    outcome: "linked" | "reverified" | "rejected";
+    outcome: "linked" | "reverified" | "recovered" | "rejected";
     code?: CatalogLinkErrorCode;
   }) => Promise<void>,
 ): Promise<
@@ -305,6 +305,11 @@ export async function linkProviderCatalogProductFromConsole(
     }
   | {
       outcome: "already_linked";
+      mapping: CatalogMappingRow;
+      preview: CatalogLinkPreview;
+    }
+  | {
+      outcome: "recovered";
       mapping: CatalogMappingRow;
       preview: CatalogLinkPreview;
     }
@@ -341,9 +346,16 @@ export async function linkProviderCatalogProductFromConsole(
       action:
         result.outcome === "linked"
           ? "provider_catalog.linked"
-          : "provider_catalog.link_reverified",
+          : result.outcome === "recovered"
+            ? "provider_catalog.recovered"
+            : "provider_catalog.link_reverified",
       resourceId: result.mapping.id,
-      outcome: result.outcome === "linked" ? "linked" : "reverified",
+      outcome:
+        result.outcome === "linked"
+          ? "linked"
+          : result.outcome === "recovered"
+            ? "recovered"
+            : "reverified",
       metadata: {
         providerConnectionId: input.providerConnectionId,
         monetplanePriceId: input.monetplanePriceId,

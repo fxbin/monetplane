@@ -223,7 +223,9 @@ async function loadOwnedPrice(
 
 export type LinkCatalogProductResult =
   | { outcome: "linked"; mapping: CatalogMappingRow }
-  | { outcome: "already_linked"; mapping: CatalogMappingRow };
+  | { outcome: "already_linked"; mapping: CatalogMappingRow }
+  /** #156 recovery: an uncertain/failed intent adopted via an explicit link. */
+  | { outcome: "recovered"; mapping: CatalogMappingRow };
 
 /**
  * Persist a verified link between a MonetPlane price and an existing
@@ -402,6 +404,37 @@ export async function linkProviderCatalogProduct(
       .where(eq(providerCatalogMappings.id, existing.id))
       .returning();
     return { outcome: "already_linked", mapping: updated ?? existing };
+  }
+
+  // #156 recovery path: adopt an uncertain or failed provisioning intent by
+  // binding the product the operator located at the provider. This is the
+  // explicit, audited resolution for creates whose response was lost —
+  // in-flight rows (pending/creating) and synced rows pointing at another
+  // product still fail closed below.
+  if (
+    existing &&
+    (existing.status === "needs_reconciliation" || existing.status === "failed")
+  ) {
+    const [adopted] = await db
+      .update(providerCatalogMappings)
+      .set({
+        providerProductId,
+        status: "synced",
+        verifiedSnapshot,
+        lastVerifiedAt: now,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(providerCatalogMappings.id, existing.id),
+          inArray(providerCatalogMappings.status, [
+            "needs_reconciliation",
+            "failed",
+          ]),
+        ),
+      )
+      .returning();
+    if (adopted) return { outcome: "recovered", mapping: adopted };
   }
 
   throw new CatalogLinkError(

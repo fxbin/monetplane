@@ -37,6 +37,21 @@ export const en = {
       "The connection's legacy metadata maps this price to a different provider product",
     catalogLinkMappingConflict:
       "This price already maps to a different provider product",
+    provisionInvalidInput: "Provider connection and price are required",
+    provisionProviderUnsupported:
+      "This provider does not support automatic product creation",
+    provisionLegacyConflict:
+      "This price already has a legacy metadata mapping; link that product instead",
+    provisionInProgress:
+      "A provisioning attempt for this price is already in progress",
+    provisionNeedsAttention:
+      "A previous create has an uncertain outcome; recover it before retrying",
+    provisionCreateRejected: "Provider product creation was rejected",
+    provisionPostCreateMismatch:
+      "The created provider product does not match this price",
+    failedToProvisionProviderProduct: "Failed to create provider product",
+    failedToFailProvisionIntent:
+      "Failed to mark the provisioning intent failed",
     createOrSelectAProjectBeforeAddingAWebhook:
       "Create or select a project before adding a webhook",
     createOrSelectAProjectBeforeConnectingAProvider:
@@ -1039,6 +1054,7 @@ export const en = {
       subscription_update: "Subscription updates",
       customer_portal: "Customer portal",
       provider_hosted_checkout: "Provider-hosted checkout",
+      catalog_provisioning: "Automatic product creation",
     },
   },
   revenue: {
