@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { ProductProviderRouteEditor } from "@/components/products/ProductProviderRouteEditor";
-import { ProviderCatalogLinkPanel } from "@/components/products/ProviderCatalogLinkPanel";
+import { ProviderCatalogPanel } from "@/components/products/ProviderCatalogPanel";
 import { StatusBadge } from "@/components/ui/console";
 import { formatMessage, getDictionary, getLocaleTag } from "@/i18n/server";
 import { formatAmount, formatDate, formatDateTime } from "@/lib/format";
@@ -248,8 +248,9 @@ export default async function ProductDetailPage({
             provider connection or the console environment remounts the
             panel, so no state (verification, in-flight request, message)
             survives an identity change. */}
-        <ProviderCatalogLinkPanel
+        <ProviderCatalogPanel
           key={`${context.environment}:${detail.providerConnectionId ?? "none"}`}
+          applicationName={context.selectedApplication.name}
           environment={context.environment}
           connection={
             detail.provider

@@ -465,6 +465,29 @@ export const en = {
     statusCreating: "creating",
     statusNeedsReconciliation: "needs review",
     statusFailed: "failed",
+    statusNotConfigured: "Not configured",
+    applicationLabel: "Project",
+    environmentLabel: "Environment",
+    connectionLabel: "Provider connection",
+    createInProvider: "Create in {provider}",
+    creating: "Creating…",
+    createFailed: "Provider product creation failed",
+    markFailedForRetry: "Mark failed to allow retry",
+    markingFailed: "Marking…",
+    markedFailedRetryable: "Marked failed — retry the create when ready",
+    inFlightNote:
+      "A provisioning attempt is in progress for this price; wait for it to finish or recover it once it goes stale.",
+    syncedNote:
+      "Synced — this price already maps to a provider product; checkout uses it.",
+    needsAttentionTitle: "Needs manual reconciliation",
+    needsAttentionBody:
+      "A previous create has an uncertain outcome — the product may already exist at the provider. Paste its ID below and link it to adopt it, or mark the intent failed and retry the create.",
+    adoptHint:
+      "Recovery: verify the product found at the provider, then confirm to bind it to this price.",
+    liveConfirm:
+      "PRODUCTION: this will create or bind a REAL provider product for live checkout traffic. Continue?",
+    createdAndLinked: "Created and linked {productId}.",
+    recovered: "Uncertain intent recovered — mapping adopted and synced.",
   },
   wizard: {
     sandbox: "Sandbox",
