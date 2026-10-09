@@ -193,11 +193,22 @@ export async function createProviderCatalogProduct(
     db,
   );
   const adapter = resolveProviderAdapter(connection.provider);
-  requireCapability(
-    connection.provider,
-    adapter.getCapabilities(connection),
-    "catalog_provisioning",
-  );
+  const capabilities = adapter.getCapabilities(connection);
+  requireCapability(connection.provider, capabilities, "catalog_provisioning");
+  // Interval gate mirrors checkout: never create a provider product for a
+  // recurring interval the provider cannot later check out (e.g. Creem has
+  // no weekly subscriptions) — the mapping would be born unusable.
+  if (input.billingType === "recurring" && input.recurringInterval) {
+    requireCapability(
+      connection.provider,
+      capabilities,
+      input.recurringInterval === "week"
+        ? "weekly_interval"
+        : input.recurringInterval === "year"
+          ? "annual_interval"
+          : "monthly_interval",
+    );
+  }
   if (!adapter.createCatalogProduct) {
     throw new ProviderOperationError(
       `Provider ${connection.provider} does not support catalog product creation`,

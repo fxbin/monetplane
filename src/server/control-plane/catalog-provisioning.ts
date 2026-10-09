@@ -15,6 +15,7 @@ import {
   createProviderCatalogProduct,
   getProviderCatalogProduct,
 } from "@/modules/providers/runtime";
+import { ProviderConnectionNotFoundError } from "@/modules/providers/service";
 import type { ConsoleEnvironment } from "./context";
 
 /**
@@ -212,6 +213,10 @@ export async function provisionProviderCatalogProductFromConsole(
           message: cause.message,
           code: "provider_unsupported",
         };
+      } else if (cause instanceof ProviderConnectionNotFoundError) {
+        // Connection revoked/deleted between begin and create: nothing was
+        // sent — deterministic, parks failed instead of needs_reconciliation.
+        createResult = { kind: "rejected", message: cause.message };
       } else if (cause instanceof ProviderOperationError) {
         createResult =
           cause.failureKind === "rejected"

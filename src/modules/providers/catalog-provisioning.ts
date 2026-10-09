@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "../../db/client";
 import { getDb } from "../../db/client";
 import { prices, products } from "../catalog/schema";
@@ -483,11 +483,42 @@ export async function finishProvision(
     return { outcome: "uncertain", mapping };
   }
 
-  // Created: bidirectional verification — re-read the product and compare
-  // against the MonetPlane price before declaring success (#156 §4).
+  // Created: persist the id on the creating row IMMEDIATELY (before the
+  // verification read) so a concurrent stale-park can never discard it —
+  // a row already parked as needs_reconciliation still receives the id.
+  const persistCreatedId = async (): Promise<boolean> => {
+    const [row] = await db
+      .update(providerCatalogMappings)
+      .set({ providerProductId: result.providerProductId, updatedAt: now })
+      .where(
+        and(
+          eq(providerCatalogMappings.id, input.mappingId),
+          inArray(providerCatalogMappings.status, [
+            "creating",
+            "needs_reconciliation",
+          ]),
+        ),
+      )
+      .returning();
+    return Boolean(row);
+  };
+  if (!(await persistCreatedId())) {
+    throw new CatalogProvisionError(
+      "Provisioning intent is no longer in a state that accepts the created product id",
+      "provision_needs_attention",
+    );
+  }
+
+  // Bidirectional verification — re-read the product and compare against
+  // the MonetPlane price before declaring success (#156 §4).
   let product: NormalizedProviderCatalogProduct;
   try {
     product = await verify(result.providerProductId);
+    if (product.providerProductId !== result.providerProductId) {
+      throw new Error(
+        `Provider returned product ${product.providerProductId} for id ${result.providerProductId}`,
+      );
+    }
   } catch {
     // The create response carried an id but the verification read failed:
     // treat as uncertain WITH the id so recovery can adopt it directly.

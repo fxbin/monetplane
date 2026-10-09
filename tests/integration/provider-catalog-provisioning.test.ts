@@ -647,4 +647,82 @@ describe("provider catalog provisioning (#156)", () => {
     const unauthenticated = await provision(seed);
     expect(unauthenticated.status).toBe(401);
   });
+
+  it("refuses fail-intent on any state other than needs_reconciliation", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("failrefuse");
+
+    // No row at all.
+    const none = await failIntentPOST(
+      provisionRequest(
+        { connectionId: seed.connection.id, priceId: seed.price.id },
+        "/fail-intent",
+      ),
+    );
+    expect(none.status).toBe(409);
+
+    // Synced row must not be resettable either.
+    await provision(seed);
+    const synced = await failIntentPOST(
+      provisionRequest(
+        { connectionId: seed.connection.id, priceId: seed.price.id },
+        "/fail-intent",
+      ),
+    );
+    expect(synced.status).toBe(409);
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({ status: "synced" }),
+    ]);
+  });
+
+  it("parks exhausted 429 retries as failed, not needs_reconciliation", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("ratelimited");
+    // Always 429 — the bounded retries exhaust.
+    let calls = 0;
+    const exhaustingAdapter: PaymentProviderAdapter = {
+      ...stubCreemAdapter,
+      async createCatalogProduct(_connection, input) {
+        calls += 1;
+        createCalls.push(input);
+        throw new ProviderOperationError(
+          "Creem request failed (429 Too Many Requests)",
+          "rejected",
+          429,
+        );
+      },
+    };
+    clearProviderAdaptersForTests();
+    registerProviderAdapter(exhaustingAdapter);
+
+    const response = await provision(seed);
+
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { code: string }).code).toBe(
+      "provision_create_rejected",
+    );
+    // Initial call + both bounded retries.
+    expect(calls).toBe(3);
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({ status: "failed", providerProductId: null }),
+    ]);
+  });
+
+  it("passes operator name and tax category overrides through to the create body", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("overrides");
+
+    const response = await provision(seed, {
+      name: "Custom name",
+      description: "Custom description",
+      taxCategory: "digital-goods-service",
+    });
+
+    expect(response.status).toBe(201);
+    expect(createCalls[0]).toMatchObject({
+      name: "Custom name",
+      description: "Custom description",
+      taxCategory: "digital-goods-service",
+    });
+  });
 });
