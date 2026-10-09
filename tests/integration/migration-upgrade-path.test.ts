@@ -33,7 +33,7 @@ const repoRoot = path.resolve(
   "../..",
 );
 const drizzleFolder = path.join(repoRoot, "drizzle");
-const MAIN_TIP_TAG = "0020_credit_grant_revoked";
+const MAIN_TIP_TAG = "0021_provider_catalog_mappings";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -77,8 +77,8 @@ async function copyMigrationsFolder(target: string): Promise<void> {
   }
 }
 
-describe("migration upgrade path (main@0020 → branch 0021)", () => {
-  it("applies 0021 on top of a deployed 0020 database and is repeat-safe", async () => {
+describe("migration upgrade path (main@0021 → branch 0022)", () => {
+  it("applies 0022 on top of a deployed 0021 database and is repeat-safe", async () => {
     // ---- Static journal sanity (catches the bug class before any DB
     // work). The migrator's skip predicate is decided by `when`
     // (`folderMillis`); `idx` strict monotonicity is journal structural
@@ -91,7 +91,7 @@ describe("migration upgrade path (main@0020 → branch 0021)", () => {
     const mainTipIndex = journal.entries.findIndex(
       (entry) => entry.tag === MAIN_TIP_TAG,
     );
-    expect(mainTipIndex, `journal must contain ${MAIN_TIP_TAG}`).toBe(20);
+    expect(mainTipIndex, `journal must contain ${MAIN_TIP_TAG}`).toBe(21);
     for (const [i, entry] of journal.entries.entries()) {
       // idx counts from 0 (0000_bootstrap) and must equal array position.
       expect(entry.idx, `entry ${entry.tag} idx`).toBe(i);
@@ -128,13 +128,13 @@ describe("migration upgrade path (main@0020 → branch 0021)", () => {
     } finally {
       await fs.rm(mainFolder, { recursive: true, force: true });
     }
-    expect(await appliedCount()).toBe(21);
+    expect(await appliedCount()).toBe(22);
 
     // Pass 2: deploy this branch and migrate — the discriminator.
-    // With 0021's `when` earlier than 0020's, the migrator silently
-    // skips it here and the count stays 21.
+    // With 0022's `when` earlier than 0021's, the migrator silently
+    // skips it here and the count stays 22.
     await migrate(db, { migrationsFolder: drizzleFolder });
-    expect(await appliedCount()).toBe(22);
+    expect(await appliedCount()).toBe(23);
 
     // 0021 is live: provider_catalog_mappings exists with the composite
     // same-application / same-environment foreign keys enforced by the
@@ -188,6 +188,14 @@ describe("migration upgrade path (main@0020 → branch 0021)", () => {
       scratch`insert into provider_catalog_mappings (id, application_id, provider_connection_id, environment, monetplane_price_id, provider, provider_product_id, source, status) values (${`pcmap_bad_${mapSuffix}`}, ${`app_${mapSuffix}`}, ${`pconn_${mapSuffix}`}, 'live', ${`price_${mapSuffix}`}, 'creem', ${`creem_prod_bad_${mapSuffix}`}, 'linked', 'synced')`,
     ).rejects.toThrow(/provider_catalog_mappings_connection_mode_fk/i);
 
+    // 0022 is live: the attempt-token ownership column exists (#156 ABA
+    // guard) and is nullable for #158-era linked rows.
+    const tokenCols = await scratch<
+      Array<{ is_nullable: string }>
+    >`select is_nullable from information_schema.columns where table_name = 'provider_catalog_mappings' and column_name = 'attempt_token'`;
+    expect(tokenCols).toHaveLength(1);
+    expect(tokenCols[0]?.is_nullable).toBe("YES");
+
     // The earlier 0020 constraint is still live: `grant.revoked` is
     // accepted.
     const constraintDefs = await scratch<
@@ -206,6 +214,6 @@ describe("migration upgrade path (main@0020 → branch 0021)", () => {
 
     // Pass 3: migrate again — repeat-safe, nothing new applied.
     await migrate(db, { migrationsFolder: drizzleFolder });
-    expect(await appliedCount()).toBe(22);
+    expect(await appliedCount()).toBe(23);
   }, 120_000);
 });

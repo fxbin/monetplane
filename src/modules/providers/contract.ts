@@ -10,6 +10,7 @@ export const PROVIDER_CAPABILITIES = [
   "subscription_update",
   "customer_portal",
   "provider_hosted_checkout",
+  "catalog_provisioning",
 ] as const;
 
 export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
@@ -132,6 +133,28 @@ export type NormalizedProviderCatalogProduct = {
 };
 
 /**
+ * Catalog provisioning input (#156): create a provider product from a
+ * MonetPlane price. `idempotencyKey` is a caller-stable value (the
+ * persisted mapping row id) so a re-sent create after a crash dedupes at
+ * the provider instead of producing a duplicate product — only for
+ * providers whose documented contract supports it (Creem's
+ * Idempotency-Key header, verified 2026-10-08).
+ */
+export type CreateCatalogProductInput = {
+  name: string;
+  description: string | null;
+  amountMinor: number;
+  currency: string;
+  billingType: "one_time" | "recurring";
+  recurringInterval: "week" | "month" | "year" | null;
+  intervalCount: number | null;
+  taxCategory: string | null;
+  idempotencyKey: string;
+};
+
+export type CreatedCatalogProduct = { providerProductId: string };
+
+/**
  * Optional hosted payment-management redirect (#71). Providers that expose a
  * native customer billing portal may implement this; the customer portal only
  * offers the redirect when the active connection both implements the method
@@ -237,6 +260,18 @@ export interface PaymentProviderAdapter {
     connection: ProviderConnectionContext,
     input: GetCatalogProductInput,
   ): Promise<NormalizedProviderCatalogProduct>;
+  /**
+   * Optional: provider product creation for the provisioning flow (#156),
+   * gated by the `catalog_provisioning` capability. Returns only the
+   * created provider product id — the caller MUST re-read the product
+   * through getCatalogProduct and compare it against the MonetPlane price
+   * before trusting the create (bidirectional verification). Network I/O
+   * must stay outside any database transaction.
+   */
+  createCatalogProduct?(
+    connection: ProviderConnectionContext,
+    input: CreateCatalogProductInput,
+  ): Promise<CreatedCatalogProduct>;
   verifyWebhook(
     connection: ProviderConnectionContext,
     input: VerifyWebhookInput,
@@ -251,6 +286,12 @@ export class ProviderOperationError extends Error {
   constructor(
     message: string,
     public readonly failureKind: ProviderOperationFailureKind,
+    /**
+     * HTTP status when the failure came from a provider response (#156):
+     * lets callers distinguish retryable rate limits (429) from other
+     * deterministic 4xx rejections without parsing messages.
+     */
+    public readonly status?: number,
   ) {
     super(message);
     this.name = "ProviderOperationError";

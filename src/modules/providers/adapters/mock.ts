@@ -37,6 +37,7 @@ export const MOCK_CAPABILITIES: ProviderCapabilities = {
   subscription_update: true,
   customer_portal: true,
   provider_hosted_checkout: true,
+  catalog_provisioning: false,
 };
 
 type MockWebhookPayload = {

@@ -27,6 +27,15 @@ export const zh: Dictionary = {
     catalogLinkLegacyConflict:
       "该连接的旧版元数据已将此价格映射到另一个渠道商品",
     catalogLinkMappingConflict: "此价格已映射到另一个渠道商品",
+    provisionInvalidInput: "渠道连接与价格均为必填项",
+    provisionProviderUnsupported: "该渠道不支持商品自动创建",
+    provisionLegacyConflict: "该价格已有旧版元数据映射,请改为关联该商品",
+    provisionInProgress: "该价格的创建尝试正在进行中",
+    provisionNeedsAttention: "上一次创建结果不确定,请先恢复后再重试",
+    provisionCreateRejected: "渠道商品创建被拒绝",
+    provisionPostCreateMismatch: "创建的渠道商品与该价格不匹配",
+    failedToProvisionProviderProduct: "创建渠道商品失败",
+    failedToFailProvisionIntent: "标记创建意图失败状态失败",
     createOrSelectAProjectBeforeAddingAWebhook:
       "添加 webhook 前请先创建或选择项目",
     createOrSelectAProjectBeforeConnectingAProvider:
@@ -970,6 +979,7 @@ export const zh: Dictionary = {
       subscription_update: "订阅变更",
       customer_portal: "客户门户",
       provider_hosted_checkout: "渠道托管结账",
+      catalog_provisioning: "商品自动创建",
     },
   },
   revenue: {

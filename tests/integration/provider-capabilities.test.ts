@@ -35,6 +35,7 @@ const limitedAdapter = {
     subscription_update: false,
     customer_portal: false,
     provider_hosted_checkout: false,
+    catalog_provisioning: false,
   }),
 };
 

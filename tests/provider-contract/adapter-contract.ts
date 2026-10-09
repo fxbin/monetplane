@@ -30,6 +30,7 @@ export function defineProviderAdapterContractTests(input: {
       expect(Object.keys(capabilities).sort()).toEqual(
         [
           "annual_interval",
+          "catalog_provisioning",
           "customer_portal",
           "monthly_interval",
           "one_time_checkout",
