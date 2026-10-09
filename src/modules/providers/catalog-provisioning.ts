@@ -139,6 +139,32 @@ function isStale(row: CatalogMappingRow): boolean {
 }
 
 /**
+ * Stale-park compare-and-swap (#156 review round 3, F1b): parks an
+ * in-flight row ONLY if nothing has touched it since the caller's
+ * staleness observation — the predicate compares the OBSERVED
+ * updated_at, so any committed progress (a late created-id
+ * persistence, a claim, another park) invalidates the stale authority.
+ * Returns the parked row, or null when the observation was outdated.
+ */
+export async function parkStaleInFlight(
+  observed: CatalogMappingRow,
+  db: Database,
+): Promise<CatalogMappingRow | null> {
+  const [parked] = await db
+    .update(providerCatalogMappings)
+    .set({ status: "needs_reconciliation", updatedAt: new Date() })
+    .where(
+      and(
+        eq(providerCatalogMappings.id, observed.id),
+        eq(providerCatalogMappings.status, observed.status),
+        eq(providerCatalogMappings.updatedAt, observed.updatedAt),
+      ),
+    )
+    .returning();
+  return parked ?? null;
+}
+
+/**
  * The provider-visible create parameters of an intent, EXCLUDING the
  * idempotency key (the row id, stable by design). Frozen on first claim:
  * a retry after an uncertain outcome re-sends the same key, so Creem
@@ -314,23 +340,10 @@ export async function beginProvision(
     }
     if (existing.status === "pending" || existing.status === "creating") {
       if (isStale(existing)) {
-        // Crashed attempt: park it for manual recovery. Conditional update
-        // keeps a concurrent writer (if any) authoritative.
-        const [parked] = await db
-          .update(providerCatalogMappings)
-          .set({ status: "needs_reconciliation", updatedAt: new Date() })
-          .where(
-            and(
-              eq(providerCatalogMappings.id, existing.id),
-              eq(providerCatalogMappings.status, existing.status),
-              // Compare-and-swap on the observed version: an attempt that
-              // made progress since the staleness read (e.g. persisted its
-              // created product id, refreshing updated_at) must not be
-              // parked from a stale observation (#156 review round 3, F1b).
-              eq(providerCatalogMappings.updatedAt, existing.updatedAt),
-            ),
-          )
-          .returning();
+        // Crashed attempt: park it for manual recovery. The park CAS
+        // (parkStaleInFlight) is exported so tests can drive the real
+        // read-progress-write interleave against committed data.
+        const parked = await parkStaleInFlight(existing, db);
         if (parked) {
           return { outcome: "stale_parked", mapping: parked };
         }

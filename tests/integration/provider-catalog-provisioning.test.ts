@@ -12,6 +12,7 @@ import {
   beginProvision,
   failNeedsReconciliationIntent,
   finishProvision,
+  parkStaleInFlight,
 } from "../../src/modules/providers/catalog-provisioning";
 import type {
   CreateCatalogProductInput,
@@ -226,6 +227,22 @@ function provisionRequest(body: unknown, path = "") {
       body: JSON.stringify(body),
     },
   );
+}
+
+async function waitFor(
+  assertion: () => Promise<void>,
+  timeoutMs = 5000,
+): Promise<void> {
+  const started = Date.now();
+  for (;;) {
+    try {
+      await assertion();
+      return;
+    } catch (cause) {
+      if (Date.now() - started > timeoutMs) throw cause;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
 }
 
 async function mappingsFor(applicationId: string) {
@@ -990,6 +1007,15 @@ describe("provider catalog provisioning (#156)", () => {
       db,
     );
 
+    // Wait until the created product id is REALLY committed before
+    // interleaving the park — the finish's persistence step must have
+    // landed (review round 4: timing assertion, not an assumption).
+    await waitFor(async () => {
+      const row = (await mappingsFor(seed.app.id))[0];
+      expect(row?.providerProductId).toBe("prod_a");
+      expect(row?.status).toBe("creating");
+    });
+
     // While A's GET is pending: park, mark failed, and let attempt B
     // re-claim the SAME row with a fresh token.
     await db
@@ -1054,11 +1080,12 @@ describe("provider catalog provisioning (#156)", () => {
     ]);
   });
 
-  it("F1b: progress after a staleness observation blocks the stale park (version CAS)", async () => {
+  it("F1b: a stale observation cannot park a row that progressed since the read (version CAS, real interleave)", async () => {
     await seedOperator("owner");
     const seed = await seedCatalog("f1b");
 
-    // An attempt that LOOKS stale (updatedAt 10 minutes ago).
+    // Attempt A claims the row, then it goes quiet long enough to look
+    // stale. The STALE OBSERVATION is taken HERE (R_old).
     const first = await beginProvision(
       {
         applicationId: seed.app.id,
@@ -1073,9 +1100,18 @@ describe("provider catalog provisioning (#156)", () => {
       .update(providerCatalogMappings)
       .set({ updatedAt: new Date(Date.now() - 10 * 60_000) })
       .where(eq(providerCatalogMappings.id, first.mapping.id));
+    const observed = await db
+      .select()
+      .from(providerCatalogMappings)
+      .where(eq(providerCatalogMappings.id, first.mapping.id))
+      .limit(1);
+    const staleObservation = observed[0];
+    if (!staleObservation) throw new Error("row missing");
+    expect(staleObservation.providerProductId).toBeNull();
 
-    // The attempt wakes up and persists its created product id — this
-    // refreshes updatedAt (progress since any earlier stale observation).
+    // PROGRESS commits AFTER the observation: the real persistence path
+    // writes the created product id (refreshing updated_at) and the
+    // verification GET then hangs on a gate.
     stubProduct = defaultStubProduct({ providerProductId: "prod_f1b" });
     let releaseVerify!: (product: NormalizedProviderCatalogProduct) => void;
     const verifyGate = new Promise<NormalizedProviderCatalogProduct>(
@@ -1096,29 +1132,51 @@ describe("provider catalog provisioning (#156)", () => {
       () => verifyGate,
       db,
     );
+    await waitFor(async () => {
+      const row = (await mappingsFor(seed.app.id))[0];
+      expect(row?.providerProductId).toBe("prod_f1b");
+    });
 
-    // A concurrent provision request must NOT stale-park the row now —
-    // the persisted product id refreshed updatedAt, so the staleness read
-    // of a moment ago no longer authorizes parking; the request is told
-    // an attempt is in progress instead.
-    await expect(
-      beginProvision(
-        {
-          applicationId: seed.app.id,
-          environment: "test",
-          providerConnectionId: seed.connection.id,
-          monetplanePriceId: seed.price.id,
-        },
-        db,
-      ),
-    ).rejects.toMatchObject({ code: "provision_in_progress" });
+    // The interleaved park uses the OUTDATED observation — the version CAS
+    // must refuse because committed data moved on. (Without the
+    // updated_at predicate this call WOULD park the row: that is exactly
+    // the mutation the red-test demonstration removes.)
+    const parkedFromStale = await parkStaleInFlight(staleObservation, db);
+    expect(parkedFromStale).toBeNull();
     expect(await mappingsFor(seed.app.id)).toMatchObject([
-      expect.objectContaining({ status: "creating" }),
+      expect.objectContaining({
+        status: "creating",
+        providerProductId: "prod_f1b",
+      }),
     ]);
 
-    // The original attempt completes normally.
+    // Positive control: a CURRENT observation of an unchanged stale row
+    // still parks (the CAS is not simply always-failing).
+    await db
+      .update(providerCatalogMappings)
+      .set({ updatedAt: new Date(Date.now() - 10 * 60_000) })
+      .where(eq(providerCatalogMappings.id, first.mapping.id));
+    const reobserved = await db
+      .select()
+      .from(providerCatalogMappings)
+      .where(eq(providerCatalogMappings.id, first.mapping.id))
+      .limit(1);
+    const currentStale = reobserved[0];
+    if (!currentStale) throw new Error("row missing");
+    const parked = await parkStaleInFlight(currentStale, db);
+    expect(parked).toMatchObject({ status: "needs_reconciliation" });
+
+    // The original attempt still converges: its own token matches the
+    // parked row, the gated GET returns a matching product, and the final
+    // synced CAS adopts it.
     releaseVerify(defaultStubProduct({ providerProductId: "prod_f1b" }));
     const finish = await pendingFinish;
     expect(finish.outcome).toBe("synced");
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({
+        status: "synced",
+        providerProductId: "prod_f1b",
+      }),
+    ]);
   });
 });
