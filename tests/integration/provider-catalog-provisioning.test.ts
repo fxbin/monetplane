@@ -8,6 +8,11 @@ import { createApplication } from "../../src/modules/applications/service";
 import { createPrice, createProduct } from "../../src/modules/catalog/service";
 import { operatorAuditLog } from "../../src/modules/operations/audit-schema";
 import { mockProviderAdapter } from "../../src/modules/providers/adapters/mock";
+import {
+  beginProvision,
+  failNeedsReconciliationIntent,
+  finishProvision,
+} from "../../src/modules/providers/catalog-provisioning";
 import type {
   CreateCatalogProductInput,
   NormalizedProviderCatalogProduct,
@@ -724,5 +729,226 @@ describe("provider catalog provisioning (#156)", () => {
       description: "Custom description",
       taxCategory: "digital-goods-service",
     });
+  });
+
+  it("ABA guard: a late finish from a superseded attempt cannot touch a re-claimed row", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("aba");
+
+    // Attempt 1 claims the intent.
+    const first = await beginProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    if (first.outcome !== "begin") throw new Error("expected begin");
+
+    // Crash + operator recovery: stale-park (simulated directly), then
+    // fail-intent, then attempt 2 re-claims the SAME row.
+    await db
+      .update(providerCatalogMappings)
+      .set({ status: "needs_reconciliation" })
+      .where(eq(providerCatalogMappings.id, first.mapping.id));
+    await failNeedsReconciliationIntent(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    const second = await beginProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    if (second.outcome !== "begin") throw new Error("expected second begin");
+    expect(second.attemptToken).not.toBe(first.attemptToken);
+
+    // Attempt 1's HTTP finally resolves and tries to finish — with the OLD
+    // token it must be refused without touching attempt 2's row.
+    stubProduct = defaultStubProduct({ providerProductId: "prod_late_first" });
+    await expect(
+      finishProvision(
+        {
+          applicationId: seed.app.id,
+          environment: "test",
+          providerConnectionId: seed.connection.id,
+          monetplanePriceId: seed.price.id,
+          mappingId: first.mapping.id,
+          attemptToken: first.attemptToken,
+        },
+        { kind: "created", providerProductId: "prod_late_first" },
+        async (id) => {
+          const lookup = stubCreemAdapter.getCatalogProduct;
+          if (!lookup) throw new Error("stub lookup missing");
+          return lookup({} as never, { providerProductId: id });
+        },
+        db,
+      ),
+    ).rejects.toThrow(/no longer in a state/i);
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({
+        status: "creating",
+        providerProductId: null,
+      }),
+    ]);
+
+    // Attempt 2 completes normally with ITS token.
+    stubProduct = defaultStubProduct({ providerProductId: "prod_second" });
+    const finish = await finishProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+        mappingId: second.mapping.id,
+        attemptToken: second.attemptToken,
+      },
+      { kind: "created", providerProductId: "prod_second" },
+      async (id) => {
+        const lookup = stubCreemAdapter.getCatalogProduct;
+        if (!lookup) throw new Error("stub lookup missing");
+        return lookup({} as never, { providerProductId: id });
+      },
+      db,
+    );
+    expect(finish.outcome).toBe("synced");
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({
+        status: "synced",
+        providerProductId: "prod_second",
+      }),
+    ]);
+  });
+
+  it("a late created-id still lands on its OWN needs_reconciliation row (matching token)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("lateid");
+
+    const first = await beginProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+      },
+      db,
+    );
+    if (first.outcome !== "begin") throw new Error("expected begin");
+
+    // The attempt goes stale in-flight and is parked — token preserved.
+    await db
+      .update(providerCatalogMappings)
+      .set({ status: "needs_reconciliation" })
+      .where(eq(providerCatalogMappings.id, first.mapping.id));
+
+    // The POST eventually succeeded; the id must be persisted for adoption.
+    // Verification read fails here (product unknown yet) → stays NR WITH id.
+    stubProduct = null;
+    const finish = await finishProvision(
+      {
+        applicationId: seed.app.id,
+        environment: "test",
+        providerConnectionId: seed.connection.id,
+        monetplanePriceId: seed.price.id,
+        mappingId: first.mapping.id,
+        attemptToken: first.attemptToken,
+      },
+      { kind: "created", providerProductId: "prod_late" },
+      async () => {
+        throw new Error("lookup failed");
+      },
+      db,
+    );
+    expect(finish.outcome).toBe("uncertain");
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({
+        status: "needs_reconciliation",
+        providerProductId: "prod_late",
+      }),
+    ]);
+  });
+
+  it("freezes the intent parameters at first claim and rejects divergent retries (F2)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("freeze");
+    createBehavior = {
+      kind: "reject",
+      message: "422 unprocessable",
+      status: 422,
+    };
+
+    const first = await provision(seed, { name: "Original name" });
+    expect(first.status).toBe(400);
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({ status: "failed" }),
+    ]);
+
+    // Divergent retry: different name -> rejected before any create call.
+    createCalls = [];
+    createBehavior = { kind: "ok", id: "prod_after" };
+    stubProduct = defaultStubProduct({ providerProductId: "prod_after" });
+    const divergent = await provision(seed, { name: "Changed name" });
+    expect(divergent.status).toBe(400);
+    expect(((await divergent.json()) as { code: string }).code).toBe(
+      "invalid_input",
+    );
+    expect(createCalls).toHaveLength(0);
+
+    // Identical retry proceeds and syncs.
+    const identical = await provision(seed, { name: "Original name" });
+    expect(identical.status).toBe(201);
+    expect(await mappingsFor(seed.app.id)).toMatchObject([
+      expect.objectContaining({ status: "synced" }),
+    ]);
+  });
+
+  it("audits a post-create mismatch as uncertain, not rejected (F3)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("mmaudit");
+    createBehavior = { kind: "ok", id: "prod_wrong" };
+    stubProduct = defaultStubProduct({
+      providerProductId: "prod_wrong",
+      amountMinor: 9900,
+    });
+
+    const response = await provision(seed);
+    expect(response.status).toBe(409);
+
+    const entries = await auditFor(seed.app.id);
+    const actions = entries.map((entry) => entry.action);
+    expect(actions).toContain("provider_catalog.provision_uncertain");
+    expect(actions).not.toContain("provider_catalog.provision_rejected");
+  });
+
+  it("answers a JSON null body on fail-intent with 400, not 500 (F4)", async () => {
+    await seedOperator("owner");
+    const seed = await seedCatalog("nullbody");
+
+    const response = await failIntentPOST(
+      new Request(
+        "https://console.test/api/admin/providers/catalog-products/fail-intent",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "null",
+        },
+      ),
+    );
+    expect(response.status).toBe(400);
+    expect(((await response.json()) as { code?: string }).code).toBe(
+      "invalid_input",
+    );
+    expect(await mappingsFor(seed.app.id)).toHaveLength(0);
   });
 });

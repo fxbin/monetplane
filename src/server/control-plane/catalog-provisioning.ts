@@ -238,24 +238,46 @@ export async function provisionProviderCatalogProductFromConsole(
       }
     }
 
-    const finish = await finishProvision(
-      {
-        applicationId,
-        environment,
-        providerConnectionId: input.providerConnectionId,
-        monetplanePriceId: input.monetplanePriceId,
-        mappingId: begin.mapping.id,
-      },
-      createResult,
-      async (providerProductId) =>
-        getProviderCatalogProduct(
+    let finish: Awaited<ReturnType<typeof finishProvision>>;
+    try {
+      finish = await finishProvision(
+        {
           applicationId,
-          input.providerConnectionId,
-          { providerProductId },
-          getDb(),
-        ),
-      getDb(),
-    );
+          environment,
+          providerConnectionId: input.providerConnectionId,
+          monetplanePriceId: input.monetplanePriceId,
+          mappingId: begin.mapping.id,
+          attemptToken: begin.attemptToken,
+        },
+        createResult,
+        async (providerProductId) =>
+          getProviderCatalogProduct(
+            applicationId,
+            input.providerConnectionId,
+            { providerProductId },
+            getDb(),
+          ),
+        getDb(),
+      );
+    } catch (cause) {
+      if (
+        cause instanceof CatalogProvisionError &&
+        cause.code === "provision_post_create_mismatch"
+      ) {
+        // A product EXISTS but does not match — that is an uncertain,
+        // human-parked outcome, not a rejected request (review F3).
+        await auditOutcome({
+          action: "provider_catalog.provision_uncertain",
+          resourceId: begin.mapping.id,
+          metadata: {
+            ...baseAuditMetadata,
+            reason: "post-create verification mismatch",
+            details: cause.details,
+          },
+        });
+      }
+      throw cause;
+    }
 
     if (finish.outcome === "synced") {
       await auditOutcome({

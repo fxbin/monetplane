@@ -106,6 +106,18 @@ export const providerCatalogMappings = pgTable(
       .defaultNow()
       .notNull(),
     lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }),
+    /**
+     * Per-attempt ownership token (#156 ABA guard): set when an intent is
+     * claimed (pending → creating), kept across stale-parking so a late
+     * create-id can still land on its OWN needs_reconciliation row, and
+     * overwritten by the next claim. Every attempt-scoped update (finish
+     * transitions, created-id persistence) must match the CURRENT token —
+     * a late result from a superseded attempt can never touch a row that a
+     * newer attempt has re-claimed, even when the status cycled back to
+     * `creating`. The idempotency identity stays the row id; the token is
+     * purely local ownership.
+     */
+    attemptToken: text("attempt_token"),
   },
   (table) => [
     uniqueIndex("provider_catalog_mappings_scope_unique").on(

@@ -34,15 +34,24 @@ export async function POST(request: Request) {
     const scopeCheck = requireApplicationAccess(guard, application.id);
     if (scopeCheck) return scopeCheck;
 
-    let rawBody: Record<string, unknown>;
+    let parsed: unknown;
     try {
-      rawBody = (await request.json()) as Record<string, unknown>;
+      parsed = await request.json();
     } catch {
       return NextResponse.json(
         { error: adminErrors.invalidJsonBody },
         { status: 400 },
       );
     }
+    // A JSON `null` body is not a Record — guard before property access
+    // (review round 2, F4).
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return NextResponse.json(
+        { error: adminErrors.provisionInvalidInput, code: "invalid_input" },
+        { status: 400 },
+      );
+    }
+    const rawBody = parsed as Record<string, unknown>;
     const providerConnectionId =
       typeof rawBody.connectionId === "string"
         ? rawBody.connectionId.trim()

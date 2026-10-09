@@ -1,6 +1,6 @@
 # Agent Note: Creem 商品自动创建的幂等与不确定态语义(#156)
 
-Status: implemented — 状态机 pending→creating→synced/NR/failed;Idempotency-Key=映射行 id;不确定态绝不自动重发;恢复=link 采纳或显式标记失败
+Status: implemented — 状态机 pending→creating→synced/NR/failed;Idempotency-Key=映射行 id;不确定态绝不自动重发;恢复=link 采纳或显式标记失败;修订(review round 2):attempt_token 所有权防 ABA;意图参数首claim冻结
 
 ## Problem
 
@@ -31,3 +31,11 @@ Status: implemented — 状态机 pending→creating→synced/NR/failed;Idempote
 - #157 真实 Sandbox 验证 Idempotency-Key 实际行为后,可重新评估「不确定态同键安全重试」;
 - 需要按 name 查重(search-products)或批量恢复操作面时,另起 issue;
 - 其他 provider 实现创建时,预检规则(currency/税种/最低金额)应留在各自 adapter 内,不上移编排层。
+
+## Revision (review round 2,人工复核 PR #159 后)
+
+1. **attempt_token 所有权(迁移 0022,F1/ABA)**:幂等身份(行 id=Creem 键)与本地所有权(每轮 claim 签发的 `attempt_token`)分离。finish 的全部转移(成功/失败/不确定/迟到 id 持久化)谓词统一为 `status IN ('creating','needs_reconciliation') AND attempt_token = 本轮 token`——旧 attempt 的迟到回写在行被重新 claim 后必然失配,`creating→NR→failed→creating` 循环不再有 ABA 窗口;token 保留于停车态,迟到 id 仍可落在自己的 NR 行上供采纳。
+2. **意图参数冻结(F2)**:创建参数(名称/描述/金额/币种/计费形态/周期/税种)在首次 claim 时写入 `verified_snapshot.provisionIntent`;此后同键重试若参数不一致 → 400 拒绝(Creem 同键重放会返回原商品,参数漂移只能静默产出旧商品——宁可拒绝)。
+3. **post-create mismatch 审计归类(F3)**:创建成功但核对不一致时,行已带 id 停车 NR,审计应为 `provision_uncertain`(人工核对事项)而非 `provision_rejected`;编排层对该错误码补记 uncertain 后再抛。
+4. **fail-intent null body(F4)**:JSON `null` 视为无效输入返回 400,不再 TypeError→500。
+5. **finish 谓词统一顺带修复**:persistCreatedId 之后行可能已处于 NR,后续转移原先只匹配 creating 会误抛——统一 IN(creating, NR)+token 后,自有的迟到结果在停车行上也能正确收敛(确定性失败→failed、核对通过→synced)。

@@ -79,6 +79,8 @@ export type ProvisionBeginResult =
       outcome: "begin";
       mapping: CatalogMappingRow;
       input: CreateCatalogProductInput;
+      /** Ownership token for THIS attempt — every finish update must match it. */
+      attemptToken: string;
     }
   | {
       /** A synced mapping already exists — read-only, never re-created. */
@@ -134,6 +136,76 @@ async function findMappingRow(
 
 function isStale(row: CatalogMappingRow): boolean {
   return Date.now() - row.updatedAt.getTime() > STALE_IN_FLIGHT_MS;
+}
+
+/**
+ * The provider-visible create parameters of an intent, EXCLUDING the
+ * idempotency key (the row id, stable by design). Frozen on first claim:
+ * a retry after an uncertain outcome re-sends the same key, so Creem
+ * would return the ORIGINALLY created product — a retry with different
+ * parameters would silently produce the old product under new intent.
+ * Divergent retries are rejected instead (#156 review round 2, F2).
+ */
+export type CatalogProvisionIntent = Pick<
+  CreateCatalogProductInput,
+  | "name"
+  | "description"
+  | "amountMinor"
+  | "currency"
+  | "billingType"
+  | "recurringInterval"
+  | "intervalCount"
+  | "taxCategory"
+>;
+
+function effectiveCreateIntent(
+  owned: {
+    price: typeof prices.$inferSelect;
+    product: typeof products.$inferSelect;
+  },
+  input: {
+    name?: string;
+    description?: string | null;
+    taxCategory?: string | null;
+  },
+): CatalogProvisionIntent {
+  return {
+    name: (input.name?.trim() || owned.product.name).trim(),
+    description: input.description?.trim() || owned.product.description || null,
+    amountMinor: owned.price.amountMinor,
+    currency: owned.price.currency.toUpperCase(),
+    billingType:
+      owned.price.billingType === "recurring" ? "recurring" : "one_time",
+    recurringInterval:
+      owned.price.recurringInterval === "week" ||
+      owned.price.recurringInterval === "month" ||
+      owned.price.recurringInterval === "year"
+        ? owned.price.recurringInterval
+        : null,
+    intervalCount: owned.price.intervalCount,
+    taxCategory: input.taxCategory?.trim() || null,
+  };
+}
+
+const INTENT_SIGNATURE_KEYS: Array<keyof CatalogProvisionIntent> = [
+  "name",
+  "description",
+  "amountMinor",
+  "currency",
+  "billingType",
+  "recurringInterval",
+  "intervalCount",
+  "taxCategory",
+];
+
+function intentSignature(intent: CatalogProvisionIntent) {
+  return JSON.stringify(intent, INTENT_SIGNATURE_KEYS);
+}
+
+function frozenIntentOf(row: CatalogMappingRow): CatalogProvisionIntent | null {
+  const frozen = row.verifiedSnapshot?.provisionIntent;
+  if (!frozen || typeof frozen !== "object") return null;
+  return frozen as CatalogProvisionIntent;
 }
 
 /**
@@ -226,6 +298,20 @@ export async function beginProvision(
     if (existing.status === "synced") {
       return { outcome: "already_synced", mapping: existing };
     }
+    // F2: retries re-send the same idempotency key, so the provider would
+    // return the originally created product — the intent parameters are
+    // frozen at first claim and divergent retries are rejected.
+    const frozenIntent = frozenIntentOf(existing);
+    if (frozenIntent) {
+      const currentIntent = effectiveCreateIntent(owned, input);
+      if (intentSignature(currentIntent) !== intentSignature(frozenIntent)) {
+        throw new CatalogProvisionError(
+          "The create parameters differ from the original attempt for this intent; the provider may already hold a product created with the original parameters. Recover via link, or use a new price",
+          "invalid_input",
+          { frozenIntent },
+        );
+      }
+    }
     if (existing.status === "pending" || existing.status === "creating") {
       if (isStale(existing)) {
         // Crashed attempt: park it for manual recovery. Conditional update
@@ -289,7 +375,9 @@ export async function beginProvision(
       providerProductId: null,
       source: "created",
       status: "pending",
-      verifiedSnapshot: {},
+      verifiedSnapshot: {
+        provisionIntent: effectiveCreateIntent(owned, input),
+      },
     })
     .onConflictDoNothing({
       target: [
@@ -353,10 +441,12 @@ async function claimPendingIntent(
   db: Database,
 ): Promise<ProvisionBeginResult> {
   // pending → creating: the conditional update guarantees single ownership
-  // of the external call.
+  // of the external call, and the fresh attempt token marks WHO owns every
+  // subsequent write (ABA guard, review round 2 F1).
+  const attemptToken = `pcatk_${randomUUID()}`;
   const [creatingRow] = await db
     .update(providerCatalogMappings)
-    .set({ status: "creating", updatedAt: new Date() })
+    .set({ status: "creating", attemptToken, updatedAt: new Date() })
     .where(
       and(
         eq(providerCatalogMappings.id, pendingRow.id),
@@ -372,28 +462,18 @@ async function claimPendingIntent(
   }
 
   const createInput: CreateCatalogProductInput = {
-    name: (input.name?.trim() || owned.product.name).trim(),
-    description: input.description?.trim() || owned.product.description || null,
-    amountMinor: owned.price.amountMinor,
-    currency: owned.price.currency.toUpperCase(),
-    // Price row columns are plain strings; the billing_shape check
-    // constraint already guarantees these literal unions.
-    billingType:
-      owned.price.billingType === "recurring" ? "recurring" : "one_time",
-    recurringInterval:
-      owned.price.recurringInterval === "week" ||
-      owned.price.recurringInterval === "month" ||
-      owned.price.recurringInterval === "year"
-        ? owned.price.recurringInterval
-        : null,
-    intervalCount: owned.price.intervalCount,
-    taxCategory: input.taxCategory?.trim() || null,
+    ...effectiveCreateIntent(owned, input),
     // Stable across retries of this intent — Creem's documented
     // Idempotency-Key dedupes a re-sent create to the original product.
     idempotencyKey: creatingRow.id,
   };
 
-  return { outcome: "begin", mapping: creatingRow, input: createInput };
+  return {
+    outcome: "begin",
+    mapping: creatingRow,
+    input: createInput,
+    attemptToken,
+  };
 }
 
 export type ProvisionFinishResult = {
@@ -418,6 +498,8 @@ export async function finishProvision(
     providerConnectionId: string;
     monetplanePriceId: string;
     mappingId: string;
+    /** Ownership token issued by the matching beginProvision claim. */
+    attemptToken: string;
   },
   result:
     | { kind: "created"; providerProductId: string }
@@ -449,7 +531,11 @@ export async function finishProvision(
       .where(
         and(
           eq(providerCatalogMappings.id, input.mappingId),
-          eq(providerCatalogMappings.status, "creating"),
+          inArray(providerCatalogMappings.status, [
+            "creating",
+            "needs_reconciliation",
+          ]),
+          eq(providerCatalogMappings.attemptToken, input.attemptToken),
         ),
       )
       .returning();
@@ -470,7 +556,11 @@ export async function finishProvision(
       .where(
         and(
           eq(providerCatalogMappings.id, input.mappingId),
-          eq(providerCatalogMappings.status, "creating"),
+          inArray(providerCatalogMappings.status, [
+            "creating",
+            "needs_reconciliation",
+          ]),
+          eq(providerCatalogMappings.attemptToken, input.attemptToken),
         ),
       )
       .returning();
@@ -497,6 +587,7 @@ export async function finishProvision(
             "creating",
             "needs_reconciliation",
           ]),
+          eq(providerCatalogMappings.attemptToken, input.attemptToken),
         ),
       )
       .returning();
@@ -532,7 +623,11 @@ export async function finishProvision(
       .where(
         and(
           eq(providerCatalogMappings.id, input.mappingId),
-          eq(providerCatalogMappings.status, "creating"),
+          inArray(providerCatalogMappings.status, [
+            "creating",
+            "needs_reconciliation",
+          ]),
+          eq(providerCatalogMappings.attemptToken, input.attemptToken),
         ),
       )
       .returning();
@@ -561,7 +656,11 @@ export async function finishProvision(
       .where(
         and(
           eq(providerCatalogMappings.id, input.mappingId),
-          eq(providerCatalogMappings.status, "creating"),
+          inArray(providerCatalogMappings.status, [
+            "creating",
+            "needs_reconciliation",
+          ]),
+          eq(providerCatalogMappings.attemptToken, input.attemptToken),
         ),
       )
       .returning();
