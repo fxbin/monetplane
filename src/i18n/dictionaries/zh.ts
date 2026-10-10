@@ -245,9 +245,9 @@ export const zh: Dictionary = {
     statusPlaceholder: "failed、completed…",
   },
   team: {
-    title: "团队",
+    title: "该价格的渠道商品",
     description:
-      "工作区操作员、他们的控制台角色与项目访问范围。所有变更都会记入审计日志。",
+      "从此价格创建渠道商品,或关联已有商品——MonetPlane 先只读校验渠道侧,确认前不会写入任何数据。",
     members: "成员",
     thOperator: "操作员",
     thRole: "角色",
@@ -431,6 +431,29 @@ export const zh: Dictionary = {
     statusCreating: "创建中",
     statusNeedsReconciliation: "需人工核对",
     statusFailed: "失败",
+    statusNotConfigured: "未配置",
+    applicationLabel: "项目",
+    environmentLabel: "环境",
+    connectionLabel: "渠道连接",
+    createInProvider: "在 {provider} 创建",
+    createUnsupportedHint: "该渠道不支持商品自动创建——请改为关联已有商品。",
+    creating: "创建中…",
+    createFailed: "创建渠道商品失败",
+    markFailedForRetry: "标记失败以允许重试",
+    markFailedConfirm:
+      "此操作将解除不确定态保护:若原商品实际已在渠道存在,之后重新创建可能产生重复商品。确认继续?",
+    markingFailed: "标记中…",
+    markedFailedRetryable: "已标记失败——可随时重试创建",
+    inFlightNote: "该价格的创建尝试进行中;请等待完成,或在其超时后进行恢复。",
+    syncedNote: "已同步——该价格已映射渠道商品,Checkout 将直接使用。",
+    needsAttentionTitle: "需要人工核对",
+    needsAttentionBody:
+      "上一次创建结果不确定——商品可能已在渠道侧存在。在下方粘贴其 ID 并绑定即可采纳;或标记失败后重试创建。",
+    adoptHint: "恢复:校验你在渠道侧找到的商品,确认后绑定到该价格。",
+    liveConfirm:
+      "生产环境:此操作将创建或绑定真实渠道商品并用于正式支付流量。确认继续?",
+    createdAndLinked: "已创建并绑定 {productId}。",
+    recovered: "不确定意图已恢复——映射采纳并同步。",
   },
   wizard: {
     sandbox: "沙箱",

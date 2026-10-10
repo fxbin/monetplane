@@ -13,9 +13,13 @@ import {
 } from "@/modules/providers/contract";
 import {
   createProviderCatalogProduct,
+  getProviderCapabilities,
   getProviderCatalogProduct,
 } from "@/modules/providers/runtime";
-import { ProviderConnectionNotFoundError } from "@/modules/providers/service";
+import {
+  getProviderConnection,
+  ProviderConnectionNotFoundError,
+} from "@/modules/providers/service";
 import type { ConsoleEnvironment } from "./context";
 
 /**
@@ -133,6 +137,35 @@ export async function provisionProviderCatalogProductFromConsole(
   };
 
   try {
+    // Capability pre-flight BEFORE any intent row exists: a provider
+    // without catalog provisioning must never leave a failed mapping
+    // behind (PR #160 review, F2) — reject deterministically and
+    // statelessly. Capability resolution failure also fails closed.
+    const connection = await getProviderConnection(
+      applicationId,
+      input.providerConnectionId,
+    );
+    if (connection) {
+      try {
+        const capabilities = await getProviderCapabilities(
+          applicationId,
+          connection.id,
+        );
+        if (!capabilities.catalog_provisioning) {
+          throw new CatalogProvisionError(
+            `Provider ${connection.provider} does not support automatic product creation; link an existing product instead`,
+            "provider_unsupported",
+          );
+        }
+      } catch (cause) {
+        if (cause instanceof CatalogProvisionError) throw cause;
+        throw new CatalogProvisionError(
+          "Provider capabilities could not be resolved; refusing to create",
+          "provider_unsupported",
+        );
+      }
+    }
+
     const begin = await beginProvision(
       {
         applicationId,

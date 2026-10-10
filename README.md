@@ -88,6 +88,7 @@ CI provisions a fresh PostgreSQL database, applies migrations twice to verify re
 
 - [System architecture](docs/architecture.md)
 - [Payment provider contract](docs/provider-contract.md)
+- [Creem catalog mapping — console operations & recovery](docs/creem-catalog.md)
 - [Credits and usage ledger](docs/credits-ledger.md)
 - [Console layering](docs/p1-console-architecture.md)
 
