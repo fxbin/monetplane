@@ -107,14 +107,20 @@ row version (`updated_at`) so committed progress is never parked over.
   follow the same search-then-adopt order above.
 - Upgrades keep legacy `metadata.catalog` behavior for connections that
   never opted into managed mappings.
-- **Rollback rule: roll back application code first and KEEP the
-  database mappings.** Never drop the mapping table as a default rollback
-  step — a price whose provider product id lives only in
-  `provider_catalog_mappings` (no legacy `metadata.catalog` entry) would
-  lose its checkout product-id source entirely. Cleaning the new table is
-  acceptable ONLY after ALL of: the old checkout is confirmed to have a
-  complete, valid mapping source for every affected price; the table has
-  been backed up and reconciled; and a human has approved the removal.
+- **Rollback rule (both directions verified):**
+  1. **Before rolling back application code**, confirm the TARGET VERSION
+     can correctly resolve the Provider Product ID for EVERY affected
+     price. Pre-#158 versions read only legacy `metadata.catalog` — a
+     price whose product id lives solely in `provider_catalog_mappings`
+     would lose its checkout source even though the table is kept. If
+     that compatibility cannot be verified, rolling back to that version
+     is FORBIDDEN; use a target version that reads both sources, or
+     backfill/repair the legacy mapping first.
+  2. By default, KEEP the database mappings and audit data. Rolling back
+     via DROP-ing the mapping table is forbidden.
+  3. Any later cleanup of the new table requires mapping-integrity
+     verification (every affected price resolves in the running version),
+     backup reconciliation, and manual approval.
 
 ## Real-Sandbox acceptance (external evidence, #157)
 
