@@ -1,3 +1,11 @@
+# Agent Note: Waffo Pancake 真实沙箱实测证据(#41/#68)
+
+Status: implemented — Waffo test-mode 端到端全真证据(连接→路由结算→真实支付→签名 webhook→计费效果→退款边界);2026-09-19 记录(2026-09-27 增补),2026-10-25 自 docs/ 迁入
+
+> 点时实测记录,创建于 2026-09-19、2026-09-27 增补(`docs/waffo-live-evidence.md`),按 `.agents/notes/README.md` 契约迁入 verification 语料;正文保持原文未改写。
+
+---
+
 # Waffo Pancake Live Verification Evidence (#41 / #68)
 
 Date: 2026-09-19 · Environment: local MonetPlane (dev server) + real Waffo

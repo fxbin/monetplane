@@ -49,9 +49,11 @@ capability in `PROVIDER_CAPABILITIES`. The rules:
 
 - Claim a capability **only** if you have verified it against the provider's
   real API (sandbox evidence at minimum). "The docs say it exists" is not
-  verification — see [`creem-live-evidence.md`](creem-live-evidence.md) and
-  [`waffo-live-evidence.md`](waffo-live-evidence.md) for the expected
-  evidence format.
+  verification — see
+  [`2026-09-20-creem-live-evidence.md`](../.agents/notes/implemented/verification/2026-09-20-creem-live-evidence.md)
+  and
+  [`2026-09-19-waffo-live-evidence.md`](../.agents/notes/implemented/verification/2026-09-19-waffo-live-evidence.md)
+  for the expected evidence format.
 - If you have not verified it yet, ship `false` and leave a `TODO(verify)`
   comment naming the blocker. A `false` capability makes the core reject the
   operation before any provider call; a lying `true` produces broken

@@ -1,3 +1,11 @@
+# Agent Note: P1 门禁(#45)验收证据
+
+Status: implemented — #45 门禁在真实浏览器 + 真实 PostgreSQL 下全项通过;2026-09-17 记录,2026-10-25 自 docs/ 迁入
+
+> 点时验收记录,创建于 2026-09-17(`docs/p1-gate-evidence.md`),按 `.agents/notes/README.md` 契约迁入 verification 语料;正文保持原文未改写。
+
+---
+
 # P1 Gate (#45) Acceptance Evidence
 
 Date: 2026-09-17 · Branch: `chore/p1-gate` · Console build: main + gate fixes

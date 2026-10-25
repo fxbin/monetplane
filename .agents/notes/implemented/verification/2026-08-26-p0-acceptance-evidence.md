@@ -1,3 +1,11 @@
+# Agent Note: P0 验收门禁证据(Issue #12)
+
+Status: implemented — P0 验收全项判据映射为可运行测试证据;2026-08-26 记录,2026-10-25 自 docs/ 迁入
+
+> 点时验收记录,创建于 2026-08-26(`docs/p0-acceptance-evidence.md`),按 `.agents/notes/README.md` 契约迁入 verification 语料;正文保持原文未改写。
+
+---
+
 # P0 Acceptance Gate Evidence
 
 This document maps every criterion from Issue #12 (`[P0 Gate] Security, idempotency, concurrency, and integration acceptance`) to concrete test evidence in the MonetPlane codebase.

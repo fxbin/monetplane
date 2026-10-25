@@ -48,7 +48,7 @@ import {
 /**
  * PayPal adapter (#72) — third real provider, PSP model (Orders + Billing
  * Subscriptions APIs). Verified against the real sandbox API; see
- * docs/paypal-live-evidence.md for the journey and qualifications.
+ * .agents/notes/implemented/verification/2026-09-26-paypal-live-evidence.md for the journey and qualifications.
  */
 
 const PAYPAL_PRODUCTION_API = "https://api-m.paypal.com";
@@ -62,10 +62,10 @@ const PAYPAL_CAPABILITIES: ProviderCapabilities = {
   weekly_interval: true,
   trial_periods: true,
   // Live-verified: real refund 9R083634CD4158109 COMPLETED on capture
-  // 7AV91188T0463123J (docs/paypal-live-evidence.md).
+  // 7AV91188T0463123J (.agents/notes/implemented/verification/2026-09-26-paypal-live-evidence.md).
   refund: true,
   // Live-verified: real cancel of ACTIVE subscription I-MN88MMVNENFM →
-  // CANCELLED (docs/paypal-live-evidence.md).
+  // CANCELLED (.agents/notes/implemented/verification/2026-09-26-paypal-live-evidence.md).
   subscription_cancel: true,
   subscription_update: false,
   customer_portal: false,

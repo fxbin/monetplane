@@ -1,3 +1,11 @@
+# Agent Note: PayPal 沙箱实测证据
+
+Status: implemented — PayPal 沙箱全链路证据(OAuth/订单/订阅/真实 capture/真实退款/webhook 验签端到端);2026-09-26 记录,2026-10-25 自 docs/ 迁入
+
+> 点时实测记录,创建于 2026-09-26(`docs/paypal-live-evidence.md`),按 `.agents/notes/README.md` 契约迁入 verification 语料;正文保持原文未改写。
+
+---
+
 # PayPal Live Verification Evidence
 
 Date: 2026-09-26 · Environment: real PayPal **sandbox** API

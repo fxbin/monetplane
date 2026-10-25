@@ -1,3 +1,11 @@
+# Agent Note: P2 门禁(#68)本地 Dogfood 证据
+
+Status: implemented — #68 dogfood 全链路证据,资格限定(qualifications)保持原文;2026-09-18 记录,2026-10-25 自 docs/ 迁入
+
+> 点时验收记录,创建于 2026-09-18(`docs/p2-gate-dogfood-evidence.md`),按 `.agents/notes/README.md` 契约迁入 verification 语料;正文保持原文未改写。
+
+---
+
 # P2 Gate (#68) Dogfood Evidence — Local Run
 
 Date: 2026-09-18 · Branch: `chore/p2-gate-dogfood` · Base: latest main

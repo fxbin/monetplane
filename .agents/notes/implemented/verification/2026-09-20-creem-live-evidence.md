@@ -1,3 +1,11 @@
+# Agent Note: Creem 真实 test-mode 实测证据
+
+Status: implemented — Creem test-mode 全真金流证据(真实支付/签名 webhook/在 Creem 真实执行的退款);2026-09-20 记录,2026-10-25 自 docs/ 迁入
+
+> 点时实测记录,创建于 2026-09-20(`docs/creem-live-evidence.md`),按 `.agents/notes/README.md` 契约迁入 verification 语料;正文保持原文未改写。
+
+---
+
 # Creem Live Verification Evidence
 
 Date: 2026-09-20 · Environment: local MonetPlane (dev server) + real Creem

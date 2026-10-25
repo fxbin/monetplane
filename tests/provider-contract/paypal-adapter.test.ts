@@ -10,7 +10,8 @@ import { defineProviderAdapterContractTests } from "./adapter-contract";
  * PayPal adapter bound to the shared conformance suite (#72). The fake fetch
  * stubs OAuth, order creation, subscription creation, and the webhook
  * signature-verification API — the same request shapes exercised live
- * against api-m.sandbox.paypal.com (docs/paypal-live-evidence.md).
+ * against api-m.sandbox.paypal.com
+ * (.agents/notes/implemented/verification/2026-09-26-paypal-live-evidence.md).
  */
 
 const webhookId = "WH_CONTRACT_WEBHOOK_ID";

@@ -1,3 +1,11 @@
+# Agent Note: Creem 退款链路实测验证清单(#130)
+
+Status: implemented — #130 清单当日执行:场景 A(superseded 对齐)真实沙箱通过并随 issue 关闭,场景 B 记录为需续费周期、复现路径留存;结论回填于 Issue #130;2026-10-25 自 docs/ 迁入
+
+> 点时验证清单,创建于 2026-10-03(`docs/creem-live-verification.md`),结论回填于 Issue #130;按 `.agents/notes/README.md` 契约迁入 verification 语料,正文保持原文未改写。
+
+---
+
 # Creem 退款链路实测验证清单(#130)
 
 > 目的:在真实 Creem 沙箱中实测两件代码侧只能静态推断的事——
