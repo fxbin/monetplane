@@ -3,10 +3,7 @@
 How MonetPlane prices map to Creem products: what the console does, what
 the provider supports, and how to recover when an automated create goes
 wrong. For the adapter authoring perspective see
-[provider-adapter-guide.md](./provider-adapter-guide.md); for the
-decision record behind the design see
-`.agents/notes/implemented/architecture/2026-10-08-creem-catalog-mapping-precedence.md`
-and `.../2026-10-09-creem-catalog-provisioning-idempotency.md`.
+[provider-adapter-guide.md](./provider-adapter-guide.md).
 
 ## Model
 

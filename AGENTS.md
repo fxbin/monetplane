@@ -1,7 +1,7 @@
 # AGENTS.md — AI agent 入口(知识地图与硬约束)
 
 > 本文件是给 AI agent / 新贡献者的**入口地图**,只放指针与硬约束,不复制正文——
-> 正文只在一处维护,避免第二份拷贝漂移。最后更新:2026-10-07(docker 部署 + 计数刷新)。
+> 正文只在一处维护,避免第二份拷贝漂移。最后更新:2026-11-21(清理历史笔记 + 测试计数刷新)。
 
 ## 这个仓库是什么
 
@@ -13,9 +13,7 @@ pnpm,biome,TS strict)。当前状态:P0/P1 完成,P2 已实现(见 `README.md` S
 | 位置 | 回答的问题 | 形态 |
 |---|---|---|
 | `docs/` | **是什么 / 怎么用 / 怎么接** —— 面向集成方与贡献者的参考 | 随代码同 PR 更新的现行文档 |
-| `.agents/notes/` | **为什么这样定 / 放弃了什么 / 何时再议** —— 决策语料 | VIDT agent-notes 契约;lifecycle 迁移;校验门禁 `scripts/verify_agent_notes.py`(在 VIDT skill 内) |
 | `tests/` | **可执行的真源** —— 行为与边界的最终裁决 | `tests/module-boundaries.test.ts` = 分层契约的机械形态;集成测试需真实 PG |
-| `.vidt/` | 本地机器状态(decision log / evidence / iterations) | **永不提交**;他人克隆中不存在属正常 |
 | `docs/architecture.md` | 系统边界、模块、数据规则(§6 十二条不变量) | 架构参考起点 |
 | `docs/sdk-quickstart.md` | 集成方接入(SDK 方法表、凭证要求、错误处理) | 接口契约的用户视角 |
 | `docs/provider-adapter-guide.md` | 新增支付适配器的步骤与共享层 | 先读 §"Shared adapter kit" |
@@ -27,8 +25,8 @@ pnpm,biome,TS strict)。当前状态:P0/P1 完成,P2 已实现(见 `README.md` S
 ```bash
 pnpm lint            # biome(0 错误基线;警告 ~9 条为已知)
 pnpm typecheck       # tsc --noEmit
-pnpm test            # 单元(176)
-pnpm test:integration  # 集成(281);需 DB:先 `set -a && source .env && set +a`
+pnpm test            # 单元(209)
+pnpm test:integration  # 集成(326);需 DB:先 `set -a && source .env && set +a`
 pnpm build           # 需要 AUTH_SECRET(CI 用 build-only 值)
 node --experimental-strip-types --env-file=.env scripts/reconcile-currency-decimals.mts
                      # 只读货币对账报告(永不写库)
@@ -42,11 +40,10 @@ node --experimental-strip-types --env-file=.env scripts/reconcile-currency-decim
 4. **环境解析 fail-closed**:非法 environment 报错,禁止静默 coerce。
 5. **分层方向**:app → components → control-plane → modules → db,由 `tests/module-boundaries.test.ts` 机械化;测试里的豁免清单条目 = 已评审决策,新增豁免需等价论证。
 6. **check 约束**:`src/modules/*/schema.ts` 与 `drizzle/` 迁移必须同 PR 同步(曾有 actor-check 漂移)。
-7. **文档分层**:行为/接口变化 → 同 PR 更新 `docs/` 对应文件;产生跨轮成立的决策(范围裁定、接受的残余风险、否决方案)→ 在 `.agents/notes/` 按契约写笔记(路径 `{lifecycle}/{class}/yyyy-mm-dd-slug.md`,Status 行必填)。
+7. **文档更新**:行为/接口变化 → 同 PR 更新 `docs/` 对应文件。
 
 ## 快速校验清单
 
 ```bash
-python3 <vidt-skill>/scripts/verify_agent_notes.py --repo-root .   # notes 契约门禁
 pnpm vitest run tests/module-boundaries.test.ts                    # 分层契约
 ```

@@ -87,15 +87,19 @@ CI provisions a fresh PostgreSQL database, applies migrations twice to verify re
 ## Architecture
 
 - [System architecture](docs/architecture.md)
+- [ADR: environment isolation model](docs/adr-environment-isolation.md)
 - [Payment provider contract](docs/provider-contract.md)
+- [Provider adapter guide](docs/provider-adapter-guide.md)
+- [Waffo adapter boundary](docs/waffo-provider.md)
 - [Creem catalog mapping — console operations & recovery](docs/creem-catalog.md)
 - [Credits and usage ledger](docs/credits-ledger.md)
+- [Analytics metric definitions](docs/analytics-definitions.md)
 - [Console layering](docs/p1-console-architecture.md)
+- [SDK quickstart](docs/sdk-quickstart.md)
+- [SDK versioning & compatibility policy](docs/sdk-versioning.md)
+- [Docker deployment](docs/docker-deployment.md)
 
-Decision records (why things are the way they are) live in
-[`.agents/notes/`](.agents/notes/README.md) — the audit-remediation decisions
-(money invariants, currency registry, credential gating, webhook retry policy,
-explicit scope cuts) are the first entries. Operations tooling:
+Operations tooling:
 `scripts/reconcile-currency-decimals.mts` (read-only report of rows possibly
 mis-scaled by pre-unification currency tables) and
 `scripts/reconcile-refunds.mts` (read-only refund reconciliation: over-refunded
@@ -115,8 +119,8 @@ P0 is complete when two example applications can share one MonetPlane deployment
 ## Status
 
 - **P0 — billing-engine foundation**: complete (architecture evidence in `docs/architecture.md`).
-- **P1 — Control Plane Console v1**: complete and gate-verified (`.agents/notes/implemented/verification/2026-09-17-p1-gate-evidence.md`).
-- **P2 — Production-ready monetization platform**: implemented (environment isolation ADR + implementation, payment router, developer lifecycle events, usage metering, credit buckets, pricing v2, packaged SDK, operator audit, analytics v1). Local dogfood evidence: `.agents/notes/implemented/verification/2026-09-18-p2-gate-dogfood-evidence.md`. Real-provider sandbox proof complete for BOTH providers: Waffo Pancake (`.agents/notes/implemented/verification/2026-09-19-waffo-live-evidence.md`) and Creem (`.agents/notes/implemented/verification/2026-09-20-creem-live-evidence.md`) — connection, routed checkout, real payments, signed webhooks, billing effects, refunds executed at the provider (test-mode scope, qualifications in each doc).
+- **P1 — Control Plane Console v1**: complete and gate-verified.
+- **P2 — Production-ready monetization platform**: implemented (environment isolation ADR + implementation, payment router, developer lifecycle events, usage metering, credit buckets, pricing v2, packaged SDK, operator audit, analytics v1) with real-provider sandbox proof complete for Waffo Pancake and Creem (connection, routed checkout, real payments, signed webhooks, billing effects, refunds executed at the provider in test mode).
 - **Period-reset credit quotas**: implemented and externally audited (4 review rounds) — subscription cycles grant buckets that expire with the cycle (partial expiry under the account lock, reserve-side expiry with no TOCTOU window, capture grandfathering), and cancellation claws back unused cycle credits via the `grant.revoked` ledger type. Semantics: `docs/credits-ledger.md`. Console is fully bilingual (en/zh).
 
 Verification: `pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build` (CI runs the full sequence plus migrations and a database-aware health check).

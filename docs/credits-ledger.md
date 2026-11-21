@@ -297,7 +297,7 @@ CreditTransaction -N grant.revoked          (bucket → status=reversed)
   row lock (accounts locked in sorted order, then buckets).
 - Fully-drained buckets transition to `status=reversed`; buckets created before
   the period-reset model (legacy permanent buckets) are grandfathered rather than
-  revoked — scope decision recorded in `.agents/notes/`.
+  revoked by design.
 - The ledger invariant holds throughout:
   `sum(active bucket remaining) == availableBalance + reservedBalance`.
 

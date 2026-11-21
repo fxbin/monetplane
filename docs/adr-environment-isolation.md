@@ -5,8 +5,7 @@ Date: 2026-09-17
 
 > Related (2026-09): analytics revenue/usage filtering pins the fact-table
 > `environment` columns (not `providerConnections.mode`) as the canonical
-> query dimension — see
-> `.agents/notes/implemented/architecture/2026-09-26-canonical-environment-filter.md`.
+> query dimension (see `docs/analytics-definitions.md`).
 
 ## 1. Chosen model — "Shared definitions, environment-scoped runtime"
 
@@ -148,11 +147,11 @@ Rationale:
 8. SDK: omitted environment on mutation → `400 environment_required`
    (after the deprecation window).
 
-## 8. Current behavior (until #74 lands)
+## 8. Transition status
 
-- Project selection remains the real global isolation boundary.
-- Sandbox/Production selects provider configuration, developer webhook
-  endpoints/deliveries, and environment-aware console reads.
-- Catalog, customers, credits, entitlements, orders remain
-  project-scoped; UI/API/SDK copy must keep saying so and must not claim
-  Stripe-like full Test/Live isolation.
+The transitional state this section used to document (runtime rows
+project-scoped, no `environment` columns) ended when #74 landed
+(2026-09): runtime tables now carry the immutable `environment` columns
+of §3 and behave as §1–§7 specify. Definition data (catalog, customer
+identity, project-wide API keys) remains shared **by design** — that is
+the chosen model, not a pending transition.

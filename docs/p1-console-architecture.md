@@ -38,8 +38,7 @@ API routes (`src/app/api/**`) follow a deliberately narrower rule (Phase 2.2
 decision, 2026-10-04 roundtable): routes must not import `@/db` directly —
 they orchestrate through control-plane functions or module services. Legacy
 offenders sit in a zero-waiver ratchet whitelist that only shrinks (the test
-asserts the count never grows); see
-`.agents/notes/implemented/architecture/2026-10-04-api-layering-ratchet.md`.
+asserts the count never grows in `tests/module-boundaries.test.ts`).
 Wider convergence (route → control-plane for money paths) happens
 opportunistically as routes are touched, not by deadline.
 
@@ -79,8 +78,7 @@ components receive dictionary slices via props. The shell, login, and
 overview pages are migrated; remaining pages migrate when touched — a page
 migration moves its strings into the dictionaries and reads
 `dictionary.<page>`, nothing else changes. Interpolation uses
-`{placeholder}` tokens via `formatMessage`. See
-`.agents/notes/implemented/feature/2026-10-04-console-i18n.md`.
+`{placeholder}` tokens via `formatMessage`.
 
 ## Conventions
 
@@ -90,4 +88,7 @@ migration moves its strings into the dictionaries and reads
 - Environment semantics: any control-plane read that touches provider
   connections accepts the console environment and scopes by
   `providerConnections.mode` (see `developer.ts`, `overview.ts`).
-- Credits remain project-wide (no mode column); UI copy must label this.
+- Credits are environment-scoped: credit accounts, transactions,
+  reservations, and buckets carry `environment` (landed with #74), and
+  console credit reads filter by it (see `credits-overview.ts`,
+  `customer-workspace.ts`).
