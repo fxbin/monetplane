@@ -67,6 +67,7 @@ export async function POST(request: Request) {
     let applicationId: string;
     let externalCustomerId: string;
     let environment: "test" | "live";
+    let isCredentialAuth = false;
 
     const externalCustomerIdInput =
       typeof body.externalCustomerId === "string"
@@ -129,6 +130,7 @@ export async function POST(request: Request) {
       applicationId = context.application.id;
       externalCustomerId = externalCustomerIdInput;
       environment = parseEnvironment(body) ?? "test";
+      isCredentialAuth = context.source === "credential";
     }
 
     const featureKey =
@@ -141,8 +143,39 @@ export async function POST(request: Request) {
       );
     }
 
-    const at =
-      typeof body.at === "string" && body.at ? new Date(body.at) : new Date();
+    let at = new Date();
+    if (body.at !== undefined) {
+      if (!isCredentialAuth) {
+        return NextResponse.json(
+          {
+            error:
+              "Historical timestamp checks require an application credential",
+            code: "invalid_request",
+          },
+          { status: 400 },
+        );
+      }
+      if (typeof body.at !== "string" || !body.at.trim()) {
+        return NextResponse.json(
+          {
+            error: "at must be a valid ISO timestamp",
+            code: "invalid_request",
+          },
+          { status: 400 },
+        );
+      }
+      const parsedAt = new Date(body.at);
+      if (Number.isNaN(parsedAt.getTime())) {
+        return NextResponse.json(
+          {
+            error: "at must be a valid ISO timestamp",
+            code: "invalid_request",
+          },
+          { status: 400 },
+        );
+      }
+      at = parsedAt;
+    }
 
     const granted = await hasEntitlement(
       applicationId,

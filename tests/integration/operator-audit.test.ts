@@ -114,15 +114,34 @@ describe("operator audit log (#66)", () => {
     });
 
     // Append-only: UPDATE and DELETE fail at the database level.
-    await expect(
+    // drizzle-orm >= 0.44 wraps the driver error in DrizzleQueryError (cause).
+    const expectAppendOnlyFailure = async (op: Promise<unknown>) => {
+      try {
+        await op;
+        expect.unreachable("Expected append-only failure");
+      } catch (err) {
+        const messageChain: string[] = [];
+        let cur: unknown = err;
+        for (let i = 0; i < 4 && cur; i++) {
+          if (cur instanceof Error) {
+            messageChain.push(cur.message);
+            cur = cur.cause;
+          } else {
+            break;
+          }
+        }
+        expect(messageChain.join(" | ")).toMatch(/append-only/i);
+      }
+    };
+    await expectAppendOnlyFailure(
       db
         .update(operatorAuditLog)
         .set({ action: "tampered" })
         .where(eq(operatorAuditLog.id, entry.id)),
-    ).rejects.toThrow(/append-only/i);
-    await expect(
+    );
+    await expectAppendOnlyFailure(
       db.delete(operatorAuditLog).where(eq(operatorAuditLog.id, entry.id)),
-    ).rejects.toThrow(/append-only/i);
+    );
   });
 
   it("deep-redacts nested secrets and truncates long values", () => {

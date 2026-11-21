@@ -15,10 +15,23 @@ export async function GET() {
   try {
     const context = await getConsoleContext();
     const applicationId = context.selectedApplication?.id;
-    const [stats, recentOrders] = await Promise.all([
-      getOverviewStats(applicationId, context.environment),
-      getRecentOrders(5, applicationId),
-    ]);
+    const [stats, recentOrders] = applicationId
+      ? await Promise.all([
+          getOverviewStats(applicationId, context.environment),
+          getRecentOrders(5, applicationId),
+        ])
+      : [
+          {
+            applications: 0,
+            products: 0,
+            customers: 0,
+            activeProviders: 0,
+            orders: 0,
+            totalRevenueMinor: 0,
+            creditTransactions: 0,
+          },
+          [],
+        ];
 
     return NextResponse.json({
       context: {

@@ -134,7 +134,7 @@ export async function PATCH(request: Request, { params }: RouteContext) {
       resourceId: connection.id,
       metadata: {
         name,
-        credentialsRotated: credentials !== null,
+        credentialsRotated: credentials !== undefined,
       },
       request,
     });

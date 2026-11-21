@@ -27,12 +27,63 @@ import { publishBillingLifecycleEvent } from "@/server/control-plane/billing-eve
  *   plus the deliveries' unique (endpoint, eventId) index keep replays from
  *   double-applying anything.
  */
+const MAX_WEBHOOK_BODY_BYTES = 1_048_576; // 1 MiB
+
+async function readWebhookBody(
+  request: Request,
+): Promise<{ ok: true; text: string } | { ok: false }> {
+  const contentLengthHeader = request.headers.get("content-length");
+  if (contentLengthHeader) {
+    const contentLength = Number(contentLengthHeader);
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > MAX_WEBHOOK_BODY_BYTES
+    ) {
+      return { ok: false };
+    }
+  }
+
+  if (!request.body) {
+    const buf = await request.arrayBuffer();
+    if (buf.byteLength > MAX_WEBHOOK_BODY_BYTES) {
+      return { ok: false };
+    }
+    return { ok: true, text: Buffer.from(buf).toString("utf8") };
+  }
+
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_WEBHOOK_BODY_BYTES) {
+      await reader.cancel().catch(() => {});
+      return { ok: false };
+    }
+    chunks.push(value);
+  }
+
+  return { ok: true, text: Buffer.concat(chunks, totalBytes).toString("utf8") };
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ connectionId: string }> },
 ) {
+  const bodyResult = await readWebhookBody(request);
+  if (!bodyResult.ok) {
+    return NextResponse.json(
+      { error: "Webhook payload too large" },
+      { status: 413 },
+    );
+  }
+
   const { connectionId } = await context.params;
-  const rawBody = await request.text();
+  const rawBody = bodyResult.text;
   const headers = Object.fromEntries(request.headers.entries());
 
   try {

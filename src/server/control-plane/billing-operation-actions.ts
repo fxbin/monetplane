@@ -364,6 +364,7 @@ export async function refundPaymentWithJournal(
       {
         providerPaymentId: payment.providerPaymentId,
         amountMinor: payment.amountMinor,
+        currency: payment.currency,
         // Provider-side idempotency: retries of this operation reuse the
         // journal key so the provider (e.g. PayPal via PayPal-Request-Id)
         // can dedupe a timed-out request instead of refunding twice.
@@ -491,6 +492,7 @@ export async function retryBillingOperation(
   let type: "refund" | "cancel_subscription";
   let resourceType: "payment" | "subscription";
   let amountMinor: number | undefined;
+  let currency: string | undefined;
 
   if (source.type === "refund") {
     if (source.resourceType !== "payment") {
@@ -518,6 +520,7 @@ export async function retryBillingOperation(
       );
     }
     amountMinor = payment.amountMinor;
+    currency = payment.currency;
   } else if (source.type === "cancel_subscription") {
     if (source.resourceType !== "subscription") {
       throw new Error("Cancellation journal has an invalid resource type.");
@@ -578,6 +581,7 @@ export async function retryBillingOperation(
         {
           providerPaymentId: source.providerResourceId,
           amountMinor,
+          currency,
           // Provider-side idempotency (see refundPaymentWithJournal).
           requestId: operation.idempotencyKey,
         },

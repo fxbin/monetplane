@@ -506,7 +506,7 @@ export function createWaffoProviderAdapter(
     ): Promise<NormalizedRefund> {
       const client = clientFor(connection, options);
       const storeId = requiredCredential(connection, "storeId", "Waffo");
-      const currency = "USD";
+      const currency = (input.currency?.trim() || "USD").toUpperCase();
       try {
         const { token } = await client.auth.issueSessionToken({
           storeId,

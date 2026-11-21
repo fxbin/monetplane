@@ -71,3 +71,45 @@ export function getHostReadMaxWindows(): number {
 export function isTrustProxyEnabled(): boolean {
   return process.env.MONETPLANE_TRUST_PROXY === "true";
 }
+
+/**
+ * Rate limit per minute for public authentication, invitation, and portal
+ * mutation endpoints in proxy.ts (default 20).
+ */
+export function getAuthRateLimitPerMinute(): number {
+  const parsed = Number(process.env.MONETPLANE_AUTH_RATE_LIMIT);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 20;
+}
+
+/**
+ * Whether `test`-mode developer webhooks may target localhost/loopback.
+ * Off by default (fail-closed against SSRF); enable only for local
+ * development or test suites.
+ */
+export function isLocalWebhookDeliveryAllowed(): boolean {
+  return process.env.MONETPLANE_ALLOW_LOCAL_WEBHOOKS === "true";
+}
+
+/**
+ * Optional canonical public base origin (e.g. https://billing.example.com)
+ * used when minting external URLs such as hosted portal links.
+ */
+export function getPublicBaseUrl(): string | undefined {
+  const raw = process.env.MONETPLANE_PUBLIC_URL?.trim();
+  if (!raw) return undefined;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("MONETPLANE_PUBLIC_URL must be a valid URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("MONETPLANE_PUBLIC_URL must use http or https");
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error("MONETPLANE_PUBLIC_URL must not contain credentials");
+  }
+
+  return parsed.origin;
+}

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDictionary } from "@/i18n/server";
 import {
+  isDatabaseQueryError,
+  isUniqueConstraintError,
+  safeAdminErrorMessage,
+} from "@/lib/db-errors";
+import {
   requireAdmin,
   requireApplicationAccess,
   requirePermission,
@@ -19,7 +24,9 @@ export async function GET() {
 
   try {
     const context = await getConsoleContext();
-    const products = await getProductList(context.selectedApplication?.id);
+    const products = context.selectedApplication
+      ? await getProductList(context.selectedApplication.id)
+      : [];
     return NextResponse.json({
       context: {
         application: context.selectedApplication,
@@ -124,11 +131,11 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("[admin/products] Create error:", error);
-    const message =
-      error instanceof Error
-        ? error.message
-        : adminErrors.failedToCreateProduct;
-    const isConflict = /unique|duplicate/i.test(message);
+    const isConflict = isUniqueConstraintError(error);
+    const message = safeAdminErrorMessage(
+      error,
+      adminErrors.failedToCreateProduct,
+    );
 
     return NextResponse.json(
       {
@@ -137,7 +144,9 @@ export async function POST(request: Request) {
           : message,
         code: isConflict ? "catalog_conflict" : "invalid_product",
       },
-      { status: isConflict ? 409 : 400 },
+      {
+        status: isConflict ? 409 : isDatabaseQueryError(error) ? 500 : 400,
+      },
     );
   }
 }

@@ -415,4 +415,40 @@ describe("waffo pancake adapter", () => {
       currency: "USD",
     });
   });
+
+  it("formats non-USD and zero-decimal refund currencies using input.currency", async () => {
+    const fake = pancakeFake();
+    const adapter = adapterWith(fake);
+    await adapter.refundPayment(connection, {
+      providerPaymentId: "PAY_jpy",
+      amountMinor: 1500,
+      currency: "jpy",
+      requestId: "req_jpy_1",
+    });
+    const jpyTicket = fake.calls.find(
+      (c) =>
+        c.op === "customer.createRefundTicket" &&
+        c.params.paymentId === "PAY_jpy",
+    );
+    expect(jpyTicket?.params.requestedAmount).toMatchObject({
+      amount: "1500",
+      currency: "JPY",
+    });
+
+    await adapter.refundPayment(connection, {
+      providerPaymentId: "PAY_eur",
+      amountMinor: 2550,
+      currency: "EUR",
+      requestId: "req_eur_1",
+    });
+    const eurTicket = fake.calls.find(
+      (c) =>
+        c.op === "customer.createRefundTicket" &&
+        c.params.paymentId === "PAY_eur",
+    );
+    expect(eurTicket?.params.requestedAmount).toMatchObject({
+      amount: "25.50",
+      currency: "EUR",
+    });
+  });
 });

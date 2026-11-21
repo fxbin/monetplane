@@ -107,6 +107,13 @@ export async function createBucketForGrant(
   return bucket;
 }
 
+export class InsufficientActiveBucketCreditsError extends Error {
+  constructor(message = "Insufficient non-expired credits") {
+    super(message);
+    this.name = "InsufficientActiveBucketCreditsError";
+  }
+}
+
 /** Consume `amount` from the account's active buckets, soonest-expiry first. */
 export async function consumeBuckets(
   creditAccountId: string,
@@ -169,6 +176,9 @@ export async function consumeBuckets(
       .where(eq(creditBuckets.id, bucket.id));
   }
   if (remaining > 0) {
+    if (!options.allowExpired) {
+      throw new InsufficientActiveBucketCreditsError();
+    }
     throw new Error(
       "Bucket allocation invariant violated: consumption exceeds active buckets",
     );

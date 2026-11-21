@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDictionary } from "@/i18n/server";
 import {
+  isUniqueConstraintError,
+  safeAdminErrorMessage,
+} from "@/lib/db-errors";
+import {
   requireAdmin,
   requireApplicationAccess,
   requirePermission,
@@ -21,10 +25,12 @@ export async function GET() {
 
   try {
     const context = await getConsoleContext();
-    const providers = await getProviderList(
-      context.selectedApplication?.id,
-      context.environment,
-    );
+    const providers = context.selectedApplication
+      ? await getProviderList(
+          context.selectedApplication.id,
+          context.environment,
+        )
+      : [];
     return NextResponse.json({
       context: {
         application: context.selectedApplication,
@@ -127,18 +133,17 @@ export async function POST(request: Request) {
     );
   } catch (error) {
     console.error("[admin/providers] Create error:", error);
-    const message =
-      error instanceof Error
-        ? error.message
-        : adminErrors.failedToConnectProvider;
-    const status =
-      message.includes("required") ||
-      message.includes("supported payment provider")
+    const isConflict = isUniqueConstraintError(error);
+    const message = safeAdminErrorMessage(
+      error,
+      adminErrors.failedToConnectProvider,
+    );
+    const status = isConflict
+      ? 409
+      : message.includes("required") ||
+          message.includes("supported payment provider")
         ? 400
-        : message.toLowerCase().includes("unique") ||
-            message.toLowerCase().includes("duplicate")
-          ? 409
-          : 500;
+        : 500;
     return NextResponse.json({ error: message }, { status });
   }
 }

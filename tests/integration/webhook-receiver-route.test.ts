@@ -199,4 +199,31 @@ describe("inbound provider webhook receiver (#95)", () => {
     );
     expect(response.status).toBe(401);
   });
+
+  it("rejects oversized webhook payloads above 1 MiB with 413", async () => {
+    const oversized = "x".repeat(1_048_577);
+    const responseWithBody = await receiveWebhook(
+      new Request("http://localhost/api/webhooks/x", {
+        method: "POST",
+        body: oversized,
+        headers: { "content-type": "application/json" },
+      }),
+      { params: Promise.resolve({ connectionId: "pconn_any" }) },
+    );
+    expect(responseWithBody.status).toBe(413);
+
+    // Also reject immediately when declared Content-Length exceeds 1 MiB.
+    const responseWithHeader = await receiveWebhook(
+      new Request("http://localhost/api/webhooks/x", {
+        method: "POST",
+        body: "{}",
+        headers: {
+          "content-type": "application/json",
+          "content-length": String(1_048_577),
+        },
+      }),
+      { params: Promise.resolve({ connectionId: "pconn_any" }) },
+    );
+    expect(responseWithHeader.status).toBe(413);
+  });
 });

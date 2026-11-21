@@ -565,6 +565,17 @@ export async function applyPaymentEvent(
     };
   }
 
+  if (
+    event.type === "payment.succeeded" &&
+    order &&
+    event.amountMinor !== undefined &&
+    event.amountMinor !== order.totalAmountMinor
+  ) {
+    console.error(
+      `[monetplane] payment amount variance: provider event ${event.providerEventId} captured ${event.amountMinor} ${currency} for order ${order.id} (expected ${order.totalAmountMinor} ${order.currency})`,
+    );
+  }
+
   const nextPaymentStatus = (() => {
     if (event.type === "payment.succeeded") return "succeeded";
     if (event.type === "payment.failed") {

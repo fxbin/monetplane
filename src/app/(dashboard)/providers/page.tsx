@@ -13,10 +13,9 @@ export default async function ProvidersPage() {
     getDictionary(),
   ]);
   const t = dictionary.providers;
-  const providers = await getProviderList(
-    context.selectedApplication?.id,
-    context.environment,
-  );
+  const providers = context.selectedApplication
+    ? await getProviderList(context.selectedApplication.id, context.environment)
+    : [];
   const projectName = context.selectedApplication?.name;
   const environmentLabel =
     context.environment === "test"

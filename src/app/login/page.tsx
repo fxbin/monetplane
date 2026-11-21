@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { signIn } from "@/auth";
 import { getDictionary } from "@/i18n/server";
+import { sanitizeLoginCallbackUrl } from "@/lib/safe-redirect";
 
 /**
  * Operator sign-in (#70).
@@ -23,15 +24,21 @@ export default async function LoginPage({
     getDictionary(),
   ]);
   const failed = typeof params.error === "string";
-  const redirectTo =
-    typeof params.callbackUrl === "string" && params.callbackUrl.startsWith("/")
-      ? params.callbackUrl
-      : "/overview";
+  const redirectTo = sanitizeLoginCallbackUrl(params.callbackUrl);
 
   async function authenticate(formData: FormData) {
     "use server";
     try {
-      await signIn("credentials", formData);
+      const safeFormData = new FormData();
+      const email = formData.get("email");
+      const password = formData.get("password");
+      if (typeof email === "string") safeFormData.set("email", email);
+      if (typeof password === "string") safeFormData.set("password", password);
+      safeFormData.set(
+        "redirectTo",
+        sanitizeLoginCallbackUrl(formData.get("redirectTo")),
+      );
+      await signIn("credentials", safeFormData);
     } catch (error) {
       // NEXT_REDIRECT (successful sign-in) must propagate; only credential
       // failures bounce back to the form.

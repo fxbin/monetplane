@@ -12,6 +12,7 @@ import {
   debitCredits,
   getCreditBalance,
   grantCredits,
+  refundCredits,
 } from "../../src/modules/credits/service";
 import { createApplicationCustomer } from "../../src/modules/customers/service";
 import {
@@ -309,6 +310,41 @@ describe("environment isolation (#74)", () => {
       .where(eq(sessions.id, test.checkoutSessionId))
       .limit(1);
     expect(session[0]?.environment).toBe("test");
+  });
+
+  it("credits refundCredits into the requested live environment instead of defaulting to test", async () => {
+    const f: Fixture = await seed();
+
+    await refundCredits(
+      {
+        applicationId: f.app.id,
+        externalCustomerId: "user-1",
+        creditType: "agent.run",
+        amount: 25,
+        sourceType: "job",
+        sourceId: "failed-live-job-1",
+        idempotencyKey: "refund-live-1",
+        environment: "live",
+      },
+      db,
+    );
+
+    const liveBalance = await getCreditBalance(
+      f.app.id,
+      "user-1",
+      "agent.run",
+      db,
+      "live",
+    );
+    const testBalance = await getCreditBalance(
+      f.app.id,
+      "user-1",
+      "agent.run",
+      db,
+      "test",
+    );
+    expect(liveBalance.available).toBe(25);
+    expect(testBalance.available).toBe(0);
   });
 });
 

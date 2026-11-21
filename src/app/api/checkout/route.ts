@@ -44,10 +44,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const environment =
-      body.environment === "test" || body.environment === "live"
-        ? body.environment
-        : undefined;
+    if (
+      body.environment !== undefined &&
+      body.environment !== "test" &&
+      body.environment !== "live"
+    ) {
+      return NextResponse.json(
+        {
+          error: "environment must be 'test' or 'live'",
+          code: "invalid_environment",
+        },
+        { status: 400 },
+      );
+    }
+    const environment = body.environment;
 
     const items = itemsRaw.map((item, i) => {
       const obj = item as Record<string, unknown>;

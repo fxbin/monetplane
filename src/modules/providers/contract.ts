@@ -100,6 +100,7 @@ export type NormalizedSubscription = {
 export type RefundPaymentInput = {
   providerPaymentId: string;
   amountMinor?: number;
+  currency?: string;
   requestId?: string;
 };
 export type NormalizedRefund = {

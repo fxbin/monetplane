@@ -183,7 +183,17 @@ export async function authenticateWithBootstrap(input: {
   const operatorId = `op_${randomUUID()}`;
   const memberId = `mbr_${randomUUID()}`;
   const name = email.split("@")[0] || "Owner";
-  await getDb().transaction(async (tx) => {
+  const created = await getDb().transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended('team:bootstrap-owner', 0))`,
+    );
+    const existingOperators = await tx
+      .select({ id: operators.id })
+      .from(operators)
+      .limit(1);
+    if (existingOperators.length > 0) {
+      return false;
+    }
     await tx.insert(operators).values({
       id: operatorId,
       email,
@@ -197,7 +207,9 @@ export async function authenticateWithBootstrap(input: {
       role: "owner",
       applicationScope: "all",
     });
+    return true;
   });
+  if (!created) return null;
 
   const { recordAuditEntry } = await import("@/server/control-plane/audit");
   await recordAuditEntry({
@@ -475,33 +487,34 @@ export async function acceptInvitation(input: {
   }
 
   const db = getDb();
-  const [invitation] = await db
-    .select()
-    .from(operatorInvitations)
-    .where(eq(operatorInvitations.tokenHash, hashToken(input.token)))
-    .limit(1);
+  const accepted = await db.transaction(async (tx) => {
+    const [invitation] = await tx
+      .select()
+      .from(operatorInvitations)
+      .where(eq(operatorInvitations.tokenHash, hashToken(input.token)))
+      .for("update")
+      .limit(1);
 
-  if (
-    !invitation ||
-    invitation.status !== "pending" ||
-    invitation.expiresAt.getTime() <= Date.now()
-  ) {
-    throw new TeamServiceError(
-      "This invitation is no longer valid",
-      410,
-      "invitation_invalid",
-    );
-  }
+    if (
+      !invitation ||
+      invitation.status !== "pending" ||
+      invitation.expiresAt.getTime() <= Date.now()
+    ) {
+      throw new TeamServiceError(
+        "This invitation is no longer valid",
+        410,
+        "invitation_invalid",
+      );
+    }
 
-  const operatorId = `op_${randomUUID()}`;
-  const memberId = `mbr_${randomUUID()}`;
-  const name =
-    (typeof input.name === "string" && input.name.trim()) ||
-    invitation.email.split("@")[0] ||
-    "Operator";
-  const passwordHash = await hashPassword(password);
+    const operatorId = `op_${randomUUID()}`;
+    const memberId = `mbr_${randomUUID()}`;
+    const name =
+      (typeof input.name === "string" && input.name.trim()) ||
+      invitation.email.split("@")[0] ||
+      "Operator";
+    const passwordHash = await hashPassword(password);
 
-  await db.transaction(async (tx) => {
     const [existing] = await tx
       .select({ id: operators.id })
       .from(operators)
@@ -510,11 +523,18 @@ export async function acceptInvitation(input: {
 
     let resolvedOperatorId = operatorId;
     if (existing) {
-      // Re-invitation of a previously removed member: restore identity.
+      // Re-invitation of a previously removed member: restore identity and
+      // bump credentialVersion so any pre-removal JWT stays invalid.
       resolvedOperatorId = existing.id;
       await tx
         .update(operators)
-        .set({ name, passwordHash, status: "active", updatedAt: new Date() })
+        .set({
+          name,
+          passwordHash,
+          status: "active",
+          credentialVersion: sql`${operators.credentialVersion} + 1`,
+          updatedAt: new Date(),
+        })
         .where(eq(operators.id, existing.id));
     } else {
       await tx.insert(operators).values({
@@ -548,6 +568,14 @@ export async function acceptInvitation(input: {
       .update(operatorInvitations)
       .set({ status: "accepted", acceptedAt: new Date() })
       .where(eq(operatorInvitations.id, invitation.id));
+
+    return {
+      invitationId: invitation.id,
+      email: invitation.email,
+      role: invitation.role,
+      memberId,
+      name,
+    };
   });
 
   const { recordAuditEntry } = await import("@/server/control-plane/audit");
@@ -555,16 +583,16 @@ export async function acceptInvitation(input: {
     applicationId: null,
     action: "team.member_joined",
     resourceType: "workspace_member",
-    resourceId: memberId,
+    resourceId: accepted.memberId,
     metadata: {
-      email: invitation.email,
-      role: invitation.role,
-      invitationId: invitation.id,
+      email: accepted.email,
+      role: accepted.role,
+      invitationId: accepted.invitationId,
     },
-    actor: { id: memberId, label: name },
+    actor: { id: accepted.memberId, label: accepted.name },
   });
 
-  return { email: invitation.email };
+  return { email: accepted.email };
 }
 
 export async function revokeInvitation(input: {

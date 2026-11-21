@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDictionary } from "@/i18n/server";
 import {
+  isDatabaseQueryError,
+  isUniqueConstraintError,
+  safeAdminErrorMessage,
+} from "@/lib/db-errors";
+import {
   requireAdmin,
   requireApplicationAccess,
   requirePermission,
@@ -91,11 +96,12 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : adminErrors.failedToCreateWebhook;
-    const status = /unique|duplicate/i.test(message) ? 409 : 400;
+    const isConflict = isUniqueConstraintError(error);
+    const message = safeAdminErrorMessage(
+      error,
+      adminErrors.failedToCreateWebhook,
+    );
+    const status = isConflict ? 409 : isDatabaseQueryError(error) ? 500 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

@@ -11,10 +11,9 @@ export async function GET() {
 
   try {
     const context = await getConsoleContext();
-    const customers = await getCustomerList(
-      100,
-      context.selectedApplication?.id,
-    );
+    const customers = context.selectedApplication
+      ? await getCustomerList(100, context.selectedApplication.id)
+      : [];
     return NextResponse.json({
       context: {
         application: context.selectedApplication,

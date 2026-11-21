@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import { getAuthSecret } from "./config/env";
+import { sanitizeLoginCallbackUrl } from "./lib/safe-redirect";
 
 /**
  * Edge-safe NextAuth base config (split from auth.ts, NextAuth v5 pattern).
@@ -31,6 +32,19 @@ export const authConfig = {
     signIn: "/login",
   },
   callbacks: {
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return `${baseUrl}${sanitizeLoginCallbackUrl(url)}`;
+      }
+      try {
+        if (new URL(url).origin === new URL(baseUrl).origin) {
+          return url;
+        }
+      } catch {
+        // Fall through to safe origin baseUrl
+      }
+      return baseUrl;
+    },
     async jwt({ token, user }) {
       if (user) {
         token.role = (user as { role?: string }).role ?? "viewer";

@@ -8,8 +8,19 @@ import {
   signWebhookPayload,
 } from "./crypto";
 import { webhookDeliveries, webhookEndpoints } from "./schema";
+import {
+  assertSafeWebhookDestination,
+  assertSafeWebhookUrl,
+  type WebhookDnsLookup,
+} from "./ssrf";
 
 export type WebhookMode = "test" | "live";
+
+export type WebhookDeliveryOptions = {
+  fetchImpl?: typeof fetch;
+  lookupImpl?: WebhookDnsLookup;
+  timeoutMs?: number;
+};
 
 export type CreateWebhookEndpointInput = {
   name: string;
@@ -66,22 +77,7 @@ export function normalizeWebhookUrl(value: string, mode: WebhookMode): string {
     throw new Error("Webhook endpoint must be a valid URL");
   }
 
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw new Error("Webhook endpoint must use http or https");
-  }
-  if (mode === "live" && url.protocol !== "https:") {
-    throw new Error("Production webhook endpoints must use https");
-  }
-  if (url.username || url.password) {
-    throw new Error("Webhook endpoint URL must not contain credentials");
-  }
-  if (url.hash) {
-    throw new Error("Webhook endpoint URL must not contain a fragment");
-  }
-  if (url.toString().length > 2048) {
-    throw new Error("Webhook endpoint URL is too long");
-  }
-
+  assertSafeWebhookUrl(url, mode);
   return url.toString();
 }
 
@@ -312,7 +308,7 @@ async function performWebhookDelivery(
     delivery: typeof webhookDeliveries.$inferSelect;
     endpoint: typeof webhookEndpoints.$inferSelect;
   },
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: WebhookDeliveryOptions = {},
   db: Database = getDb(),
 ) {
   const deliveryId = row.delivery.id;
@@ -331,6 +327,15 @@ async function performWebhookDelivery(
   const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 8000);
 
   try {
+    await assertSafeWebhookDestination(
+      row.endpoint.url,
+      row.endpoint.mode as WebhookMode,
+      {
+        lookupImpl: options.lookupImpl,
+        skipDnsLookup: Boolean(options.fetchImpl && !options.lookupImpl),
+      },
+    );
+
     const response = await fetchImpl(row.endpoint.url, {
       method: "POST",
       headers: {
@@ -341,6 +346,7 @@ async function performWebhookDelivery(
         "x-monetplane-signature": signature,
       },
       body: rawBody,
+      redirect: "error",
       signal: controller.signal,
     });
 
@@ -378,7 +384,7 @@ export async function deliverWebhookDelivery(
   applicationId: string,
   mode: WebhookMode,
   deliveryId: string,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: WebhookDeliveryOptions = {},
   db: Database = getDb(),
 ) {
   const [row] = await db
@@ -445,9 +451,7 @@ function pendingDeliveryBackoffMs(attemptCount: number): number {
 }
 
 export async function sweepPendingWebhookDeliveries(
-  options: {
-    fetchImpl?: typeof fetch;
-    timeoutMs?: number;
+  options: WebhookDeliveryOptions & {
     now?: Date;
     limit?: number;
   } = {},
@@ -552,7 +556,7 @@ export async function createTestWebhookDelivery(
   applicationId: string,
   mode: WebhookMode,
   endpointId: string,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: WebhookDeliveryOptions = {},
   db: Database = getDb(),
 ) {
   const endpoint = await getActiveEndpoint(applicationId, mode, endpointId, db);
@@ -587,7 +591,7 @@ export async function retryWebhookDelivery(
   applicationId: string,
   mode: WebhookMode,
   deliveryId: string,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: WebhookDeliveryOptions = {},
   db: Database = getDb(),
 ) {
   const [delivery] = await db
@@ -616,7 +620,7 @@ function endpointAccepts(endpointEventTypes: string[], eventType: string) {
 
 export async function dispatchWebhookEvent(
   input: DispatchWebhookEventInput,
-  options: { fetchImpl?: typeof fetch; timeoutMs?: number } = {},
+  options: WebhookDeliveryOptions = {},
   db: Database = getDb(),
 ) {
   const eventType = input.eventType.trim().toLowerCase();

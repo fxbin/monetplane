@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getPublicBaseUrl } from "@/config/env";
 import { resolveCredentialApplicationContext } from "@/modules/applications";
 import {
   createPortalSession,
@@ -10,9 +11,9 @@ import {
  *
  * The application backend (mp_app_* bearer) creates a short-lived portal
  * session for ONE of its mapped customers. Returns the portal URL with a
- * one-time token; only the hash is stored. Cross-application sessions are
- * impossible: the application comes from the authenticated context, never
- * from the body.
+ * short-lived bearer token; only the hash is stored. Cross-application
+ * sessions are impossible: the application comes from the authenticated
+ * context, never from the body.
  */
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
@@ -36,7 +37,20 @@ export async function POST(request: Request) {
       );
     }
 
-    const environment = body.environment === "live" ? "live" : "test";
+    let environment: "test" | "live";
+    if (body.environment === undefined) {
+      environment = "test";
+    } else if (body.environment === "live" || body.environment === "test") {
+      environment = body.environment;
+    } else {
+      return NextResponse.json(
+        {
+          error: "environment must be 'test' or 'live'",
+          code: "invalid_environment",
+        },
+        { status: 400 },
+      );
+    }
     const returnUrl =
       typeof body.returnUrl === "string" ? body.returnUrl.trim() : undefined;
 
@@ -47,14 +61,14 @@ export async function POST(request: Request) {
       returnUrl,
     });
 
-    const origin = new URL(request.url).origin;
+    const origin = getPublicBaseUrl() ?? new URL(request.url).origin;
     return NextResponse.json(
       {
         sessionId: session.sessionId,
         portalUrl: `${origin}/portal?token=${session.token}`,
         expiresAt: session.expiresAt.toISOString(),
       },
-      { status: 201 },
+      { status: 201, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
     if (error instanceof PortalServiceError) {

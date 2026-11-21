@@ -19,7 +19,13 @@ export async function GET(request: Request) {
 
   try {
     const result = await createPortalPaymentManagementRedirect(token, request);
-    return NextResponse.redirect(result.url, { status: 302 });
+    return NextResponse.redirect(result.url, {
+      status: 302,
+      headers: {
+        "Cache-Control": "no-store",
+        "Referrer-Policy": "no-referrer",
+      },
+    });
   } catch (error) {
     if (error instanceof PortalServiceError) {
       return NextResponse.json(

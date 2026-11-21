@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { getDictionary } from "@/i18n/server";
+import {
+  isDatabaseQueryError,
+  isUniqueConstraintError,
+  safeAdminErrorMessage,
+} from "@/lib/db-errors";
 import { requirePermission } from "@/modules/admin/guard";
 import {
   createApplication,
@@ -99,11 +104,12 @@ export async function POST(request: Request) {
 
     return response;
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : adminErrors.failedToCreateProject;
-    const status = message.toLowerCase().includes("unique") ? 409 : 400;
+    const isConflict = isUniqueConstraintError(error);
+    const message = safeAdminErrorMessage(
+      error,
+      adminErrors.failedToCreateProject,
+    );
+    const status = isConflict ? 409 : isDatabaseQueryError(error) ? 500 : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }

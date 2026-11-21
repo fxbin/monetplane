@@ -8,6 +8,7 @@ import {
   consumeBuckets,
   createBucketForGrant,
   expireDueBucketsForAccount,
+  InsufficientActiveBucketCreditsError,
 } from "./buckets";
 import {
   creditAccounts,
@@ -532,7 +533,14 @@ async function debitCreditsForApplicationCustomerInTransaction(
     .returning();
   if (!updated) throw new InsufficientCreditsError();
 
-  await consumeBuckets(updated.id, input.amount, db);
+  try {
+    await consumeBuckets(updated.id, input.amount, db);
+  } catch (error) {
+    if (error instanceof InsufficientActiveBucketCreditsError) {
+      throw new InsufficientCreditsError();
+    }
+    throw error;
+  }
 
   const transaction = await appendTransaction(
     {
@@ -611,6 +619,7 @@ export async function refundCredits(
         sourceType: input.sourceType,
         sourceId: input.sourceId,
         idempotencyKey: input.idempotencyKey,
+        environment: input.environment,
         metadata: input.metadata,
       },
       tx,
